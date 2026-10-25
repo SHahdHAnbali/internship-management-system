@@ -1,0 +1,37 @@
+// Global styles and the Angular Material (M3) theme.
+// Layout rule: use CSS logical properties (margin-inline-start, padding-inline-end, inset-inline-start, …)
+// everywhere, never left/right, so every screen works in both RTL (Arabic) and LTR (English).
+@use '@angular/material' as mat;
+
+html {
+  height: 100%;
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+      ),
+      // Roboto covers Latin; Arabic glyphs fall through to Noto Sans Arabic.
+      typography: (
+        plain-family: "Roboto, 'Noto Sans Arabic', sans-serif",
+        brand-family: "Roboto, 'Noto Sans Arabic', sans-serif",
+      ),
+      density: 0,
+    )
+  );
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  color-scheme: light;
+  background-color: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-body-medium);
+  margin: 0;
+  height: 100%;
+}

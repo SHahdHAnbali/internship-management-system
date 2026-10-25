@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Ims.Api/Ims.Api.csproj" />
+    <Project Path="src/Ims.Application/Ims.Application.csproj" />
+    <Project Path="src/Ims.Domain/Ims.Domain.csproj" />
+    <Project Path="src/Ims.Infrastructure/Ims.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Ims.IntegrationTests/Ims.IntegrationTests.csproj" />
+    <Project Path="tests/Ims.UnitTests/Ims.UnitTests.csproj" />
+  </Folder>
+</Solution>

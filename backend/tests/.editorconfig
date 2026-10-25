@@ -1,0 +1,3 @@
+# Test projects only: allow Method_scenario_expectation style test names.
+[*.cs]
+dotnet_diagnostic.CA1707.severity = none
