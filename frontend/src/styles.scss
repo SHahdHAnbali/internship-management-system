@@ -1,37 +1,121 @@
-// Global styles and the Angular Material (M3) theme.
-// Layout rule: use CSS logical properties (margin-inline-start, padding-inline-end, inset-inline-start, …)
-// everywhere, never left/right, so every screen works in both RTL (Arabic) and LTR (English).
+// Global SCSS: design tokens, element base styles, the Angular Material theme, and Material overrides.
+// Loaded after src/tailwind.css (see angular.json). Page layout and spacing use Tailwind utilities in templates.
+// Layout rule: use logical properties / Tailwind's logical utilities (ms-*, pe-*, start-*, border-s, text-start …),
+// never left/right, so every screen works in both RTL (Arabic) and LTR (English).
 @use '@angular/material' as mat;
+@use './styles/theme-colors' as palette;
+@use './styles/tokens';
+@use './styles/base';
+@use './styles/components';
 
 html {
+  color-scheme: light;
   height: 100%;
+
   @include mat.theme(
     (
       color: (
-        primary: mat.$azure-palette,
-        tertiary: mat.$blue-palette,
+        primary: palette.$primary-palette,
+        tertiary: palette.$tertiary-palette,
+        theme-type: light,
       ),
-      // Roboto covers Latin; Arabic glyphs fall through to Noto Sans Arabic.
       typography: (
-        plain-family: "Roboto, 'Noto Sans Arabic', sans-serif",
-        brand-family: "Roboto, 'Noto Sans Arabic', sans-serif",
+        plain-family: "Inter, 'Noto Sans Arabic', sans-serif",
+        brand-family: "Inter, 'Noto Sans Arabic', sans-serif",
       ),
       density: 0,
     )
   );
+
+  // Pin Material's system colours to the reference design (see _tokens.scss).
+  @include mat.theme-overrides(
+    (
+      primary: #c93d12,
+      on-primary: #ffffff,
+      primary-container: #fff1ec,
+      on-primary-container: #601400,
+      surface: #ffffff,
+      surface-container-lowest: #ffffff,
+      surface-container-low: #fafafb,
+      surface-container: #ffffff,
+      surface-container-high: #ffffff,
+      surface-container-highest: #f3f3f5,
+      surface-variant: #eceef1,
+      on-surface: #0f1217,
+      on-surface-variant: #6b6f78,
+      outline: #c9cbd1,
+      outline-variant: #e7e7ea,
+    )
+  );
+
+  @include mat.button-overrides(
+    (
+      filled-container-shape: 10px,
+      outlined-container-shape: 10px,
+      protected-container-shape: 10px,
+      tonal-container-shape: 10px,
+      text-container-shape: 10px,
+      filled-label-text-weight: 600,
+      outlined-label-text-weight: 600,
+      protected-label-text-weight: 600,
+      text-label-text-weight: 600,
+      outlined-outline-color: #e7e7ea,
+    )
+  );
+
+  @include mat.tabs-overrides(
+    (
+      divider-height: 0,
+      label-text-weight: 500,
+      active-indicator-color: #e64d20,
+      active-hover-indicator-color: #e64d20,
+      active-focus-indicator-color: #e64d20,
+      active-label-text-color: #c93d12,
+      active-hover-label-text-color: #c93d12,
+      active-focus-label-text-color: #c93d12,
+      inactive-label-text-color: #474a4d,
+      inactive-hover-label-text-color: #0f1217,
+      inactive-focus-label-text-color: #0f1217,
+    )
+  );
+
+  @include mat.table-overrides(
+    (
+      header-headline-color: #6b6f78,
+      header-headline-weight: 600,
+      row-item-outline-color: #eeeeee,
+    )
+  );
+
+  @include mat.form-field-overrides(
+    (
+      outlined-container-shape: 10px,
+      outlined-outline-color: #d9dbe0,
+      outlined-hover-outline-color: #6b6f78,
+    )
+  );
+
+  @include mat.dialog-overrides(
+    (
+      container-shape: 16px,
+      container-color: #ffffff,
+    )
+  );
+
+  @include mat.snack-bar-overrides(
+    (
+      container-shape: 10px,
+      container-color: #0f1217,
+    )
+  );
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-body {
-  color-scheme: light;
-  background-color: var(--mat-sys-surface);
-  color: var(--mat-sys-on-surface);
-  font: var(--mat-sys-body-medium);
-  margin: 0;
-  height: 100%;
+// Compact form field for controls inside table rows and toolbars.
+.ims-dense {
+  @include mat.form-field-overrides(
+    (
+      container-height: 40px,
+      container-vertical-padding: 8px,
+    )
+  );
 }

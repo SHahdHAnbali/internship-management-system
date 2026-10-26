@@ -1,5 +1,80 @@
 {
   "app": {
     "title": "Trainee Management System"
+  },
+  "roles": {
+    "Admin": "Admin",
+    "HR": "HR",
+    "Trainee": "Trainee",
+    "Employee": "Employee"
+  },
+  "admin": {
+    "title": "Admin",
+    "nav": {
+      "fields": "Fields",
+      "criteria": "Evaluation criteria",
+      "users": "Users & roles",
+      "settings": "Notification settings"
+    },
+    "actions": {
+      "save": "Save",
+      "cancel": "Cancel",
+      "edit": "Edit",
+      "close": "Close"
+    },
+    "messages": {
+      "saved": "Saved"
+    },
+    "errors": {
+      "invalid": "The data entered is not valid",
+      "unauthorized": "Please sign in",
+      "forbidden": "This page is for Admins only",
+      "notFound": "The record was not found",
+      "conflict": "A record with the same name already exists",
+      "generic": "Something went wrong, please try again",
+      "loadFailed": "Could not load the data"
+    },
+    "validation": {
+      "required": "This field is required",
+      "positive": "The value must be greater than zero",
+      "integer": "The value must be a whole number",
+      "days": "Enter a number of days between 1 and 365"
+    },
+    "fields": {
+      "title": "Fields",
+      "add": "Add field",
+      "edit": "Edit field",
+      "name": "Name",
+      "description": "Description",
+      "active": "Active",
+      "empty": "No fields yet"
+    },
+    "criteria": {
+      "title": "Evaluation criteria and weights",
+      "add": "Add criterion",
+      "edit": "Edit criterion",
+      "name": "Name",
+      "weight": "Weight",
+      "order": "Order",
+      "empty": "No criteria yet"
+    },
+    "users": {
+      "title": "Users and roles",
+      "name": "Name",
+      "email": "Email",
+      "department": "Department",
+      "role": "Role",
+      "empty": "No users yet"
+    },
+    "settings": {
+      "title": "Notification settings",
+      "trainingEndingNoticeDays": "Training ending soon notice (days before the end)",
+      "trainingEndingNoticeHint": "Notification to the employee and HR",
+      "lateEvaluationReminderDays": "Late evaluation reminder (every N days)",
+      "lateEvaluationReminderHint": "Email to the employee, copied to HR after the second reminder",
+      "pendingRequestAlertDays": "Pending request alert (after N days)",
+      "pendingRequestAlertHint": "Email to HR",
+      "days": "days"
+    }
   }
 }

@@ -1,0 +1,49 @@
+<div class="mb-8 flex flex-wrap items-end justify-between gap-4">
+  <h1 class="ims-page-title">{{ 'admin.fields.title' | transloco }}</h1>
+  <button mat-flat-button type="button" (click)="add()">
+    {{ 'admin.fields.add' | transloco }}
+  </button>
+</div>
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" />
+}
+
+@if (loadFailed()) {
+  <p class="ims-state">{{ 'admin.errors.loadFailed' | transloco }}</p>
+} @else if (!loading() && fields().length === 0) {
+  <p class="ims-state">{{ 'admin.fields.empty' | transloco }}</p>
+} @else {
+  <div class="ims-table-card">
+    <table mat-table [dataSource]="fields()">
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef>{{ 'admin.fields.name' | transloco }}</th>
+        <td mat-cell *matCellDef="let field">{{ field.name }}</td>
+      </ng-container>
+      <ng-container matColumnDef="description">
+        <th mat-header-cell *matHeaderCellDef>{{ 'admin.fields.description' | transloco }}</th>
+        <td mat-cell *matCellDef="let field" class="text-muted">{{ field.description }}</td>
+      </ng-container>
+      <ng-container matColumnDef="active">
+        <th mat-header-cell *matHeaderCellDef>{{ 'admin.fields.active' | transloco }}</th>
+        <td mat-cell *matCellDef="let field">
+          <mat-slide-toggle
+            [checked]="field.isActive"
+            [aria-label]="'admin.fields.active' | transloco"
+            (change)="setActive(field, $event.checked)"
+          />
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef></th>
+        <td mat-cell *matCellDef="let field">
+          <button mat-button type="button" (click)="edit(field)">
+            {{ 'admin.actions.edit' | transloco }}
+          </button>
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let row; columns: columns"></tr>
+    </table>
+  </div>
+}

@@ -1,0 +1,38 @@
+<div class="mb-8 flex flex-wrap items-end justify-between gap-4">
+  <h1 class="ims-page-title">{{ 'admin.settings.title' | transloco }}</h1>
+</div>
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" />
+}
+
+<form class="ims-card flex max-w-[520px] flex-col gap-4" [formGroup]="form" (ngSubmit)="save()">
+  @for (setting of settings; track setting.control) {
+    <div class="flex flex-col gap-1 border-b border-divider pb-4">
+      <label class="font-semibold text-heading" [for]="setting.control">{{
+        setting.label | transloco
+      }}</label>
+      <p class="text-muted">{{ setting.hint | transloco }}</p>
+      <mat-form-field class="mt-2 w-40" subscriptSizing="dynamic">
+        <input
+          matInput
+          type="number"
+          [id]="setting.control"
+          [formControlName]="setting.control"
+          min="1"
+          max="365"
+          step="1"
+          required
+        />
+        <span matTextSuffix>{{ 'admin.settings.days' | transloco }}</span>
+        <mat-error>{{ 'admin.validation.days' | transloco }}</mat-error>
+      </mat-form-field>
+    </div>
+  }
+
+  <div class="flex justify-end gap-2">
+    <button mat-flat-button type="submit" [disabled]="saving() || form.disabled">
+      {{ 'admin.actions.save' | transloco }}
+    </button>
+  </div>
+</form>

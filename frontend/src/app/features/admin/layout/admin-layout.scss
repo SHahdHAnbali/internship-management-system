@@ -1,0 +1,10 @@
+// Material button colours are set by Material's own (unlayered) styles, so the current-language state
+// is a small SCSS override rather than Tailwind utilities.
+.language-button {
+  color: var(--ims-color-text-muted);
+
+  &.is-current {
+    color: var(--ims-color-primary);
+    background-color: var(--ims-color-primary-soft);
+  }
+}

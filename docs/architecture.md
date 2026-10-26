@@ -33,7 +33,7 @@
 | Small team: one full-stack developer, about 11 weeks (PDF §10) | **No microservices**, no message bus, no CQRS framework. One deployable unit. |
 | Several external integrations with **undecided vendors**: S3 vs Azure Blob, SendGrid vs SES, Azure vs AWS, Hangfire "or similar" | Keep them behind small interfaces in `Ims.Application` and implement them in `Ims.Infrastructure`. Changing vendor touches one project. |
 | Real business rules in state transitions (application → mentor request → assignment → evaluation → certificate, with transfer, extend, end early, withdraw, revoke) | A persistence-free `Ims.Domain` holds those rules, so they can be unit-tested without a database. |
-| "Audit every change" and "never delete" apply to **every** table | Enforced once, centrally, in an EF Core `SaveChanges` interceptor in Infrastructure, not per feature. |
+| "Audit every change" and "never delete" apply to **every** table | Enforced once, centrally, by **PostgreSQL triggers** created in the first migration (`ims_protect_table`). EF only passes the actor (`AuditActorConnectionInterceptor`) and fails fast on deletes (`PreventDeleteInterceptor`). Triggers also cover bulk updates and raw SQL. |
 | Four roles with different views of the same data | Role-based authorization policies in Api. Per-role lazy areas in the SPA. Queries scoped per user in Application. |
 | Phase 1 must be usable alone, then phases 2 and 3 add to it | Vertical feature folders let each feature ship as a self-contained increment. |
 
@@ -85,7 +85,7 @@ backend/tests/
 
 - **API surface**: REST under `/api/...`, JSON, errors as RFC 7807 `ProblemDetails`, OpenAPI document at `/openapi/v1.json` in development, health check at `/health`.
 - **Auth model**: two identity types, *staff* (Google, domain-restricted, role in the `Employee` table) and *trainee* (email one-time link or code, 15-minute validity). After verifying either one, the API issues an HttpOnly session cookie (`ims.session`). Role policies `Trainee`, `Employee`, `Hr` and `Admin` are in `Ims.Api/Auth`. A fallback policy requires authentication everywhere except `[AllowAnonymous]` endpoints (`/health`, OpenAPI). The cookie scheme and policies are already wired. Sign-in endpoints are not implemented yet.
-- **Audit and no-delete**: implemented in `AuditInterceptor`. It records actor (`ICurrentUser`), action, entity, before/after JSON and UTC time, and rejects `EntityState.Deleted` on domain entities.
+- **Audit and no-delete**: database triggers write `audit_logs` (actor, operation, table, row key, changed columns before/after, transaction id, time) in the same transaction, reject DELETE/TRUNCATE on every table, and keep `audit_logs` append-only.
 - **Time**: store `timestamptz` in UTC. Assignment start and end are `date` (`DateOnly`). Inject `IClock` / `TimeProvider` for testability.
 - **IDs**: `Guid.CreateVersion7()` (time-ordered, index-friendly in PostgreSQL).
 - **Configuration**: `appsettings*.json` contains no secrets. Local secrets go in `dotnet user-secrets` (`UserSecretsId=ims-api-dev`) and production secrets in the host's secret store. The connection string `ConnectionStrings:Database` is resolved when the `DbContext` is first built and fails with a clear message if missing.

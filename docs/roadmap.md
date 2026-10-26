@@ -15,7 +15,7 @@ Mark items done here as they ship.
 - [ ] First Admin bootstrap (Q17)
 
 ## Phase 1: Core (MVP, about 6 weeks)
-- [ ] Admin: fields CRUD (deactivate, never delete), users and roles
+- [x] Admin: fields (add/edit/activate-deactivate), evaluation criteria and weights, users and their roles, notification intervals (7/3/5 days). `roles` table with the 4 roles. Not yet: certificate template, viewing accepted trainees and reports (see decisions.md §D, Q30–Q32)
 - [ ] Trainee: application form with CV/letter upload, status board
 - [ ] HR: applications inbox, contact log, accept/reject with reason
 - [ ] Employee: available-trainees list with filters and CV view, mentor request

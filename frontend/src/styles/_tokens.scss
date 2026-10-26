@@ -1,0 +1,53 @@
+// IMS design tokens — taken from the official visual reference (clean white UI, orange accent, dark headings).
+// Use these variables (or Material's --mat-sys-* tokens mapped from them) instead of raw values. See docs/design-system.md.
+:root {
+  // Colour
+  --ims-color-brand: #e64d20; // accent: active indicators, highlights, decorative icons
+  --ims-color-primary: #c93d12; // interactive: buttons, links, primary text (AA contrast on white and with white text)
+  --ims-color-primary-hover: #b03510;
+  --ims-color-primary-soft: #fff1ec; // tinted background for selected / hovered items
+  --ims-color-heading: #0f1217;
+  --ims-color-text: #474a4d;
+  --ims-color-text-muted: #6b6f78;
+  --ims-color-border: #e7e7ea; // card and control borders
+  --ims-color-divider: #eeeeee; // header and row separators
+  --ims-color-bg: #ffffff;
+  --ims-color-surface: #ffffff;
+  --ims-color-surface-subtle: #fafafb;
+
+  // Shape
+  --ims-radius-sm: 8px;
+  --ims-radius-md: 10px;
+  --ims-radius-lg: 16px;
+  --ims-radius-pill: 999px;
+
+  // Spacing (4px base)
+  --ims-space-1: 4px;
+  --ims-space-2: 8px;
+  --ims-space-3: 12px;
+  --ims-space-4: 16px;
+  --ims-space-5: 24px;
+  --ims-space-6: 32px;
+  --ims-space-7: 48px;
+  --ims-space-8: 64px;
+
+  // Typography — Inter for Latin; Arabic glyphs fall through to Noto Sans Arabic.
+  --ims-font-sans: 'Inter', 'Noto Sans Arabic', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ims-font-size-display: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  --ims-font-size-h1: clamp(1.625rem, 1.3rem + 1.2vw, 2.125rem);
+  --ims-font-size-h2: 1.375rem;
+  --ims-font-size-h3: 1.0625rem;
+  --ims-font-size-body: 0.9375rem;
+  --ims-font-size-small: 0.8125rem;
+  --ims-line-height-tight: 1.2;
+  --ims-line-height-body: 1.6;
+
+  // Elevation: the reference relies on borders, not shadows; keep shadows subtle.
+  --ims-shadow-card: 0 1px 2px rgb(15 18 23 / 4%);
+  --ims-shadow-raised: 0 10px 30px rgb(15 18 23 / 8%);
+
+  // Layout
+  --ims-header-height: 64px;
+  --ims-content-max-width: 1200px;
+  --ims-gutter: clamp(16px, 4vw, 32px);
+}

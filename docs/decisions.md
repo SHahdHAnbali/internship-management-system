@@ -24,6 +24,7 @@
 | AD-18 | **Tests: xUnit v3 on Microsoft.Testing.Platform** (opted in via `global.json`). Integration tests use `WebApplicationFactory` and a Testcontainers PostgreSQL 18.6 | xUnit 2 is deprecated. The .NET 10 SDK requires the platform opt-in. `coverlet.collector` dropped because it is VSTest-only |
 | AD-19 | **Local DB: Docker Compose PostgreSQL 18.6** on host port **5434** (localhost-only bind), credentials in a git-ignored `.env`, API connection string in `dotnet user-secrets` | Ports 5432/5433 are taken by a native PostgreSQL install on the dev machine. No secrets in tracked files |
 | AD-20 | Frontend `overrides.vite = 8.3.5` | `@angular/build` 22.2.4 pins Vite 8.3.0 (high-severity advisories, dev server only). **Remove the override** once a stable `@angular/build` ships with a patched Vite |
+| AD-29 | **Tailwind CSS v4 is the primary styling approach** (layout, spacing, responsiveness in templates), installed with Angular's built-in `ng add tailwindcss` integration (`@tailwindcss/postcss`). SCSS is kept for design tokens, the Material theme and Material overrides. Tailwind's theme reads the same `--ims-*` tokens, and its default colour palette is removed | Requested by the project owner (2026-10-26). Tailwind was **not** previously installed (only `postcss`, as a transitive dependency of `@angular/build`), so it was added here. Material remains the component library. AD-21–AD-28 were used by the reverted domain branch (`backup/domain-implementation`) |
 
 ## B. Assumptions (reasonable defaults, change if wrong)
 
@@ -64,6 +65,9 @@
 | Q20 | Must the language switch at runtime, or is a per-locale build acceptable? | **Assumed runtime** (AD-16, Transloco). Confirm |
 | Q21 | Data retention: are records kept forever (PDF: "nothing is deleted")? Any privacy or legal constraints on CVs? | Storage policy |
 | Q22 | Which CAPTCHA provider (reCAPTCHA, hCaptcha, Turnstile)? | Application form security |
+| Q30 | **Certificate template (Admin, PDF §4):** what exactly can the Admin edit (layout HTML, texts, logo, HR signature image) and in which languages? Logo and signature images also need file storage (vendor not chosen, Q10) | Admin module: not implemented until answered |
+| Q31 | **Removing an evaluation criterion:** the PDF lists only name, weight and order, has no active flag, and forbids deletion. How does an Admin retire a criterion? | Admin module: criteria can be added and edited only |
+| Q32 | **Department of a staff member:** the PDF's Employee table has it, but Google sign-in doesn't provide it. Who sets it, and can the Admin edit it? | Admin users page shows it read-only |
 
 ## E. Dependencies
 
@@ -84,6 +88,7 @@ Versions are pinned centrally in `backend/Directory.Packages.props` and `fronten
 | `Testcontainers.PostgreSql` | 4.16.0 | Ims.IntegrationTests |
 | `@angular/material`, `@angular/cdk` | 22.2.4 | frontend |
 | `@jsverse/transloco` | 8.4.0 | frontend |
+| `tailwindcss`, `@tailwindcss/postcss`, `postcss` | 4.3.3, 4.3.3, 8.5.31 | frontend (dev), 2026-10-26, AD-29 |
 
 Used from the shared framework (no install): cookie authentication, authorization, rate limiting, ProblemDetails, health checks, data protection, JSON console logging, `TimeProvider`.
 

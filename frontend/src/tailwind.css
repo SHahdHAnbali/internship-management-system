@@ -1,0 +1,70 @@
+/*
+ * Tailwind CSS entry (Tailwind v4, compiled by @tailwindcss/postcss through .postcssrc.json).
+ * Tailwind is the primary styling approach for layout, spacing, responsiveness and page design.
+ * Design tokens stay defined once in src/styles/_tokens.scss (--ims-*); this file maps them into Tailwind's theme,
+ * so utilities such as `text-heading`, `border-border`, `rounded-card` or `max-w-content` use the same values.
+ * See docs/design-system.md.
+ */
+@import 'tailwindcss';
+
+@theme inline {
+  /* Only the IMS palette: Tailwind's default colour scales are removed to keep one design system. */
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-brand: var(--ims-color-brand);
+  --color-primary: var(--ims-color-primary);
+  --color-primary-hover: var(--ims-color-primary-hover);
+  --color-primary-soft: var(--ims-color-primary-soft);
+  --color-heading: var(--ims-color-heading);
+  --color-body: var(--ims-color-text);
+  --color-muted: var(--ims-color-text-muted);
+  --color-border: var(--ims-color-border);
+  --color-divider: var(--ims-color-divider);
+  --color-surface: var(--ims-color-surface);
+  --color-surface-subtle: var(--ims-color-surface-subtle);
+
+  --font-sans: var(--ims-font-sans);
+
+  --text-display: var(--ims-font-size-display);
+  --text-display--line-height: var(--ims-line-height-tight);
+  --text-h1: var(--ims-font-size-h1);
+  --text-h1--line-height: var(--ims-line-height-tight);
+  --text-h2: var(--ims-font-size-h2);
+  --text-h2--line-height: var(--ims-line-height-tight);
+  --text-h3: var(--ims-font-size-h3);
+  --text-body: var(--ims-font-size-body);
+  --text-small: var(--ims-font-size-small);
+
+  --radius-control: var(--ims-radius-md);
+  --radius-card: var(--ims-radius-lg);
+
+  --shadow-card: var(--ims-shadow-card);
+  --shadow-raised: var(--ims-shadow-raised);
+
+  --spacing-gutter: var(--ims-gutter);
+  --spacing-header: var(--ims-header-height);
+  --container-content: var(--ims-content-max-width);
+
+  /* The app header switches from two rows to one at 900px. */
+  --breakpoint-nav: 56.25rem;
+}
+
+/* Reusable design-system patterns shared by every page. Prefer plain utilities in templates; add a class here only
+   when the same combination is a named part of the design system. */
+@layer components {
+  .ims-page-title {
+    @apply text-h1 font-bold tracking-[-0.02em] text-heading;
+  }
+
+  .ims-card {
+    @apply rounded-card border border-border bg-surface p-6 shadow-card;
+  }
+
+  .ims-state {
+    @apply rounded-card border border-dashed border-border px-6 py-12 text-center text-muted;
+  }
+
+  .ims-badge {
+    @apply inline-flex flex-none items-center rounded-full bg-primary-soft px-2 py-0.5 text-small font-semibold text-primary;
+  }
+}

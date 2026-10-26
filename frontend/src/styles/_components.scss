@@ -1,0 +1,34 @@
+// Custom styles that cannot be expressed as Tailwind utilities: overrides of Angular Material internals.
+// Kept outside CSS layers on purpose, so they win over Material's own (unlayered) styles.
+// Layout, spacing and page structure are done with Tailwind utilities in templates (see docs/design-system.md).
+
+// A bordered card wrapping a full-width mat-table; scrolls horizontally on small screens.
+.ims-table-card {
+  overflow-x: auto;
+  background-color: var(--ims-color-surface);
+  border: 1px solid var(--ims-color-border);
+  border-radius: var(--ims-radius-lg);
+  box-shadow: var(--ims-shadow-card);
+
+  .mat-mdc-table {
+    inline-size: 100%;
+    background: transparent;
+  }
+
+  .mat-mdc-header-row {
+    background-color: var(--ims-color-surface-subtle);
+  }
+
+  .mat-mdc-header-cell,
+  .mat-mdc-cell {
+    padding-inline: var(--ims-space-5);
+  }
+
+  .mat-mdc-row:last-child .mat-mdc-cell {
+    border-block-end: 0;
+  }
+
+  .mat-mdc-row:hover {
+    background-color: var(--ims-color-surface-subtle);
+  }
+}

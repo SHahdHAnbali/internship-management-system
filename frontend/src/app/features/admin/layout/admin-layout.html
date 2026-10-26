@@ -1,0 +1,55 @@
+<header class="sticky top-0 z-10 border-b border-divider bg-surface">
+  <div
+    class="mx-auto flex min-h-header max-w-content flex-wrap items-center gap-x-6 px-gutter nav:flex-nowrap"
+  >
+    <a
+      class="flex min-w-0 flex-1 items-center gap-2 font-bold tracking-[-0.01em] text-heading hover:text-heading nav:flex-none"
+      routerLink="/admin"
+    >
+      <span class="size-2.5 flex-none rounded-full bg-brand" aria-hidden="true"></span>
+      <span class="min-w-0 truncate text-[1.0625rem]">{{ 'app.title' | transloco }}</span>
+      <span class="ims-badge">{{ 'admin.title' | transloco }}</span>
+    </a>
+
+    <nav
+      mat-tab-nav-bar
+      class="order-last w-full min-w-0 nav:order-none nav:w-auto nav:flex-1"
+      [tabPanel]="panel"
+      mat-stretch-tabs="false"
+      mat-align-tabs="end"
+    >
+      @for (link of links; track link.path) {
+        <a
+          mat-tab-link
+          [routerLink]="link.path"
+          routerLinkActive
+          #active="routerLinkActive"
+          [active]="active.isActive"
+        >
+          {{ link.label | transloco }}
+        </a>
+      }
+    </nav>
+
+    <div class="flex flex-none items-center gap-1">
+      @for (lang of language.languages; track lang.code) {
+        <button
+          mat-button
+          type="button"
+          class="language-button"
+          [class.is-current]="language.language() === lang.code"
+          [attr.aria-pressed]="language.language() === lang.code"
+          (click)="language.use(lang.code)"
+        >
+          {{ lang.label }}
+        </button>
+      }
+    </div>
+  </div>
+</header>
+
+<mat-tab-nav-panel #panel>
+  <main class="mx-auto max-w-content px-gutter py-6 sm:py-12">
+    <router-outlet />
+  </main>
+</mat-tab-nav-panel>

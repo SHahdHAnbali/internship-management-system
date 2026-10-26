@@ -1,0 +1,34 @@
+<h2 mat-dialog-title>
+  {{ (criterion ? 'admin.criteria.edit' : 'admin.criteria.add') | transloco }}
+</h2>
+<form [formGroup]="form" (ngSubmit)="save()">
+  <mat-dialog-content class="flex min-w-[min(420px,80vw)] flex-col gap-2 pt-2!">
+    <mat-form-field>
+      <mat-label>{{ 'admin.criteria.name' | transloco }}</mat-label>
+      <input matInput formControlName="name" maxlength="200" required cdkFocusInitial />
+      @if (form.controls.name.hasError('required')) {
+        <mat-error>{{ 'admin.validation.required' | transloco }}</mat-error>
+      }
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ 'admin.criteria.weight' | transloco }}</mat-label>
+      <input matInput type="number" formControlName="weight" min="0" step="any" required />
+      @if (form.controls.weight.invalid) {
+        <mat-error>{{ 'admin.validation.positive' | transloco }}</mat-error>
+      }
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ 'admin.criteria.order' | transloco }}</mat-label>
+      <input matInput type="number" formControlName="sortOrder" step="1" required />
+      @if (form.controls.sortOrder.invalid) {
+        <mat-error>{{ 'admin.validation.integer' | transloco }}</mat-error>
+      }
+    </mat-form-field>
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button mat-button type="button" mat-dialog-close>
+      {{ 'admin.actions.cancel' | transloco }}
+    </button>
+    <button mat-flat-button type="submit">{{ 'admin.actions.save' | transloco }}</button>
+  </mat-dialog-actions>
+</form>

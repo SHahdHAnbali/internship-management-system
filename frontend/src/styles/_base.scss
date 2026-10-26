@@ -1,0 +1,57 @@
+// Document-level element styles, placed in Tailwind's `base` layer so they follow Tailwind's preflight reset
+// (box-sizing, margins) and can still be overridden by utilities in templates.
+// Layout must use logical properties (inline/block) so RTL and LTR both work.
+@layer base {
+  body {
+    min-block-size: 100%;
+    background-color: var(--ims-color-bg);
+    color: var(--ims-color-text);
+    font-family: var(--ims-font-sans);
+    font-size: var(--ims-font-size-body);
+    line-height: var(--ims-line-height-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    color: var(--ims-color-heading);
+    line-height: var(--ims-line-height-tight);
+  }
+
+  h1 {
+    font-size: var(--ims-font-size-h1);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    font-size: var(--ims-font-size-h2);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  h3 {
+    font-size: var(--ims-font-size-h3);
+    font-weight: 600;
+  }
+
+  a {
+    color: var(--ims-color-primary);
+
+    &:hover {
+      color: var(--ims-color-primary-hover);
+    }
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ims-color-brand);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--ims-color-primary-soft);
+    color: var(--ims-color-heading);
+  }
+}

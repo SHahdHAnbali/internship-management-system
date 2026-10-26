@@ -1,0 +1,48 @@
+<div class="mb-8 flex flex-wrap items-end justify-between gap-4">
+  <h1 class="ims-page-title">{{ 'admin.users.title' | transloco }}</h1>
+</div>
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" />
+}
+
+@if (loadFailed()) {
+  <p class="ims-state">{{ 'admin.errors.loadFailed' | transloco }}</p>
+} @else if (!loading() && users().length === 0) {
+  <p class="ims-state">{{ 'admin.users.empty' | transloco }}</p>
+} @else {
+  <div class="ims-table-card">
+    <table mat-table [dataSource]="users()">
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef>{{ 'admin.users.name' | transloco }}</th>
+        <td mat-cell *matCellDef="let user">{{ user.fullName }}</td>
+      </ng-container>
+      <ng-container matColumnDef="email">
+        <th mat-header-cell *matHeaderCellDef>{{ 'admin.users.email' | transloco }}</th>
+        <td mat-cell *matCellDef="let user" dir="ltr">{{ user.email }}</td>
+      </ng-container>
+      <ng-container matColumnDef="department">
+        <th mat-header-cell *matHeaderCellDef>{{ 'admin.users.department' | transloco }}</th>
+        <td mat-cell *matCellDef="let user" class="text-muted">{{ user.department }}</td>
+      </ng-container>
+      <ng-container matColumnDef="role">
+        <th mat-header-cell *matHeaderCellDef>{{ 'admin.users.role' | transloco }}</th>
+        <td mat-cell *matCellDef="let user">
+          <mat-form-field subscriptSizing="dynamic" class="ims-dense w-44">
+            <mat-select
+              [value]="user.role"
+              [aria-label]="'admin.users.role' | transloco"
+              (selectionChange)="changeRole(user, $event.value)"
+            >
+              @for (role of roles; track role) {
+                <mat-option [value]="role">{{ 'roles.' + role | transloco }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let row; columns: columns"></tr>
+    </table>
+  </div>
+}

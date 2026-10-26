@@ -41,4 +41,5 @@ cd frontend && npm test -- --watch=false
 - [Domain model](docs/domain-model.md)
 - [Decisions, assumptions & open questions](docs/decisions.md)
 - [Roadmap](docs/roadmap.md)
+- [Deferred features](docs/deferred-features.md): features waiting for other modules
 - [CLAUDE.md](CLAUDE.md): coding standards
