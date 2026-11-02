@@ -1,0 +1,92 @@
+import type { SessionUser } from '../../context';
+import type { AuditActor, Database } from '../../db';
+import { newEmployeeName } from '../../domain/admin';
+import { normalizeEmail } from '../../domain/emailAddress';
+import { isUserRole, type UserRole } from '../../domain/roles';
+import { isNullOrWhiteSpace, toLowerInvariant, trimDotnet } from '../../domain/text';
+import { uuidV7 } from '../../domain/uuid';
+import type { GoogleTokenVerifier } from '../../auth/google';
+import type { Settings } from '../../config';
+
+export type GoogleSignInFailure = 'NotConfigured' | 'InvalidToken' | 'EmailNotVerified';
+
+/**
+ * One-time initial Admin (owner decision 2026-10-29, AD-46): the staff account of this exact verified Google Workspace
+ * identity is created with the Admin role instead of Employee. It applies only when the account is created, which
+ * happens once (accounts are never deleted); every later sign-in reads the saved role, so an Admin's later change to
+ * it stands. No other account is ever created as Admin.
+ */
+const INITIAL_ADMIN = { email: 'mohammad.abujoudeh@progineer.net', hostedDomain: 'progineer.net' } as const;
+
+/**
+ * Google sign-in (owner decision AD-42, replacing the PDF's "company domain only"):
+ * - A verified account whose Google-signed Workspace `hd` claim is one of the staff domains (GOOGLE_HOSTED_DOMAIN, e.g.
+ *   `stu.najah.edu` and `progineer.net`), and whose e-mail is in that same domain, is company staff: the first sign-in
+ *   creates the staff account with the Employee role; an existing account keeps its Employee/HR/Admin role. Higher
+ *   roles are granted only by an Admin; the domain never grants one.
+ * - Any other verified Google account signs in as an ordinary, non-staff user: no role, no database record, no
+ *   permissions beyond reading their own session. It is never made Employee, HR, Admin or Trainee.
+ */
+export async function signInWithGoogle(
+  idToken: string,
+  context: { db: Database; actor: AuditActor; settings: Settings; google: GoogleTokenVerifier; now: Date },
+): Promise<{ user: SessionUser } | { failure: GoogleSignInFailure }> {
+  const { db, actor, settings, google, now } = context;
+  if (!settings.google.isConfigured) {
+    return { failure: 'NotConfigured' };
+  }
+
+  const identity = await google.verify(idToken, settings.google.clientId, now);
+  if (!identity) {
+    return { failure: 'InvalidToken' };
+  }
+
+  if (!identity.emailVerified) {
+    return { failure: 'EmailNotVerified' };
+  }
+
+  const email = normalizeEmail(identity.email);
+  const hostedDomain = identity.hostedDomain === null ? null : toLowerInvariant(trimDotnet(identity.hostedDomain));
+  const isStaff =
+    hostedDomain !== null && settings.google.hostedDomains.includes(hostedDomain) && email.endsWith(`@${hostedDomain}`);
+  if (!isStaff) {
+    const name = isNullOrWhiteSpace(identity.name) ? null : trimDotnet(identity.name);
+    return { user: { id: `google:${identity.subject}`, role: null, email, name } };
+  }
+
+  const existing = await findStaff(db, email);
+  if (existing) return { user: existing };
+
+  // New staff: Employee, except the one-time initial Admin, whose grant is recorded as made by the system (this rule).
+  const initialAdmin = email === INITIAL_ADMIN.email && hostedDomain === INITIAL_ADMIN.hostedDomain;
+  const role: UserRole = initialAdmin ? 'Admin' : 'Employee';
+  const employee = {
+    id: uuidV7(now),
+    email,
+    fullName: newEmployeeName(isNullOrWhiteSpace(identity.name) ? email : identity.name),
+  };
+  const created = await db.transaction(initialAdmin ? { type: 'System', id: null } : actor, (tx) =>
+    tx.query(
+      `INSERT INTO employees (id, full_name, email, department, role) VALUES ($1, $2, $3, NULL, $4)
+       ON CONFLICT (email) DO NOTHING`,
+      [employee.id, employee.fullName, employee.email, role],
+    ),
+  );
+  if (created.rowCount === 0) {
+    // A simultaneous first sign-in created the account first: use it, with its saved role.
+    const account = await findStaff(db, email);
+    if (!account) throw new Error('The staff account could not be created or read.');
+    return { user: account };
+  }
+
+  return { user: { id: employee.id, role, email: employee.email, name: employee.fullName } };
+}
+
+async function findStaff(db: Database, email: string): Promise<SessionUser | null> {
+  const { rows } = await db.query<{ id: string; role: string; email: string; full_name: string }>(
+    'SELECT id, role, email, full_name FROM employees WHERE email = $1',
+    [email],
+  );
+  const row = rows[0];
+  return row && isUserRole(row.role) ? { id: row.id, role: row.role, email: row.email, name: row.full_name } : null;
+}

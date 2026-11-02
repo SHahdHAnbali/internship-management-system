@@ -1,0 +1,33 @@
+{
+  "name": "ims-api-workers",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "IMS API on Cloudflare Workers (TypeScript + Hono), a port of the ASP.NET Core API in ../backend.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:short-sessions": "wrangler dev --var SESSION_IDLE_TIMEOUT_MINUTES:2 --var SESSION_ABSOLUTE_LIFETIME_MINUTES:5",
+    "typecheck": "wrangler types --check && tsc --noEmit",
+    "types": "wrangler types",
+    "test": "vitest",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "schema:generate": "node scripts/generate-schema.mjs",
+    "format": "prettier --write src test"
+  },
+  "dependencies": {
+    "hono": "4.13.13",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.8",
+    "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
+    "prettier": "3.8.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5",
+    "wrangler": "4.153.0"
+  },
+  "engines": {
+    "node": ">=22.22.0"
+  }
+}

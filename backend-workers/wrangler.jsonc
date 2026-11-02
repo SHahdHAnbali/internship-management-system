@@ -1,0 +1,42 @@
+// IMS API on Cloudflare Workers (TypeScript + Hono). It has no public URL (no route, workers.dev and preview URLs off):
+// the Pages project progineer-ims reaches it through a service binding (frontend/functions, binding "API").
+// Secrets (never in this file): DATABASE_URL, SESSION_SECRET (+ optional SESSION_SECRET_PREVIOUS).
+// Production: `npx wrangler secret put <NAME>`. Local development: `.dev.vars` (git-ignored; see .dev.vars.example).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ims-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // pg (node-postgres) needs Node.js APIs. Secrets stay out of process.env; the code reads them from `env` only.
+  "compatibility_flags": ["nodejs_compat", "nodejs_compat_do_not_populate_process_env"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "vars": {
+    "ENVIRONMENT": "production",
+    // Public OAuth Web client id (not a secret). Its authorized JavaScript origins must include the site URL.
+    "GOOGLE_CLIENT_ID": "494142992089-557bgoe7afs5sj59m8s9v4ja2630o0du.apps.googleusercontent.com",
+    // The Google Workspace domains whose accounts are company staff, comma-separated (owner decisions 2026-10-27 and
+    // 2026-10-29, AD-45). Other Google accounts sign in as ordinary users without a role (AD-42).
+    "GOOGLE_HOSTED_DOMAIN": "stu.najah.edu,progineer.net",
+    "TRAINEE_CODE_LIFETIME_MINUTES": "15",
+    "TRAINEE_SIGN_IN_LINK_BASE_URL": "https://progineer-ims.pages.dev",
+    // Session policy (owner decision 2026-10-28, AD-44): a session ends after 7 days without activity, and 30 days after
+    // sign-in at the latest. For local testing, shorten them without editing this file: `npm run dev:short-sessions`.
+    "SESSION_IDLE_TIMEOUT_MINUTES": "10080",
+    "SESSION_ABSOLUTE_LIFETIME_MINUTES": "43200",
+    "CORS_ALLOWED_ORIGINS": "",
+    "EMAIL_PROVIDER": ""
+  },
+  // Private file storage for application CVs and university letters (owner decision 2026-10-29). Never public: files are
+  // read only through the Worker, after an authorization check, with short-lived links. Locally Wrangler simulates it.
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "ims-files" }],
+  // Trainee sign-in abuse protection: 10 requests per minute per client IP (C# RateLimitPerMinute = 10).
+  "ratelimits": [
+    {
+      "name": "TRAINEE_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 10, "period": 60 }
+    }
+  ]
+}
