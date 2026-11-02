@@ -1,0 +1,10 @@
+// Global SCSS: design tokens (single source of truth, mapped into Tailwind in src/index.css) and element base styles.
+// Layout, spacing and components use Tailwind utilities and the ims-* classes. See docs/design-system.md.
+@use './tokens';
+@use './base';
+
+html,
+body,
+#root {
+  min-height: 100%;
+}

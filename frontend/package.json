@@ -1,41 +1,44 @@
 {
   "name": "ims-web",
-  "version": "0.0.0",
-  "scripts": {
-    "ng": "ng",
-    "start": "ng serve",
-    "build": "ng build",
-    "watch": "ng build --watch --configuration development",
-    "test": "ng test"
-  },
   "private": true,
-  "packageManager": "npm@10.9.9",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "vite",
+    "start:preview": "vite --mode admin-preview",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --port 4200",
+    "test": "vitest",
+    "lint": "oxlint src",
+    "format": "prettier --write src",
+    "deploy": "npm run build && wrangler pages deploy"
+  },
   "dependencies": {
-    "@angular/cdk": "^22.2.4",
-    "@angular/common": "^22.2.0",
-    "@angular/compiler": "^22.2.0",
-    "@angular/core": "^22.2.0",
-    "@angular/forms": "^22.2.0",
-    "@angular/material": "^22.2.4",
-    "@angular/platform-browser": "^22.2.0",
-    "@angular/router": "^22.2.0",
-    "@jsverse/transloco": "^8.4.0",
-    "rxjs": "~7.8.0",
-    "tslib": "^2.3.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router": "^8.5.0"
   },
   "devDependencies": {
-    "@angular/build": "^22.2.4",
-    "@angular/cli": "^22.2.4",
-    "@angular/compiler-cli": "^22.2.0",
-    "@tailwindcss/postcss": "^4.3.3",
-    "jsdom": "^30.0.0",
-    "postcss": "^8.5.31",
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "jsdom": "^30.1.3",
+    "oxlint": "^1.89.0",
     "prettier": "^3.8.1",
+    "sass": "^1.106.1",
     "tailwindcss": "^4.3.3",
-    "typescript": "~6.0.2",
-    "vitest": "^5.0.0"
+    "typescript": "~7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.153.0"
   },
-  "overrides": {
-    "vite": "8.3.5"
+  "engines": {
+    "node": ">=22.22.0"
   }
 }

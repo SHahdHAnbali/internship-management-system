@@ -1,0 +1,10 @@
+# Cloudflare Pages: the React build plus two Pages Functions (functions/) that forward `/api/*` and `/health` to the
+# IMS API Worker (backend-workers/, Worker name "ims-api") through a service binding. No secrets here.
+# Deploy with `npm run deploy` after `npx wrangler login`, and only after the Worker is deployed. See docs/deployment.md.
+name = "progineer-ims"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-10-01"
+
+[[services]]
+binding = "API"
+service = "ims-api"

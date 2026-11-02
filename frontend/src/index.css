@@ -1,0 +1,130 @@
+/*
+ * Tailwind CSS v4 entry (via @tailwindcss/vite). Primary styling approach for layout, spacing and responsiveness.
+ * Design tokens are defined once in src/styles/_tokens.scss (--ims-*) and mapped into Tailwind's theme here.
+ * See docs/design-system.md.
+ */
+@import 'tailwindcss';
+
+@theme inline {
+  /* Only the IMS palette: Tailwind's default colour scales are removed to keep one design system. */
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-brand: var(--ims-color-brand);
+  --color-primary: var(--ims-color-primary);
+  --color-primary-hover: var(--ims-color-primary-hover);
+  --color-primary-soft: var(--ims-color-primary-soft);
+  --color-heading: var(--ims-color-heading);
+  --color-body: var(--ims-color-text);
+  --color-muted: var(--ims-color-text-muted);
+  --color-border: var(--ims-color-border);
+  --color-divider: var(--ims-color-divider);
+  --color-surface: var(--ims-color-surface);
+  --color-surface-subtle: var(--ims-color-surface-subtle);
+  --color-overlay: rgb(15 18 23 / 45%);
+
+  --font-sans: var(--ims-font-sans);
+
+  --text-display: var(--ims-font-size-display);
+  --text-display--line-height: var(--ims-line-height-tight);
+  --text-h1: var(--ims-font-size-h1);
+  --text-h1--line-height: var(--ims-line-height-tight);
+  --text-h2: var(--ims-font-size-h2);
+  --text-h2--line-height: var(--ims-line-height-tight);
+  --text-h3: var(--ims-font-size-h3);
+  --text-body: var(--ims-font-size-body);
+  --text-small: var(--ims-font-size-small);
+
+  --radius-control: var(--ims-radius-md);
+  --radius-card: var(--ims-radius-lg);
+
+  --shadow-card: var(--ims-shadow-card);
+  --shadow-raised: var(--ims-shadow-raised);
+
+  --spacing-gutter: var(--ims-gutter);
+  --spacing-header: var(--ims-header-height);
+  --container-content: var(--ims-content-max-width);
+
+  /* The app header switches from two rows to one at 900px. */
+  --breakpoint-nav: 56.25rem;
+}
+
+/* Design-system patterns shared by every page (replacing Angular Material's components). */
+@layer components {
+  .ims-page-title {
+    @apply text-h1 font-bold tracking-[-0.02em] text-heading;
+  }
+
+  .ims-card {
+    @apply rounded-card border border-border bg-surface p-6 shadow-card;
+  }
+
+  .ims-state {
+    @apply rounded-card border border-dashed border-border px-6 py-12 text-center text-muted;
+  }
+
+  .ims-badge {
+    @apply inline-flex flex-none items-center rounded-full bg-primary-soft px-2 py-0.5 text-small font-semibold text-primary;
+  }
+
+  /* Buttons: one filled primary action per view, outlined and text buttons for the rest. */
+  .ims-btn-primary,
+  .ims-btn-outline,
+  .ims-btn-text {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-control px-4 text-sm font-semibold whitespace-nowrap transition-colors duration-150 select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed aria-disabled:cursor-not-allowed;
+  }
+  .ims-btn-primary {
+    @apply bg-primary text-white hover:bg-primary-hover disabled:bg-divider disabled:text-muted aria-disabled:bg-divider aria-disabled:text-muted;
+  }
+  .ims-btn-outline {
+    @apply border border-border bg-surface text-heading hover:bg-surface-subtle disabled:text-muted aria-disabled:text-muted;
+  }
+  .ims-btn-text {
+    @apply px-3 text-primary hover:bg-primary-soft disabled:text-muted;
+  }
+
+  /* Form controls */
+  .ims-label {
+    @apply text-sm font-medium text-heading;
+  }
+  .ims-input {
+    @apply h-11 w-full rounded-control border border-border bg-surface px-3.5 text-body text-heading transition-colors placeholder:text-muted hover:border-muted focus:border-primary focus:outline-2 focus:-outline-offset-1 focus:outline-primary aria-invalid:border-primary disabled:bg-surface-subtle;
+  }
+  .ims-hint {
+    @apply text-small text-muted;
+  }
+  .ims-error {
+    @apply text-small text-primary;
+  }
+
+  /* A bordered card holding a full-width table; scrolls horizontally on small screens. */
+  .ims-table-card {
+    @apply overflow-x-auto rounded-card border border-border bg-surface shadow-card;
+  }
+  .ims-table {
+    @apply w-full border-collapse text-start text-body;
+  }
+  .ims-table th {
+    @apply h-14 bg-surface-subtle px-6 text-start text-small font-semibold text-muted;
+  }
+  .ims-table td {
+    @apply h-[52px] border-t border-divider px-6 text-heading;
+  }
+  .ims-table tbody tr:hover {
+    @apply bg-surface-subtle;
+  }
+
+  /* Header navigation tabs (active = primary text + brand underline). */
+  .ims-tab {
+    @apply relative inline-flex h-12 items-center px-4 text-sm font-medium whitespace-nowrap text-body hover:text-heading;
+  }
+  .ims-tab[aria-current='page'] {
+    @apply text-primary after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-brand;
+  }
+}
+
+/* Sign-in submit button (reference design: full-width, 44px, subtle top-to-bottom gradient in the IMS brand colours). */
+@layer components {
+  .ims-signin-submit {
+    @apply inline-flex h-11 w-full items-center justify-center rounded-lg border border-primary-hover bg-linear-to-b from-brand to-primary text-base font-medium text-white shadow-card transition-[filter] hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-60;
+  }
+}

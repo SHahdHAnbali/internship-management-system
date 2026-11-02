@@ -1,0 +1,42 @@
+import { apiRequest } from '../../lib/api';
+import type {
+  ApplicationStatus,
+  ContactLogEntry,
+  ContactMethod,
+  HrApplication,
+  HrAssignment,
+  HrMentorRequest,
+  HrTrainee,
+  TraineeHistory,
+} from './models';
+
+/** HR API (`/api/hr/...`, HR role only). */
+export const hrApi = {
+  applications: (status: ApplicationStatus | '') =>
+    apiRequest<HrApplication[]>('GET', `/hr/applications${status ? `?status=${status}` : ''}`),
+  application: (id: string) => apiRequest<HrApplication>('GET', `/hr/applications/${id}`),
+  review: (id: string) => apiRequest<HrApplication>('POST', `/hr/applications/${id}/review`),
+  accept: (id: string) => apiRequest<HrApplication>('POST', `/hr/applications/${id}/accept`),
+  reject: (id: string, reason: string) =>
+    apiRequest<HrApplication>('POST', `/hr/applications/${id}/reject`, { reason }),
+  contactLogs: (id: string) =>
+    apiRequest<ContactLogEntry[]>('GET', `/hr/applications/${id}/contact-logs`),
+  addContactLog: (
+    id: string,
+    entry: { contactDate: string; method: ContactMethod; summary: string },
+  ) => apiRequest<ContactLogEntry>('POST', `/hr/applications/${id}/contact-logs`, entry),
+  fileLink: (attachmentId: string) =>
+    apiRequest<{ url: string }>('POST', `/hr/attachments/${attachmentId}/link`),
+  mentorRequests: (status: HrMentorRequest['status'] | '') =>
+    apiRequest<HrMentorRequest[]>('GET', `/hr/mentor-requests${status ? `?status=${status}` : ''}`),
+  approve: (id: string, startDate: string, endDate: string) =>
+    apiRequest<HrMentorRequest>('POST', `/hr/mentor-requests/${id}/approve`, {
+      startDate,
+      endDate,
+    }),
+  assignments: () => apiRequest<HrAssignment[]>('GET', '/hr/assignments'),
+  trainees: () => apiRequest<HrTrainee[]>('GET', '/hr/trainees'),
+  traineeHistory: (id: string) => apiRequest<TraineeHistory>('GET', `/hr/trainees/${id}/history`),
+  rejectRequest: (id: string) =>
+    apiRequest<HrMentorRequest>('POST', `/hr/mentor-requests/${id}/reject`),
+};

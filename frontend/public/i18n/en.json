@@ -14,7 +14,11 @@
       "fields": "Fields",
       "criteria": "Evaluation criteria",
       "users": "Users & roles",
-      "settings": "Notification settings"
+      "settings": "Notification settings",
+      "certificate": "Certificate",
+      "menu": "Admin pages",
+      "label": "Admin pages",
+      "acceptedTrainees": "Accepted trainees"
     },
     "actions": {
       "save": "Save",
@@ -66,6 +70,14 @@
       "role": "Role",
       "empty": "No users yet"
     },
+    "acceptedTrainees": {
+      "title": "Accepted trainees",
+      "empty": "No accepted trainees yet.",
+      "hours": "Hours",
+      "acceptedAt": "Accepted on",
+      "assignments": "Assignment",
+      "noAssignment": "No assignment yet"
+    },
     "settings": {
       "title": "Notification settings",
       "trainingEndingNoticeDays": "Training ending soon notice (days before the end)",
@@ -75,6 +87,464 @@
       "pendingRequestAlertDays": "Pending request alert (after N days)",
       "pendingRequestAlertHint": "Email to HR",
       "days": "days"
+    },
+    "certificate": {
+      "title": "Certificate template",
+      "intro": "Design the certificate by choosing from the settings below; the preview updates as you go. The trainee and training details are filled in automatically when certificates are issued.",
+      "unsaved": "Unsaved changes",
+      "reset": "Reset to default",
+      "resetTitle": "Reset to the default design?",
+      "resetConfirm": "All design and text settings return to the default certificate. Uploaded images are kept. Nothing changes until you save.",
+      "resetAction": "Reset",
+      "leaveTitle": "Leave without saving?",
+      "leaveMessage": "You have unsaved changes to the certificate template. If you leave now, they will be lost.",
+      "stay": "Stay on this page",
+      "leave": "Leave without saving",
+      "retry": "Try again",
+      "reload": "Reload the template",
+      "previewTitle": "Preview",
+      "sampleBadge": "Sample data",
+      "previewNote": "Shown with fictional sample values. This is not a real certificate, and the QR code is only a placeholder.",
+      "previewLabel": "Certificate preview with sample data",
+      "loadingTemplate": "Loading the saved template…",
+      "replaceImage": "Replace image",
+      "removeImage": "Remove image",
+      "upload": {
+        "logo": "Upload a logo",
+        "signature": "Upload the HR signature"
+      },
+      "languages": {
+        "ar": "Arabic",
+        "en": "English"
+      },
+      "sections": {
+        "design": "Layout",
+        "text": "Language and text",
+        "typography": "Typography",
+        "colors": "Colors and border",
+        "logo": "Company logo",
+        "signature": "HR signature",
+        "elements": "Certificate elements"
+      },
+      "fields": {
+        "preset": "Design",
+        "orientation": "Page orientation",
+        "alignment": "Text alignment",
+        "spacing": "Spacing",
+        "detailsLayout": "Training details",
+        "language": "Certificate language",
+        "headingFont": "Heading font",
+        "bodyFont": "Body text font",
+        "titleSize": "Title size",
+        "nameSize": "Trainee name size",
+        "bodySize": "Text size",
+        "backgroundStyle": "Background",
+        "borderStyle": "Border",
+        "borderWidth": "Border thickness",
+        "logoSource": "Logo",
+        "size": "Size",
+        "position": "Position (top of the page)",
+        "bottomPosition": "Position (bottom of the page)",
+        "signatureVisible": "Show the HR signature",
+        "showTrainerName": "Show the trainer's name",
+        "qrSize": "QR code size",
+        "qrPosition": "QR code position (bottom of the page)"
+      },
+      "text": {
+        "title": "Title",
+        "intro": "Opening line (before the trainee's name)",
+        "completion": "Completion line (before the training field)",
+        "signatureLabel": "Signature caption",
+        "footer": "Footer (optional)"
+      },
+      "colors": {
+        "primary": "Primary color",
+        "secondary": "Accent color",
+        "heading": "Name and details color",
+        "text": "Text color",
+        "background": "Page color"
+      },
+      "hints": {
+        "preset": "Choosing a design applies its recommended fonts, border and background. You can still change each setting.",
+        "footer": "A short line at the bottom of the certificate, for example the company address.",
+        "dataPlaceholders": "The certificate always shows the trainee's name, training field, university, training period, total training hours, overall grade and the trainer's comment. They come from the training record when certificates are issued and cannot be typed here.",
+        "image": "PNG, JPEG or WebP, up to 512 KB. Changes to images are saved immediately.",
+        "trainerName": "Whether the trainer's name appears on certificates is still an open decision, so it can be turned on or off here.",
+        "qr": "Placeholder only: the verification QR code is created when certificates are issued."
+      },
+      "options": {
+        "preset": {
+          "classic": "Classic",
+          "modern": "Modern",
+          "elegant": "Elegant"
+        },
+        "orientation": {
+          "landscape": "Landscape",
+          "portrait": "Portrait"
+        },
+        "alignment": {
+          "center": "Centered",
+          "start": "Aligned to the side"
+        },
+        "spacing": {
+          "compact": "Compact",
+          "comfortable": "Comfortable",
+          "spacious": "Spacious"
+        },
+        "detailsLayout": {
+          "grid": "In columns",
+          "list": "As a list"
+        },
+        "language": {
+          "ar": "Arabic",
+          "en": "English",
+          "bilingual": "Arabic and English"
+        },
+        "size": {
+          "small": "Small",
+          "medium": "Medium",
+          "large": "Large"
+        },
+        "backgroundStyle": {
+          "plain": "Plain",
+          "tinted": "Soft tint",
+          "pattern": "Subtle pattern"
+        },
+        "borderStyle": {
+          "none": "None",
+          "line": "Single line",
+          "double": "Double line",
+          "ornate": "Ornamental"
+        },
+        "borderWidth": {
+          "thin": "Thin",
+          "medium": "Medium",
+          "thick": "Thick"
+        },
+        "logoSource": {
+          "default": "Company logo",
+          "uploaded": "Uploaded logo",
+          "none": "No logo"
+        },
+        "position": {
+          "start": "Start",
+          "center": "Center",
+          "end": "End"
+        }
+      },
+      "messages": {
+        "uploaded": "Image uploaded",
+        "removed": "Image removed"
+      },
+      "errors": {
+        "fix": "Please correct the highlighted settings",
+        "tooLong": "Use at most {{max}} characters",
+        "samePosition": "The QR code and the signature need different positions",
+        "logoMissing": "Upload a logo first, or choose another option",
+        "imageType": "Choose a PNG, JPEG or WebP image",
+        "imageSize": "The image must be 512 KB or smaller",
+        "conflict": "The certificate template was changed elsewhere (for example in another tab). Reload it before saving; your unsaved changes here will be replaced."
+      },
+      "fontCategories": {
+        "sans": "sans-serif",
+        "serif": "serif",
+        "display": "display serif",
+        "naskh": "Naskh",
+        "kufi": "Kufi"
+      }
+    }
+  },
+  "preview": {
+    "title": "Preview mode",
+    "description": "Local mock data. No changes are saved",
+    "saved": "Done in preview only. Nothing was saved"
+  },
+  "home": {
+    "logoAlt": "ProGineer Technologies",
+    "titleStart": "The ProGineer ",
+    "titleAccent": "Internship",
+    "titleEnd": " Program",
+    "description": "Apply for an internship and choose your field from one portal, then follow your application step by step until your training ends and you receive your certificate.",
+    "apply": "Apply for an internship",
+    "signIn": "Sign in",
+    "notAvailable": "Applying for an internship is not available yet."
+  },
+  "auth": {
+    "title": "Sign in",
+    "or": "or",
+    "signOut": "Sign out",
+    "signedInAs": "Signed in as",
+    "sessionUnavailable": "Can't reach the server to check your sign-in right now. Trying again automatically…",
+    "retry": "Try again",
+    "staff": {
+      "label": "Company staff sign-in",
+      "notConfigured": "Google sign-in for staff is not configured on the server yet."
+    },
+    "trainee": {
+      "email": "Email",
+      "sendCode": "Send sign-in code",
+      "codeSent": "We sent a sign-in code and a direct link to",
+      "codeValidity": "It is valid for {{minutes}} minutes and can be used once.",
+      "code": "Sign-in code (6 digits)",
+      "signIn": "Sign in",
+      "changeEmail": "Use a different email",
+      "resend": "Resend code",
+      "label": "Trainee sign-in",
+      "hint": "Trainees: we'll email you a one-time sign-in code. No password needed."
+    },
+    "link": {
+      "verifying": "Checking your sign-in link…",
+      "failedTitle": "Couldn't sign you in",
+      "back": "Back to sign in"
+    },
+    "errors": {
+      "generic": "Something went wrong, please try again.",
+      "invalidEmail": "Enter a valid email.",
+      "codeFormat": "The code has 6 digits.",
+      "invalidCode": "The code or link is wrong, expired or already used.",
+      "tooManyRequests": "Too many attempts. Wait a minute and try again.",
+      "unavailable": "This service is not available on the server right now.",
+      "domainNotAllowed": "Only company Google accounts can sign in.",
+      "googleFailed": "Google sign-in could not be verified.",
+      "googleUnavailable": "The Google sign-in button could not be loaded."
+    }
+  },
+  "areas": {
+    "trainee": "Trainee portal",
+    "employee": "Employee area",
+    "hr": "HR area",
+    "notAvailable": "This area's features are not available yet.",
+    "account": "Your account",
+    "accountNoAccess": "You are signed in with Google. This account is not a company staff account, so no staff areas are available to it.",
+    "navLabel": "Area pages"
+  },
+  "common": {
+    "loading": "Loading"
+  },
+  "training": {
+    "yes": "Yes",
+    "no": "No",
+    "cancel": "Cancel",
+    "errors": {
+      "loadFailed": "Could not load the data.",
+      "generic": "Something went wrong, please try again.",
+      "fileUnavailable": "The file could not be opened.",
+      "tooManyRequests": "Too many attempts. Wait a minute and try again.",
+      "conflict": "Someone else changed this first. The page has been refreshed."
+    },
+    "fields": {
+      "field": "Training field",
+      "period": "Available period",
+      "availableFrom": "Available from",
+      "availableTo": "Available until",
+      "hours": "Number of hours",
+      "mandatoryForUniversity": "Is the training mandatory for your university?",
+      "submittedAt": "Submitted on"
+    },
+    "profile": {
+      "fullName": "Name",
+      "email": "Email",
+      "phone": "Phone",
+      "university": "University",
+      "major": "Major",
+      "studyYear": "Study year"
+    },
+    "applicationStatus": {
+      "Submitted": "Submitted",
+      "UnderReview": "Under review",
+      "Accepted": "Accepted",
+      "Rejected": "Rejected"
+    },
+    "requestStatus": {
+      "Pending": "Waiting for HR",
+      "Approved": "Approved",
+      "Rejected": "Rejected"
+    },
+    "assignmentStatus": {
+      "Active": "In training",
+      "Completed": "Completed",
+      "EndedEarly": "Ended early",
+      "Transferred": "Transferred",
+      "Withdrawn": "Withdrawn"
+    },
+    "attachmentKind": {
+      "Cv": "CV",
+      "UniversityLetter": "University letter"
+    }
+  },
+  "trainee": {
+    "nav": {
+      "applications": "My applications",
+      "apply": "Apply for training"
+    },
+    "applications": {
+      "title": "My applications",
+      "apply": "Apply for training",
+      "empty": "You have not applied for training yet."
+    },
+    "apply": {
+      "title": "Apply for training",
+      "intro": "Fill in your details and the training you are applying for. Attach your CV and any letter from your university.",
+      "noFields": "No training fields are open for applications yet.",
+      "aboutYou": "About you",
+      "training": "The training",
+      "chooseField": "Choose a field",
+      "documents": "Documents",
+      "letters": "University letter (optional)",
+      "submit": "Submit application",
+      "sent": "Your application has been submitted.",
+      "errors": {
+        "cvRequired": "Attach your CV.",
+        "period": "The available period must end on or after its start.",
+        "fieldUnavailable": "The selected field is no longer available.",
+        "hours": "Enter the number of hours as a whole number greater than zero.",
+        "invalid": "Please check the form: every field except the university letter is required."
+      },
+      "profileRecorded": "These details were recorded with your first application. Changing them is not available yet."
+    }
+  },
+  "employee": {
+    "nav": {
+      "available": "Available trainees",
+      "trainees": "My trainees"
+    },
+    "available": {
+      "title": "Available trainees",
+      "intro": "Trainees accepted by HR and not yet assigned to an employee. Your request waits for HR's approval before any training starts.",
+      "filters": "Filter trainees",
+      "allFields": "All fields",
+      "from": "Available from",
+      "to": "Available until",
+      "search": "Search",
+      "clear": "Clear",
+      "empty": "No available trainees match.",
+      "actions": "Actions",
+      "viewCv": "View CV",
+      "wantToTrain": "I Want to Train"
+    },
+    "request": {
+      "title": "Request to train {{name}}",
+      "explain": "Write a short note on what you plan to work on together. HR reviews the request and, if approved, sets the training dates.",
+      "note": "What you will work on",
+      "noteRequired": "Write a short note.",
+      "notAvailable": "This trainee is no longer available.",
+      "send": "Send request",
+      "sent": "Your request was sent to HR."
+    },
+    "trainees": {
+      "title": "My trainees",
+      "current": "Current trainees",
+      "noCurrent": "You have no current trainees.",
+      "requests": "My requests",
+      "noRequests": "You have not requested any trainee yet.",
+      "requestedAt": "Requested on",
+      "status": "Status",
+      "previous": "Previous trainees",
+      "noPrevious": "You have no previous trainees."
+    },
+    "notes": {
+      "title": "Training notes",
+      "new": "New note",
+      "required": "Write the note first.",
+      "add": "Add note",
+      "saved": "Note saved.",
+      "empty": "No notes yet.",
+      "loadFailed": "Unable to load notes. Please try again."
+    }
+  },
+  "hr": {
+    "nav": {
+      "applications": "Applications",
+      "mentorRequests": "Mentor requests",
+      "trainings": "Trainings",
+      "reports": "Reports"
+    },
+    "applications": {
+      "title": "Training applications",
+      "status": "Status",
+      "all": "All",
+      "empty": "No applications.",
+      "back": "Back to applications",
+      "trainee": "Trainee",
+      "request": "Application",
+      "rejectionReason": "Rejection reason",
+      "review": "Put under review",
+      "reject": "Reject",
+      "accept": "Accept",
+      "saved": "Saved.",
+      "rejectTitle": "Reject the application",
+      "reasonRequired": "Write the reason."
+    },
+    "mentorRequests": {
+      "title": "Mentor requests",
+      "empty": "No requests.",
+      "summary": "{{employee}} wants to train {{trainee}}",
+      "reject": "Reject",
+      "approve": "Approve",
+      "saved": "Saved.",
+      "approveTitle": "Approve and set the training dates",
+      "approveExplain": "Approving starts the training with this employee for these dates.",
+      "startDate": "Start date",
+      "endDate": "End date",
+      "invalidPeriod": "The end date must be on or after the start date."
+    },
+    "trainings": {
+      "title": "Trainings",
+      "current": "Current trainings",
+      "previous": "Previous trainings",
+      "noCurrent": "No current trainings.",
+      "noPrevious": "No previous trainings.",
+      "trainee": "Trainee",
+      "mentor": "Mentor",
+      "status": "Status"
+    },
+    "reports": {
+      "title": "Reports",
+      "back": "Back to reports",
+      "traineeHistory": {
+        "title": "Trainee history",
+        "description": "All trainings of one trainee and the contact notes kept with them.",
+        "trainee": "Trainee",
+        "choose": "Choose a trainee",
+        "noTrainees": "No trainee has an accepted application yet.",
+        "trainings": "Trainings",
+        "noTrainings": "No training recorded for this trainee.",
+        "endReason": "Reason",
+        "contactNotes": "Contact notes",
+        "noContactNotes": "No contact notes recorded for this trainee.",
+        "author": "Recorded by",
+        "notFound": "This trainee is not in this report."
+      }
+    },
+    "contactLog": {
+      "title": "Contact log",
+      "date": "Contact date",
+      "method": "Method",
+      "chooseMethod": "Choose a method",
+      "summary": "Summary",
+      "methods": {
+        "Phone": "Phone",
+        "Meeting": "Meeting",
+        "Email": "Email"
+      },
+      "required": "Enter the date, method and summary.",
+      "add": "Add entry",
+      "saved": "Entry saved.",
+      "empty": "No contact has been recorded yet."
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "button": "Notifications, {{count}} unread",
+    "empty": "No notifications.",
+    "loadFailed": "Unable to load notifications. Please try again.",
+    "unread": "Unread",
+    "loadMore": "Load more",
+    "types": {
+      "ApplicationSubmitted": "New training application from {{trainee}} ({{field}})",
+      "MentorRequestSubmitted": "{{employee}} asked to train {{trainee}}",
+      "MentorRequestApproved": "HR approved your request to train {{trainee}}",
+      "MentorRequestRejected": "HR rejected your request to train {{trainee}}"
     }
   }
 }
