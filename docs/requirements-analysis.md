@@ -150,7 +150,7 @@ See [domain-model.md](domain-model.md).
 
 | Layer | Proposed | Notes |
 |---|---|---|
-| Frontend | Angular, responsive, Arabic (RTL) + English | One app with three role areas plus a lightweight public certificate page |
+| Frontend | Angular, responsive, Arabic (RTL) + English (*the owner later chose React instead, AD-34*) | One app with three role areas plus a lightweight public certificate page |
 | Backend | ASP.NET Core Web API | Role-based permissions, automatic audit on every change |
 | Database | PostgreSQL | |
 | Staff sign-in | Google OAuth limited to the company domain | |

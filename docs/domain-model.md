@@ -25,9 +25,9 @@ AuditLog — covers every table
 | `Trainee` | name, email, phone, university, major, study year | Has many applications. Signs in by email only. |
 | `Employee` | name, Google email, department, role (Employee / HR / Admin) | Has many assignments. Created automatically with role Employee on first Google sign-in from the company domain. |
 | `Field` | name, description, active flag | Linked to applications and employees. Deactivated, never deleted. |
-| `TrainingApplication` | trainee, field, requested period, hours, mandatory-for-university flag, status, rejection reason, attachments (CV, university letter) | Has many assignments. Status: *proposed* `Submitted → Accepted / Rejected`, then derived states (Available, InTraining, Completed). |
+| `TrainingApplication` | trainee, field, requested period, hours, mandatory-for-university flag, status, rejection reason, attachments (CV, university letter) | Has many assignments. Status `Submitted → UnderReview → Accepted / Rejected` (AD-47); "available", "in training" and "completed" come from mentor requests and assignments, not from this status. |
 | `MentorRequest` | employee, application, note, status `Pending / Approved / Rejected` | Approval creates an `Assignment`. Rejection returns the trainee to the available list. |
-| `Assignment` | application, employee, start date, end date, status, end/transfer reason | Has one evaluation and many progress notes. Transfer = close this assignment and open a new one. Status *proposed*: `Active, Completed, EndedEarly, Transferred, Withdrawn`. |
+| `Assignment` | application, employee, start date, end date, status, end/transfer reason | Has one evaluation and many progress notes. Transfer = close this assignment and open a new one. Status `Active, Completed, EndedEarly, Transferred, Withdrawn` (AD-49). |
 | `ProgressNote` | assignment, author, date, text | |
 | `EvaluationCriterion` | name, weight, order | Defined by Admin. |
 | `Evaluation` | assignment, score per criterion, total, grade, comment, hiring recommendation `Yes / Maybe / No` | Generates the certificate. Numeric detail stays internal. |

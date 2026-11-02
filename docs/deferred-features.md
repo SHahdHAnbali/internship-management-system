@@ -14,15 +14,15 @@ Status values: **Blocked** (a dependency is missing) · **Ready** (dependencies 
 
 | Module | PDF reference | State (2026-10-26) |
 |---|---|---|
-| Admin | §2, §4 Admin | **Partly built**: fields, evaluation criteria and weights, users and roles, notification intervals |
-| Authentication: staff (Google OAuth, company domain) | §2, §9 | Not built (cookie scheme and role policies are wired; no sign-in) |
-| Authentication: trainee (passwordless email link/code, 15 min) | §2, §4 Trainee, §9 | Not built |
+| Admin | §2, §4 Admin | **Partly built**: fields, evaluation criteria and weights, users and roles, notification intervals, certificate template (AD-43) |
+| Authentication: staff (Google OAuth, company domain) | §2, §9 | **Built**: needs the Google client ID and company domain to operate ([authentication.md](authentication.md)) |
+| Authentication: trainee (passwordless email link/code, 15 min) | §2, §4 Trainee, §9 | **Built**: real e-mail delivery needs an e-mail provider; in Development codes go to the API log |
 | Trainee: applications | §3 steps 1–4, §4 Trainee | Not built |
 | HR: applications, contact log, assignment | §3 steps 2–7, §4 HR | Not built |
 | Employee: mentoring and evaluation | §3 steps 5, 8, §4 Employee | Not built |
 | Certificates: public page, PDF, QR | §3 step 9, §5 | Not built |
 | Reports and export | §6 | Not built |
-| Notifications and email | §7 | Not built (only the Admin intervals are stored) |
+| Notifications and email | §7 | Not built: the Admin intervals are stored, and an `IEmailSender` port exists with a development log sender only |
 | File storage (CVs, university letters) | §4 Trainee, §9 | Not built |
 | Scheduled jobs (reminders, weekly summary) | §7, §9 | Not built |
 
@@ -32,17 +32,17 @@ Status values: **Blocked** (a dependency is missing) · **Ready** (dependencies 
 
 | ID | Feature (PDF) | Depends on | Why it is blocked | Status |
 |---|---|---|---|---|
-| D-01 | Using the Admin pages in the browser (PDF §2: Admin signs in with Google) | Authentication: staff | Every Admin API call requires a signed-in user with the Admin role. Without sign-in, the pages receive 401 | Blocked |
-| D-02 | Staff accounts listed in *Users and roles* (PDF §2: a new account from the company domain is created automatically as Employee) | Authentication: staff | Employee records are created on first Google sign-in, which does not exist yet. The Admin can only manage the roles of existing accounts | Blocked |
-| D-03 | View accepted trainees (PDF §2 matrix: Admin ✔) | Trainee: applications; HR: applications | There are no applications, and no HR accept decision to filter on | Blocked |
+| D-01 | Using the Admin pages in the browser (PDF §2: Admin signs in with Google) | Authentication: staff | Staff sign-in is built. Waiting only for **configuration**: Google client ID, company domain, first Admin (Q17), see [authentication.md](authentication.md) | Ready |
+| D-02 | Staff accounts listed in *Users and roles* (PDF §2: a new account from the company domain is created automatically as Employee) | Authentication: staff | First Google sign-in creates the Employee account, and it then appears in *Users and roles* (tested) | Done (2026-10-26) |
+| D-03 | View accepted trainees (PDF §2 matrix: Admin ✔) | Trainee: applications; HR: applications | — | **Done locally, not deployed** (2026-10-31): Admin › Accepted trainees, read-only: applications with status Accepted, the trainee's profile, the requested period and the assignments recorded for each |
 | D-04 | Reports: all (PDF §2 matrix: Admin "all"; §6 monthly and fields reports for Admin) | Reports and export (which needs Trainee, HR and Employee data) | The reports read applications, assignments and evaluations, none of which exist | Blocked |
 
 ### Trainee
 
 | ID | Feature (PDF) | Depends on | Why it is blocked | Status |
 |---|---|---|---|---|
-| D-10 | Register and sign in with email only, by link or code | Authentication: trainee; Notifications and email | The sign-in link/code must be emailed (§7 "sign-in link or code") | Blocked |
-| D-11 | Application form (name, phone, university, major, study year, field, period, hours, mandatory flag) | Authentication: trainee | The form belongs to the signed-in trainee's account (§3 step 1). Fields come from Admin (available) | Blocked |
+| D-10 | Register and sign in with email only, by link or code | Authentication: trainee; Notifications and email | Built and verified (link + code, 15 min, single use). **Still blocked for production by the e-mail provider**: in Development the e-mail goes to the API log | Blocked (e-mail provider) |
+| D-11 | Application form (name, phone, university, major, study year, field, period, hours, mandatory flag) | Authentication: trainee | Trainee sign-in now exists and fields come from Admin. Not built yet. The homepage *Apply* button stays disabled until then | Ready |
 | D-12 | Upload CV and university letter | File storage; D-11 | Files are kept in cloud storage and served through temporary links (§9) | Blocked |
 | D-13 | Status board: where my application is, without seeing other trainees | D-11; HR: applications; HR: assignment | The statuses come from HR decisions and assignments | Blocked |
 | D-14 | Publish or keep private, print and download my certificate as PDF | Certificates | Certificates are generated after the final evaluation | Blocked |
@@ -52,11 +52,11 @@ Status values: **Blocked** (a dependency is missing) · **Ready** (dependencies 
 
 | ID | Feature (PDF) | Depends on | Why it is blocked | Status |
 |---|---|---|---|---|
-| D-20 | New-applications inbox: review, accept, or reject with a reason | Trainee: applications; Authentication: staff | Nothing to review until trainees can apply | Blocked |
+| D-20 | New-applications inbox: review, accept, or reject with a reason | Trainee: applications | Nothing to review until trainees can apply (staff sign-in now exists) | Blocked |
 | D-21 | Contact log for calls and verbal agreements (date, method, summary) | Trainee: applications | Every log entry belongs to an application | Blocked |
 | D-22 | Mentor requests: approve after coordination and set start/end dates | Employee: mentoring (requests) | Requests are created by employees | Blocked |
 | D-23 | Direct assignment of a trainee to an employee | D-20 (accepted applications); Authentication: staff (employee accounts) | Needs accepted trainees and employees | Blocked |
-| D-24 | Running training: extend, end early, transfer, record withdrawal (with reason) | D-22 or D-23 (assignments) | Operates on active assignments | Blocked |
+| D-24 | Running training: extend, end early, transfer, record withdrawal (with reason) | D-22 or D-23 (assignments) | Operates on active assignments. The read-only HR list of trainings (current and previous) exists locally, not deployed (2026-10-31) | Blocked (L1–L11) |
 | D-25 | Reports and export (all reports) | Reports and export | See D-40–D-45 | Blocked |
 | D-26 | Revoke a certificate (page stays and shows invalid) | Certificates | No certificates yet | Blocked |
 
@@ -66,7 +66,7 @@ Status values: **Blocked** (a dependency is missing) · **Ready** (dependencies 
 |---|---|---|---|---|
 | D-30 | Available trainees list, filterable by field, university and period, with CV view | HR: applications (accepted); File storage (CV) | Lists accepted, unassigned trainees. Fields come from Admin (available) | Blocked |
 | D-31 | "I want to train them" request with a short note | D-30 | Requests target trainees in the available list | Blocked |
-| D-32 | My trainees (current and past), with periodic progress notes | HR: assignment (D-22/D-23) | Notes belong to an assignment | Blocked |
+| D-32 | My trainees (current and past), with periodic progress notes | HR: assignment (D-22/D-23) | Notes belong to an assignment | **Done** (core, deployed to production 2026-10-29, Worker API): the employee lists their own assignments and writes and reads notes on their own Active ones (assignment, author, time of saving, text); no deletion; audited by the database. Notes of previous trainees are not shown in the web app yet. Still open, not owner-approved: editing and who else reads notes (Q37), the note date (Q40), notes only while Active (AD-49), notes of previous trainees in the web app, notes after a transfer, text rules (required, 4000 characters), and access after an Employee is given another role |
 | D-33 | Final evaluation: score per criterion, comment, hiring recommendation | D-32; HR: assignment | Evaluates an assignment. Criteria and weights come from Admin (available) | Blocked |
 | D-34 | Own mentor profile report | Reports and export | §6 "mentor profile" for the employee themself | Blocked |
 
@@ -86,14 +86,14 @@ Status values: **Blocked** (a dependency is missing) · **Ready** (dependencies 
 | D-41 | Fields report: applications, accepted and completed per field | Trainee: applications; HR: applications | Counts applications and their outcomes | Blocked |
 | D-42 | Mentor profile: trainees per employee over time and average evaluation | HR: assignment; Employee: evaluation | Needs assignments and evaluations | Blocked |
 | D-43 | Hiring pipeline: trainees recommended for hiring, ranked by evaluation | Employee: evaluation | Uses the hiring recommendation | Blocked |
-| D-44 | Trainee history: all trainings and contact notes of one trainee | Trainee: applications; HR: contact log | Needs applications and contact logs | Blocked |
+| D-44 | Trainee history: all trainings and contact notes of one trainee | Trainee: applications; HR: contact log | — | **Done locally, not deployed** (2026-10-31): HR › Reports › Trainee history (PDF §6 «سجل المتدرب», a report), read-only: for a chosen trainee, all their trainings (assignments) and contact notes, as recorded. Only trainees with at least one Accepted application can be chosen, enforced by the API for the list and for direct requests (owner decision 2026-11-02). Part of the reports module: filters and export (D-45) not built |
 | D-45 | Filter by period, field and employee, and export to Excel or PDF | D-40–D-44 | Applies to the reports above | Blocked |
 
 ### Notifications and email
 
 | ID | Feature (PDF §7) | Depends on | Why it is blocked | Status |
 |---|---|---|---|---|
-| D-50 | Event emails and in-app notifications (new application, received, accepted/rejected, new trainee in field, mentor request, assignment decision, assignment approved, certificate ready) | Notifications and email; the modules that raise each event (Trainee, HR, Employee, Certificates) | Each notification is triggered by an event in a module that doesn't exist yet | Blocked |
+| D-50 | Event emails and in-app notifications (new application, received, accepted/rejected, new trainee in field, mentor request, assignment decision, assignment approved, certificate ready) | Notifications and email; the modules that raise each event (Trainee, HR, Employee, Certificates) | The remaining notifications wait for e-mail delivery, the training lifecycle, scheduled jobs or Q14 | **Partly done locally, not deployed** (2026-10-31, AD-50): in-app notifications for the four PDF §7 in-app events whose workflow exists (new application → HR; mentor request → HR; assignment approved / rejected → the employee), with "load more" pages, for HR and Employee only (owner decisions C2–C5). Deployment blocked by Q41 (C1, HR distribution); channel question Q42 open. Not built: every e-mail, the in-app events "new trainee in your field" (Q14), "training ending in 7 days" and "training ended" (lifecycle and scheduling), and the Notification "email status" field |
 | D-51 | Timed reminders using the Admin intervals: training ending in 7 days, late evaluation every 3 days, request pending more than 5 days | Scheduled jobs; HR: assignment; Employee: evaluation; Employee: mentoring | The intervals are stored (Admin, done). What they apply to does not exist yet | Blocked |
 | D-52 | Weekly summary to HR | Scheduled jobs; HR and Trainee modules | Summarises activity from those modules | Blocked |
 | D-53 | Bilingual (Arabic/English) email templates | Notifications and email | No email delivery yet | Blocked |

@@ -2,13 +2,13 @@
 
 ## 1. Summary
 
-**A modular monolith**: one ASP.NET Core Web API, one PostgreSQL database and one Angular SPA, deployed as a single cloud application.
+**A modular monolith**: one ASP.NET Core Web API, one PostgreSQL database and one React single-page app. The SPA is static and hosted on Cloudflare Pages; the API and database are not deployed yet ([deployment.md](deployment.md)).
 
 - **Backend**: four projects with Clean Architecture dependency rules. Code is organised by **feature (vertical slices)** inside the Application layer.
-- **Frontend**: a standalone-component Angular app with one **lazy-loaded area per role**, plus a lightweight public certificate route.
+- **Frontend**: a React + TypeScript (Vite) app with one **lazy-loaded area per role**, plus the public pages (homepage, sign-in, certificate route). Migrated from Angular on 2026-10-27 (AD-34).
 
 ```
-             ┌──────────────── Angular SPA (frontend/) ───────────────┐
+             ┌───────────────── React SPA (frontend/) ─────────────────┐
              │  /c/:code (public) │ /trainee │ /employee │ /hr │ /admin │
              └───────────────────────────────┬──────────────────────────┘
                                              │ HTTPS  /api/*
@@ -41,7 +41,7 @@
 - Generic repository / unit-of-work wrappers. EF Core's `DbContext` already provides both. The Application layer uses an `IAppDbContext` abstraction that exposes `DbSet`s.
 - A mediator library (MediatR, etc.). Use cases are plain injectable classes called by controllers.
 - Separate read/write models, event sourcing, or a domain-event bus. The audit log covers the history requirement.
-- Separate Angular libraries or a monorepo tool. One Angular application is enough.
+- A UI component library, global state library or monorepo tool. One React app with small contexts is enough.
 
 ## 3. Backend
 
@@ -96,25 +96,27 @@ backend/tests/
 ## 4. Frontend
 
 ```
-frontend/src/app/
-  core/       singletons: auth service, HTTP interceptors (API base URL, auth, errors),
-              route guards per role, i18n/direction service, app shell/layout
-  shared/     reusable presentational components, pipes, directives (no services with state)
+frontend/src/
+  main.tsx        providers: I18nProvider → AuthProvider → ToastProvider → App (router)
+  routes.tsx      route table: public pages, sign-in, one guarded area per role (route-level lazy)
+  auth/           AuthProvider + context (session from GET /api/auth/me), RequireRole / RequireSignedOut guards,
+                  Google Identity Services loader, auth API
+  i18n/           runtime AR/EN translations (public/i18n/<lang>.json), sets <html lang dir>
+  lib/api.ts      fetch wrapper: same-origin cookie, ProblemDetails errors (ApiError), "API unavailable" detection
+  components/     Dialog (native <dialog>), Switch, Toast, LanguageSwitch, Logo, PreviewBanner
+  preview/        Admin Preview Mode flag (local dev only)
   features/
-    public/   /c/:code  certificate verification (no auth, minimal bundle)
-    trainee/  apply, status board, my certificate
-    employee/ available trainees, mentor requests, my trainees, progress notes, evaluation
-    hr/       applications inbox, contact log, mentor requests, running trainings, reports
-    admin/    fields, evaluation criteria, users and roles, settings, templates
-  app.routes.ts   lazy loadChildren per feature area
-  app.config.ts   provideRouter, provideHttpClient(withFetch())
+    public/       homepage, sign-in, e-mailed link verification
+    admin/        fields, evaluation criteria, users and roles, notification settings (+ preview mock)
+    areas/        landing page of the HR / Employee / Trainee areas (until their modules exist)
+  styles/         SCSS design tokens and base styles; index.css = Tailwind entry and design-system classes
 ```
 
-- Standalone components, signals for local state, `inject()` over constructor injection, `OnPush`-style reactivity, new control flow (`@if`/`@for`).
-- Each feature owns its routes file, pages, components and API service (`<feature>/data/*.service.ts`).
-- **RTL/LTR and i18n**: Transloco loads `public/i18n/<lang>.json`. `core/i18n/LanguageService` is the only place that changes language. It updates Transloco, `<html lang dir>` and CDK `Directionality` together. Arabic/RTL is the default. Styles must use CSS logical properties so both directions work.
-- **UI kit**: Angular Material 3 (theme in `src/styles.scss`). Use `BreakpointObserver` from the CDK for responsive behaviour that CSS alone can't handle.
-- Development: `ng serve` proxies `/api` to the backend (`proxy.conf.json`), so CORS is only needed for split-origin deployments.
+- Function components and hooks, TypeScript strict. Shared state through small contexts only; no global store.
+- Each feature owns its pages, components and API module (`features/admin/adminApi.ts`).
+- **RTL/LTR and i18n**: `I18nProvider` loads `public/i18n/<lang>.json`, and `setLanguage()` updates the translations, `<html lang dir>` and the saved preference together. Arabic/RTL is the default. Styles use logical properties so both directions work.
+- **UI**: native HTML elements with the design-system classes (no component library), see [design-system.md](design-system.md).
+- Development: Vite on port 4200 proxies `/api` to the backend (`vite.config.ts`), so the session cookie stays same-origin.
 
 ## 5. Testing strategy
 
@@ -126,6 +128,6 @@ frontend/src/app/
 
 ## 6. Environments & runtime
 
-- .NET SDK 10 (pinned by `global.json`) and Node 22 (`.nvmrc`; Angular 22 requires Node ≥ 22.22).
+- .NET SDK 10 (pinned by `global.json`) and Node 22 (`.nvmrc`; React Router 8 requires Node ≥ 22.22).
 - Local PostgreSQL: `compose.yaml` (PostgreSQL 18.6, host port 5434, named volume `ims-db-data`). Credentials are in the git-ignored `.env` and the API connection string is in user-secrets. No cloud resources are configured.
 - Ports: API `http://localhost:5106` / `https://localhost:7146`, SPA `http://localhost:4200`, PostgreSQL `localhost:5434`.
