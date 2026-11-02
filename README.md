@@ -5,7 +5,8 @@
 | Part | Stack | Path |
 |---|---|---|
 | API | ASP.NET Core 10 Web API, EF Core, PostgreSQL | [backend/](backend/) |
-| Web | Angular 22 (standalone, RTL/LTR) | [frontend/](frontend/) |
+| API (Workers port, not deployed) | TypeScript + Hono on Cloudflare Workers, same database and contracts | [backend-workers/](backend-workers/) |
+| Web | React 19 + TypeScript + Vite + Tailwind (RTL/LTR), hosted on Cloudflare Pages | [frontend/](frontend/) |
 | Docs | Requirements, architecture, decisions, roadmap | [docs/](docs/) |
 
 ## Prerequisites
@@ -29,10 +30,12 @@ cd backend && dotnet run --project src/Ims.Api      # API on http://localhost:51
 cd frontend && npm install && npm start             # SPA on http://localhost:4200 (proxies /api)
 ```
 
+Admin pages without sign-in (local mock data, dev only): `cd frontend && npm run start:preview`, then open http://localhost:4200/admin. See [docs/admin-preview.md](docs/admin-preview.md).
+
 ## Test
 ```bash
 cd backend && dotnet test                           # needs Docker running
-cd frontend && npm test -- --watch=false
+cd frontend && npm test -- --run
 ```
 
 ## Documentation
@@ -42,4 +45,9 @@ cd frontend && npm test -- --watch=false
 - [Decisions, assumptions & open questions](docs/decisions.md)
 - [Roadmap](docs/roadmap.md)
 - [Deferred features](docs/deferred-features.md): features waiting for other modules
+- [Requirements progress](docs/requirements-progress.md): every PDF requirement and its implementation status
+- [Authentication](docs/authentication.md): sign-in flows, roles, and the configuration you must provide
+- [Deployment](docs/deployment.md): Cloudflare Pages (frontend) and its limitations
+- [Workers migration](docs/workers-migration.md): the TypeScript/Hono API port, checklist, test results, configuration
+- [Certificate template](docs/certificate-template.md): the Admin certificate editor, its fonts and PDF-rendering requirements
 - [CLAUDE.md](CLAUDE.md): coding standards

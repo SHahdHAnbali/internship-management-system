@@ -481,10 +481,10 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# Frontend (Angular) — see also frontend/.gitignore
+# Frontend (React/Vite) — see also frontend/.gitignore
 node_modules/
 frontend/dist/
-frontend/.angular/
+frontend/.wrangler/
 
 # Local secrets / environment overrides
 *.local.json
