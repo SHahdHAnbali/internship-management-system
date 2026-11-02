@@ -1,3 +1,4 @@
+using Ims.Application.Common.Email;
 using Ims.Application.Common.Errors;
 using Ims.Domain.Common;
 using Microsoft.AspNetCore.Diagnostics;
@@ -16,6 +17,8 @@ internal sealed class ApiExceptionHandler(IProblemDetailsService problemDetails)
         {
             DomainException e => (StatusCodes.Status400BadRequest, e.Code, e.Message),
             NotFoundException e => (StatusCodes.Status404NotFound, "not_found", e.Message),
+            EmailNotConfiguredException => (StatusCodes.Status503ServiceUnavailable, "email.not_configured",
+                "E-mail sending is not configured on the server."),
             DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "conflict.concurrent_update",
                 "The record was changed by someone else. Reload and try again."),
             DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } } =>

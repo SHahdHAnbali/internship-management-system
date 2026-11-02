@@ -1,5 +1,8 @@
+using Ims.Application.Auth;
+using Ims.Application.Common.Email;
 using Ims.Application.Common.Persistence;
 using Ims.Application.Common.Security;
+using Ims.Infrastructure.Email;
 using Ims.Infrastructure.Identity;
 using Ims.Infrastructure.Persistence;
 using Ims.Infrastructure.Persistence.Interceptors;
@@ -15,8 +18,8 @@ public static class DependencyInjection
     public const string DatabaseConnectionName = "Database";
 
     /// <summary>
-    /// Registers infrastructure services: EF Core/PostgreSQL and identity options.
-    /// Email, file storage, PDF/QR and scheduled jobs are added as each integration is introduced.
+    /// Registers infrastructure services: EF Core/PostgreSQL, Google ID token validation and e-mail sending.
+    /// File storage, PDF/QR and scheduled jobs are added as each integration is introduced.
     /// </summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
@@ -49,6 +52,18 @@ public static class DependencyInjection
 
         services.Configure<GoogleAuthOptions>(configuration.GetSection(GoogleAuthOptions.SectionName));
         services.Configure<TraineeSignInOptions>(configuration.GetSection(TraineeSignInOptions.SectionName));
+        services.AddSingleton<IGoogleIdTokenValidator, GoogleIdTokenValidator>();
+
+        // E-mail: "Log" is for local development only (configured in appsettings.Development.json).
+        var emailProvider = configuration.GetSection(EmailOptions.SectionName).Get<EmailOptions>()?.Provider;
+        if (string.Equals(emailProvider, "Log", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IEmailSender, LogEmailSender>();
+        }
+        else
+        {
+            services.AddSingleton<IEmailSender, UnconfiguredEmailSender>();
+        }
 
         return services;
     }

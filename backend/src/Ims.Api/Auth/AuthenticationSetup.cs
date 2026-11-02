@@ -6,9 +6,9 @@ namespace Ims.Api.Auth;
 public static class AuthenticationSetup
 {
     /// <summary>
-    /// Session strategy: after the API verifies a Google ID token (staff) or a one-time email code (trainee),
-    /// it issues an HttpOnly cookie. The SPA is served from the same origin (dev proxy / single host), so no
-    /// token is ever stored in JavaScript. Sign-in endpoints are implemented in a later step.
+    /// Session strategy: after the API verifies a Google ID token (staff) or a one-time e-mail link/code (trainee),
+    /// it issues an HttpOnly cookie (see <see cref="SessionCookie"/> and Controllers/AuthController). The SPA is served
+    /// from the same origin (dev proxy / single host), so no token is ever stored in JavaScript.
     /// </summary>
     public static IServiceCollection AddImsAuthentication(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
@@ -33,6 +33,7 @@ public static class AuthenticationSetup
                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     return Task.CompletedTask;
                 };
+                options.Events.OnValidatePrincipal = SessionCookie.ValidateAsync;
                 options.Events.OnRedirectToAccessDenied = context =>
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;

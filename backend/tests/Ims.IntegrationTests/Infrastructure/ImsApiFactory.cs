@@ -1,3 +1,5 @@
+using Ims.Application.Common.Email;
+using Ims.Application.Common.Security;
 using Ims.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -6,16 +8,31 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Testcontainers.PostgreSql;
 
 namespace Ims.IntegrationTests.Infrastructure;
 
 /// <summary>
 /// Hosts the API in-memory against a disposable, fully migrated PostgreSQL container (requires Docker).
-/// Requests authenticate through <see cref="TestAuthHandler"/>.
+/// By default requests authenticate through <see cref="TestAuthHandler"/>; <see cref="CookieAuthApiFactory"/> uses the
+/// real cookie sign-in instead. External services are replaced by test doubles (Google, e-mail, clock).
 /// </summary>
-public sealed class ImsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public class ImsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    public const string CompanyDomain = "company.example";
+
+    public FakeGoogleIdTokenValidator Google { get; } = new();
+
+    public CapturingEmailSender Emails { get; } = new();
+
+    public TestClock Clock { get; } = new();
+
+    /// <summary>When true (default), the X-Test-Role header signs requests in; when false, the real session cookie is used.</summary>
+    protected virtual bool UseTestAuthentication => true;
+
+    protected virtual int TraineeRateLimitPerMinute => 1000;
+
     private readonly PostgreSqlContainer _database = new PostgreSqlBuilder("postgres:18.6-alpine").Build();
 
     public string ConnectionString => _database.GetConnectionString();
@@ -31,6 +48,7 @@ public sealed class ImsApiFactory : WebApplicationFactory<Program>, IAsyncLifeti
     {
         await _database.DisposeAsync();
         await base.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>A client signed in with the given role (role code from the <c>roles</c> table), or anonymous when null.</summary>
@@ -58,9 +76,24 @@ public sealed class ImsApiFactory : WebApplicationFactory<Program>, IAsyncLifeti
         builder.ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:Database"] = _database.GetConnectionString(),
+            ["Authentication:Google:ClientId"] = "test-client-id.apps.googleusercontent.com",
+            ["Authentication:Google:HostedDomain"] = CompanyDomain,
+            ["Authentication:Trainee:SignInLinkBaseUrl"] = "http://localhost:4200",
+            ["Authentication:Trainee:RateLimitPerMinute"] = TraineeRateLimitPerMinute.ToString(System.Globalization.CultureInfo.InvariantCulture),
         }));
         builder.ConfigureTestServices(services =>
         {
+            services.RemoveAll<IGoogleIdTokenValidator>();
+            services.AddSingleton<IGoogleIdTokenValidator>(Google);
+            services.RemoveAll<IEmailSender>();
+            services.AddSingleton<IEmailSender>(Emails);
+            services.RemoveAll<TimeProvider>();
+            services.AddSingleton<TimeProvider>(Clock);
+            if (!UseTestAuthentication)
+            {
+                return;
+            }
+
             services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, null);
             services.PostConfigure<AuthenticationOptions>(options =>
             {

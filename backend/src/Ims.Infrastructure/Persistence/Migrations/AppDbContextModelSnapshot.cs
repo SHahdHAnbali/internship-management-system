@@ -22,6 +22,224 @@ namespace Ims.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Ims.Domain.Applications.ApplicationAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("content_type");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("sha256")
+                        .IsFixedLength();
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("storage_key");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("uploaded_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_application_attachments");
+
+                    b.HasIndex("ApplicationId")
+                        .HasDatabaseName("ix_application_attachments_application_id");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_application_attachments_storage_key");
+
+                    b.ToTable("application_attachments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_application_attachments_kind", "kind IN ('Cv', 'UniversityLetter')");
+
+                            t.HasCheckConstraint("ck_application_attachments_sha256", "sha256 ~ '^[0-9a-f]{64}$'");
+
+                            t.HasCheckConstraint("ck_application_attachments_size", "size_bytes > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Ims.Domain.Applications.ContactLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("author_id");
+
+                    b.Property<DateOnly>("ContactDate")
+                        .HasColumnType("date")
+                        .HasColumnName("contact_date");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("method");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("summary");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contact_logs");
+
+                    b.HasIndex("ApplicationId")
+                        .HasDatabaseName("ix_contact_logs_application_id");
+
+                    b.HasIndex("AuthorId")
+                        .HasDatabaseName("ix_contact_logs_author_id");
+
+                    b.ToTable("contact_logs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_contact_logs_method", "method IN ('Phone', 'Meeting', 'Email')");
+                        });
+                });
+
+            modelBuilder.Entity("Ims.Domain.Applications.TrainingApplication", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateOnly>("AvailableFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("available_from");
+
+                    b.Property<DateOnly>("AvailableTo")
+                        .HasColumnType("date")
+                        .HasColumnName("available_to");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_id");
+
+                    b.Property<Guid>("FieldId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("field_id");
+
+                    b.Property<int>("Hours")
+                        .HasColumnType("integer")
+                        .HasColumnName("hours");
+
+                    b.Property<bool>("MandatoryForUniversity")
+                        .HasColumnType("boolean")
+                        .HasColumnName("mandatory_for_university");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("rejection_reason");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<Guid>("TraineeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("trainee_id");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_training_applications");
+
+                    b.HasIndex("DecidedById")
+                        .HasDatabaseName("ix_training_applications_decided_by_id");
+
+                    b.HasIndex("FieldId")
+                        .HasDatabaseName("ix_training_applications_field_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_training_applications_status");
+
+                    b.HasIndex("TraineeId")
+                        .HasDatabaseName("ix_training_applications_trainee_id");
+
+                    b.ToTable("training_applications", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_training_applications_decision", "(status IN ('Accepted', 'Rejected')) = (decided_at IS NOT NULL AND decided_by_id IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_training_applications_hours", "hours > 0");
+
+                            t.HasCheckConstraint("ck_training_applications_period", "available_to >= available_from");
+
+                            t.HasCheckConstraint("ck_training_applications_rejection_reason", "(status = 'Rejected') = (rejection_reason IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_training_applications_status", "status IN ('Submitted', 'UnderReview', 'Accepted', 'Rejected')");
+                        });
+                });
+
             modelBuilder.Entity("Ims.Domain.Auditing.AuditLogEntry", b =>
                 {
                     b.Property<long>("Id")
@@ -102,6 +320,54 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ims.Domain.Certificates.CertificateTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<string>("LogoContentType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("logo_content_type");
+
+                    b.Property<byte[]>("LogoImage")
+                        .HasColumnType("bytea")
+                        .HasColumnName("logo_image");
+
+                    b.Property<string>("Settings")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("settings");
+
+                    b.Property<string>("SignatureContentType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("signature_content_type");
+
+                    b.Property<byte[]>("SignatureImage")
+                        .HasColumnType("bytea")
+                        .HasColumnName("signature_image");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_certificate_templates");
+
+                    b.ToTable("certificate_templates", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_certificate_templates_logo", "(logo_image IS NULL AND logo_content_type IS NULL) OR (logo_image IS NOT NULL AND logo_content_type IN ('image/png', 'image/jpeg', 'image/webp') AND octet_length(logo_image) BETWEEN 1 AND 524288)");
+
+                            t.HasCheckConstraint("ck_certificate_templates_settings_object", "jsonb_typeof(settings) = 'object'");
+
+                            t.HasCheckConstraint("ck_certificate_templates_signature", "(signature_image IS NULL AND signature_content_type IS NULL) OR (signature_image IS NOT NULL AND signature_content_type IN ('image/png', 'image/jpeg', 'image/webp') AND octet_length(signature_image) BETWEEN 1 AND 524288)");
+
+                            t.HasCheckConstraint("ck_certificate_templates_single_row", "id = 1");
+                        });
+                });
+
             modelBuilder.Entity("Ims.Domain.Evaluations.EvaluationCriterion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -169,6 +435,229 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .HasName("pk_fields");
 
                     b.ToTable("fields", (string)null);
+                });
+
+            modelBuilder.Entity("Ims.Domain.Mentoring.Assignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
+
+                    b.Property<string>("EndReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("end_reason");
+
+                    b.Property<Guid?>("MentorRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("mentor_request_id");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_assignments");
+
+                    b.HasIndex("ApplicationId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_assignments_application_id")
+                        .HasFilter("status = 'Active'");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_assignments_employee_id");
+
+                    b.HasIndex("MentorRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_assignments_mentor_request_id");
+
+                    b.ToTable("assignments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_assignments_period", "end_date >= start_date");
+
+                            t.HasCheckConstraint("ck_assignments_status", "status IN ('Active', 'Completed', 'EndedEarly', 'Transferred', 'Withdrawn')");
+                        });
+                });
+
+            modelBuilder.Entity("Ims.Domain.Mentoring.MentorRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_id");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("note");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_mentor_requests");
+
+                    b.HasIndex("ApplicationId")
+                        .HasDatabaseName("ix_mentor_requests_application_id");
+
+                    b.HasIndex("DecidedById")
+                        .HasDatabaseName("ix_mentor_requests_decided_by_id");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_mentor_requests_employee_id");
+
+                    b.ToTable("mentor_requests", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_mentor_requests_decision", "(status IN ('Approved', 'Rejected')) = (decided_at IS NOT NULL AND decided_by_id IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_mentor_requests_status", "status IN ('Pending', 'Approved', 'Rejected')");
+                        });
+                });
+
+            modelBuilder.Entity("Ims.Domain.Mentoring.ProgressNote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AssignmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assignment_id");
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("author_id");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("text");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<DateTimeOffset>("WrittenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("written_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_progress_notes");
+
+                    b.HasIndex("AssignmentId")
+                        .HasDatabaseName("ix_progress_notes_assignment_id");
+
+                    b.HasIndex("AuthorId")
+                        .HasDatabaseName("ix_progress_notes_author_id");
+
+                    b.ToTable("progress_notes", (string)null);
+                });
+
+            modelBuilder.Entity("Ims.Domain.Notifications.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entity_id");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_read");
+
+                    b.Property<Guid>("RecipientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recipient_id");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("type");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notifications");
+
+                    b.HasIndex("RecipientId", "Type", "EntityId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_notifications_recipient_id_type_entity_id");
+
+                    b.ToTable("notifications", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notifications_type", "type IN ('ApplicationSubmitted', 'MentorRequestSubmitted', 'MentorRequestApproved', 'MentorRequestRejected')");
+                        });
                 });
 
             modelBuilder.Entity("Ims.Domain.Notifications.NotificationSettings", b =>
@@ -243,6 +732,72 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ims.Domain.Sessions.UserSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("GoogleSubject")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("google_subject");
+
+                    b.Property<string>("RevokeReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("revoke_reason");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<Guid?>("TraineeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("trainee_id");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_sessions");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_user_sessions_employee_id");
+
+                    b.HasIndex("GoogleSubject")
+                        .HasDatabaseName("ix_user_sessions_google_subject");
+
+                    b.HasIndex("TraineeId")
+                        .HasDatabaseName("ix_user_sessions_trainee_id");
+
+                    b.ToTable("user_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_user_sessions_expiry", "expires_at > created_at");
+
+                            t.HasCheckConstraint("ck_user_sessions_one_owner", "num_nonnulls(employee_id, trainee_id, google_subject) = 1");
+
+                            t.HasCheckConstraint("ck_user_sessions_revocation", "(revoked_at IS NULL AND revoke_reason IS NULL) OR (revoked_at IS NOT NULL AND revoke_reason IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_user_sessions_revoke_reason", "revoke_reason IN ('SignOut', 'Replaced')");
+                        });
+                });
+
             modelBuilder.Entity("Ims.Domain.Staff.Employee", b =>
                 {
                     b.Property<Guid>("Id")
@@ -296,6 +851,270 @@ namespace Ims.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_employees_staff_role", "role IN ('Employee', 'HR', 'Admin')");
                         });
+                });
+
+            modelBuilder.Entity("Ims.Domain.Trainees.Trainee", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("FullName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("full_name");
+
+                    b.Property<string>("Major")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("major");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("StudyYear")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("study_year");
+
+                    b.Property<string>("University")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("university");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_trainees");
+
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("ux_trainees_email");
+
+                    b.ToTable("trainees", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_trainees_email_normalized", "email = lower(btrim(email))");
+                        });
+                });
+
+            modelBuilder.Entity("Ims.Domain.Trainees.TraineeSignInCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("code_hash")
+                        .IsFixedLength();
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<int>("FailedAttempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed_attempts");
+
+                    b.Property<DateTimeOffset>("IssuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("issued_at");
+
+                    b.Property<DateTimeOffset?>("SupersededAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("superseded_at");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("token_hash")
+                        .IsFixedLength();
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_trainee_sign_in_codes");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_trainee_sign_in_codes_token_hash");
+
+                    b.HasIndex("Email", "IssuedAt")
+                        .HasDatabaseName("ix_trainee_sign_in_codes_email_issued_at");
+
+                    b.ToTable("trainee_sign_in_codes", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_trainee_sign_in_codes_attempts", "failed_attempts BETWEEN 0 AND 5");
+
+                            t.HasCheckConstraint("ck_trainee_sign_in_codes_expiry", "expires_at > issued_at");
+                        });
+                });
+
+            modelBuilder.Entity("Ims.Domain.Applications.ApplicationAttachment", b =>
+                {
+                    b.HasOne("Ims.Domain.Applications.TrainingApplication", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_application_attachments_training_applications_application_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Applications.ContactLog", b =>
+                {
+                    b.HasOne("Ims.Domain.Applications.TrainingApplication", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contact_logs_training_applications_application_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contact_logs_employees_author_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Applications.TrainingApplication", b =>
+                {
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("DecidedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_training_applications_employees_decided_by_id");
+
+                    b.HasOne("Ims.Domain.Fields.Field", null)
+                        .WithMany()
+                        .HasForeignKey("FieldId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_training_applications_fields_field_id");
+
+                    b.HasOne("Ims.Domain.Trainees.Trainee", null)
+                        .WithMany()
+                        .HasForeignKey("TraineeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_training_applications_trainees_trainee_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Mentoring.Assignment", b =>
+                {
+                    b.HasOne("Ims.Domain.Applications.TrainingApplication", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_assignments_training_applications_application_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_assignments_employees_employee_id");
+
+                    b.HasOne("Ims.Domain.Mentoring.MentorRequest", null)
+                        .WithMany()
+                        .HasForeignKey("MentorRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_assignments_mentor_requests_mentor_request_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Mentoring.MentorRequest", b =>
+                {
+                    b.HasOne("Ims.Domain.Applications.TrainingApplication", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_mentor_requests_training_applications_application_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("DecidedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_mentor_requests_employees_decided_by_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_mentor_requests_employees_employee_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Mentoring.ProgressNote", b =>
+                {
+                    b.HasOne("Ims.Domain.Mentoring.Assignment", null)
+                        .WithMany()
+                        .HasForeignKey("AssignmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_progress_notes_assignments_assignment_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_progress_notes_employees_author_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Notifications.Notification", b =>
+                {
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_notifications_employees_recipient_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Sessions.UserSession", b =>
+                {
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_user_sessions_employees_employee_id");
+
+                    b.HasOne("Ims.Domain.Trainees.Trainee", null)
+                        .WithMany()
+                        .HasForeignKey("TraineeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_user_sessions_trainees_trainee_id");
                 });
 
             modelBuilder.Entity("Ims.Domain.Staff.Employee", b =>

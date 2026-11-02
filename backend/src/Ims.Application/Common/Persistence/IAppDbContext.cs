@@ -1,9 +1,14 @@
+using Ims.Domain.Applications;
 using Ims.Domain.Auditing;
+using Ims.Domain.Certificates;
 using Ims.Domain.Evaluations;
 using Ims.Domain.Fields;
+using Ims.Domain.Mentoring;
 using Ims.Domain.Notifications;
 using Ims.Domain.Roles;
+using Ims.Domain.Sessions;
 using Ims.Domain.Staff;
+using Ims.Domain.Trainees;
 using Microsoft.EntityFrameworkCore;
 
 namespace Ims.Application.Common.Persistence;
@@ -18,11 +23,33 @@ public interface IAppDbContext
 
     DbSet<Employee> Employees { get; }
 
+    DbSet<Trainee> Trainees { get; }
+
+    DbSet<TraineeSignInCode> TraineeSignInCodes { get; }
+
     DbSet<Field> Fields { get; }
 
     DbSet<EvaluationCriterion> EvaluationCriteria { get; }
 
     DbSet<NotificationSettings> NotificationSettings { get; }
+
+    DbSet<CertificateTemplate> CertificateTemplates { get; }
+
+    DbSet<UserSession> UserSessions { get; }
+
+    DbSet<TrainingApplication> TrainingApplications { get; }
+
+    DbSet<ApplicationAttachment> ApplicationAttachments { get; }
+
+    DbSet<ContactLog> ContactLogs { get; }
+
+    DbSet<MentorRequest> MentorRequests { get; }
+
+    DbSet<Assignment> Assignments { get; }
+
+    DbSet<ProgressNote> ProgressNotes { get; }
+
+    DbSet<Notification> Notifications { get; }
 
     /// <summary>Read-only: rows are written by database triggers.</summary>
     IQueryable<AuditLogEntry> AuditLogs { get; }
