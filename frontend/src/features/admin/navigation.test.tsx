@@ -227,7 +227,7 @@ describe('Admin navigation bar', () => {
     );
   });
 
-  it('keeps the Admin pages and destinations (the five existing ones plus accepted trainees), and clears remembered data on sign-out', async () => {
+  it('keeps the Admin pages and destinations (the five existing ones plus accepted trainees and reports), and clears remembered data on sign-out', async () => {
     adminCache.set(adminCache.key(admin.id, 'fields'), [field('Backend')]);
     const signOut = vi.fn(async () => undefined);
     renderRoutes(
@@ -251,6 +251,7 @@ describe('Admin navigation bar', () => {
       '/admin/evaluation-criteria',
       '/admin/users',
       '/admin/accepted-trainees',
+      '/admin/reports',
       '/admin/settings',
       '/admin/certificate',
     ]);

@@ -48,6 +48,10 @@ export class AdminPreviewStore {
         return this.changeRole(id, input['role']);
       case 'GET accepted-trainees':
         return this.ok([]); // Preview Mode has no trainee records
+      case 'GET reports/:id':
+        return id === 'monthly' ? this.monthlyReport(url) : this.error(404);
+      case 'GET reports/:id/filters':
+        return id === 'monthly' ? this.ok({ fields: [], employees: [] }) : this.error(404);
       case 'GET settings/:id':
         return id === 'notifications' ? this.ok(this.data.settings) : this.error(404);
       case 'PUT settings/:id':
@@ -149,6 +153,15 @@ export class AdminPreviewStore {
     template.version = String(Number(template.version ?? 0) + 1);
     template.isDefault = false;
     return this.ok(template);
+  }
+
+  /** Preview Mode has no assignments: the monthly report of a valid month (400 otherwise) is empty. */
+  private monthlyReport(url: string) {
+    const month = new URLSearchParams(url.split('?')[1] ?? '').get('month') ?? '';
+    const match = /^([1-9]\d{3})-(0[1-9]|1[0-2])$/.exec(month);
+    if (!match) return this.error(400);
+    const lastDay = new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).getUTCDate();
+    return this.ok({ month, monthStart: `${month}-01`, monthEnd: `${month}-${lastDay}`, rows: [] });
   }
 
   private ok(body: unknown, status = 200): Promise<MockResponse> {

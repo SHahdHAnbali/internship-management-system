@@ -18,7 +18,8 @@
       "certificate": "Certificate",
       "menu": "Admin pages",
       "label": "Admin pages",
-      "acceptedTrainees": "Accepted trainees"
+      "acceptedTrainees": "Accepted trainees",
+      "reports": "Reports"
     },
     "actions": {
       "save": "Save",
@@ -252,6 +253,9 @@
         "naskh": "Naskh",
         "kufi": "Kufi"
       }
+    },
+    "reports": {
+      "title": "Reports"
     }
   },
   "preview": {
@@ -545,6 +549,27 @@
       "MentorRequestSubmitted": "{{employee}} asked to train {{trainee}}",
       "MentorRequestApproved": "HR approved your request to train {{trainee}}",
       "MentorRequestRejected": "HR rejected your request to train {{trainee}}"
+    }
+  },
+  "reports": {
+    "back": "Back to reports",
+    "monthly": {
+      "title": "Monthly report",
+      "description": "Everyone who was training during a month: with whom, in which field, and from when to when.",
+      "filters": "Report filters",
+      "month": "Month",
+      "year": "Year",
+      "yearInvalid": "Enter a four-digit year.",
+      "field": "Field",
+      "allFields": "All fields",
+      "employee": "Employee",
+      "allEmployees": "All employees",
+      "trainee": "Trainee",
+      "from": "From",
+      "to": "To",
+      "empty": "No one was training in this month with these filters.",
+      "loadFailed": "Unable to load the report. Please try again.",
+      "filtersFailed": "Unable to load the field and employee choices. Please try again."
     }
   }
 }

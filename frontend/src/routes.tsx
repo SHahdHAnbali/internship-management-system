@@ -121,6 +121,13 @@ export const routes: RouteObject[] = [
               })),
           },
           {
+            path: 'reports/monthly',
+            lazy: () =>
+              import('./reports/MonthlyReport').then((m) => ({
+                Component: () => <m.MonthlyReport area="hr" backTo="/hr/reports" />,
+              })),
+          },
+          {
             path: 'reports/trainee-history',
             lazy: () =>
               import('./features/hr/TraineeHistoryReport').then((m) => ({
@@ -174,6 +181,18 @@ export const routes: RouteObject[] = [
             lazy: () =>
               import('./features/admin/AcceptedTraineesPage').then((m) => ({
                 Component: m.AcceptedTraineesPage,
+              })),
+          },
+          {
+            path: 'reports',
+            lazy: () =>
+              import('./features/admin/ReportsPage').then((m) => ({ Component: m.ReportsPage })),
+          },
+          {
+            path: 'reports/monthly',
+            lazy: () =>
+              import('./reports/MonthlyReport').then((m) => ({
+                Component: () => <m.MonthlyReport area="admin" backTo="/admin/reports" />,
               })),
           },
           {

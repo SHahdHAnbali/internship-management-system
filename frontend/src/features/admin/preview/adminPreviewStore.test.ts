@@ -26,6 +26,21 @@ describe('AdminPreviewStore (Admin Preview Mode mock)', () => {
     });
   });
 
+  it('has no assignments, so the monthly report is empty (and a bad month is refused like the API)', async () => {
+    expect((await send('GET', '/api/admin/reports/monthly?month=2031-02')).body).toEqual({
+      month: '2031-02',
+      monthStart: '2031-02-01',
+      monthEnd: '2031-02-28',
+      rows: [],
+    });
+    expect((await send('GET', '/api/admin/reports/monthly/filters')).body).toEqual({
+      fields: [],
+      employees: [],
+    });
+    expect((await send('GET', '/api/admin/reports/monthly?month=2031-13')).status).toBe(400);
+    expect((await send('GET', '/api/admin/reports/other')).status).toBe(404);
+  });
+
   it('validates like the real API and forgets everything on reset', async () => {
     expect((await send('POST', '/api/admin/fields', { name: 'Mobile' })).status).toBe(201);
     expect((await send('POST', '/api/admin/fields', { name: 'mobile' })).status).toBe(409);

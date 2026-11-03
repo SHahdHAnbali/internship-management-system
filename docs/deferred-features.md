@@ -21,7 +21,7 @@ Status values: **Blocked** (a dependency is missing) · **Ready** (dependencies 
 | HR: applications, contact log, assignment | §3 steps 2–7, §4 HR | Not built |
 | Employee: mentoring and evaluation | §3 steps 5, 8, §4 Employee | Not built |
 | Certificates: public page, PDF, QR | §3 step 9, §5 | Not built |
-| Reports and export | §6 | Not built |
+| Reports and export | §6 | **Partly built**: trainee history (D-44) and the monthly report (D-40, deployed 2026-11-03); no export |
 | Notifications and email | §7 | Not built: the Admin intervals are stored, and an `IEmailSender` port exists with a development log sender only |
 | File storage (CVs, university letters) | §4 Trainee, §9 | Not built |
 | Scheduled jobs (reminders, weekly summary) | §7, §9 | Not built |
@@ -35,7 +35,7 @@ Status values: **Blocked** (a dependency is missing) · **Ready** (dependencies 
 | D-01 | Using the Admin pages in the browser (PDF §2: Admin signs in with Google) | Authentication: staff | Staff sign-in is built. Waiting only for **configuration**: Google client ID, company domain, first Admin (Q17), see [authentication.md](authentication.md) | Ready |
 | D-02 | Staff accounts listed in *Users and roles* (PDF §2: a new account from the company domain is created automatically as Employee) | Authentication: staff | First Google sign-in creates the Employee account, and it then appears in *Users and roles* (tested) | Done (2026-10-26) |
 | D-03 | View accepted trainees (PDF §2 matrix: Admin ✔) | Trainee: applications; HR: applications | — | **Done locally, not deployed** (2026-10-31): Admin › Accepted trainees, read-only: applications with status Accepted, the trainee's profile, the requested period and the assignments recorded for each |
-| D-04 | Reports: all (PDF §2 matrix: Admin "all"; §6 monthly and fields reports for Admin) | Reports and export (which needs Trainee, HR and Employee data) | The reports read applications, assignments and evaluations, none of which exist | Blocked |
+| D-04 | Reports: all (PDF §2 matrix: Admin "all"; §6 monthly and fields reports for Admin) | Reports and export (which needs Trainee, HR and Employee data) | Monthly report done (D-40, deployed 2026-11-03). Fields report, export and any other report for the Admin are not built (which reports the Admin sees beyond the §6 table is open) | Blocked (partly done) |
 
 ### Trainee
 
@@ -82,7 +82,7 @@ Status values: **Blocked** (a dependency is missing) · **Ready** (dependencies 
 
 | ID | Feature (PDF) | Depends on | Why it is blocked | Status |
 |---|---|---|---|---|
-| D-40 | Monthly report: who trained during the month, with whom, field, from/to | HR: assignment | Built from assignment start/end dates (§6 technical note) | Blocked |
+| D-40 | Monthly report: who trained during the month, with whom, field, from/to | HR: assignment | — | **Done** (deployed to production 2026-11-03): HR › Reports › Monthly report and Admin › Reports › Monthly report, read-only. Every assignment whose recorded start–end dates overlap the chosen month (inclusive calendar dates), whatever its stored status; a transferred trainee shows as one row per assignment. Columns: trainee, employee, field, from, to. Filters: month and year, field, employee (§6). Export (D-45) not built |
 | D-41 | Fields report: applications, accepted and completed per field | Trainee: applications; HR: applications | Counts applications and their outcomes | Blocked |
 | D-42 | Mentor profile: trainees per employee over time and average evaluation | HR: assignment; Employee: evaluation | Needs assignments and evaluations | Blocked |
 | D-43 | Hiring pipeline: trainees recommended for hiring, ranked by evaluation | Employee: evaluation | Uses the hiring recommendation | Blocked |

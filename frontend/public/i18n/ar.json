@@ -18,7 +18,8 @@
       "certificate": "الشهادة",
       "menu": "صفحات الإدارة",
       "label": "صفحات الإدارة",
-      "acceptedTrainees": "المتدربون المقبولون"
+      "acceptedTrainees": "المتدربون المقبولون",
+      "reports": "التقارير"
     },
     "actions": {
       "save": "حفظ",
@@ -252,6 +253,9 @@
         "naskh": "نسخ",
         "kufi": "كوفي"
       }
+    },
+    "reports": {
+      "title": "التقارير"
     }
   },
   "preview": {
@@ -545,6 +549,27 @@
       "MentorRequestSubmitted": "{{employee}} طلب تدريب {{trainee}}",
       "MentorRequestApproved": "اعتمدت الموارد البشرية طلبك لتدريب {{trainee}}",
       "MentorRequestRejected": "رفضت الموارد البشرية طلبك لتدريب {{trainee}}"
+    }
+  },
+  "reports": {
+    "back": "العودة إلى التقارير",
+    "monthly": {
+      "title": "التقرير الشهري",
+      "description": "كل من كان يتدرب خلال الشهر: عند مين، بأي مجال، ومن متى لمتى.",
+      "filters": "تصفية التقرير",
+      "month": "الشهر",
+      "year": "السنة",
+      "yearInvalid": "أدخل سنة من أربعة أرقام.",
+      "field": "المجال",
+      "allFields": "كل المجالات",
+      "employee": "الموظف",
+      "allEmployees": "كل الموظفين",
+      "trainee": "المتدرب",
+      "from": "من",
+      "to": "إلى",
+      "empty": "لا يوجد من كان يتدرب في هذا الشهر حسب هذه التصفية.",
+      "loadFailed": "تعذّر تحميل التقرير. يرجى المحاولة مرة أخرى.",
+      "filtersFailed": "تعذّر تحميل خيارات المجال والموظف. يرجى المحاولة مرة أخرى."
     }
   }
 }

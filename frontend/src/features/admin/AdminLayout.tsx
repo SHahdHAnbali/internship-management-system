@@ -19,6 +19,7 @@ const LINKS: AdminNavLink[] = [
   { path: 'evaluation-criteria', label: 'admin.nav.criteria' },
   { path: 'users', label: 'admin.nav.users' },
   { path: 'accepted-trainees', label: 'admin.nav.acceptedTrainees' },
+  { path: 'reports', label: 'admin.nav.reports' },
   { path: 'settings', label: 'admin.nav.settings' },
   { path: 'certificate', label: 'admin.nav.certificate' },
 ];
@@ -181,6 +182,8 @@ function preloadAdminPages() {
     void import('./CriteriaPage');
     void import('./UsersPage');
     void import('./AcceptedTraineesPage');
+    void import('./ReportsPage');
+    void import('../../reports/MonthlyReport');
     void import('./SettingsPage');
     void import('./certificate/CertificateTemplatePage');
   };

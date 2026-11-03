@@ -28,7 +28,7 @@ Mark items done here as they ship.
 ## Phase 2: Certificates & reports (about 3 weeks)
 - [ ] Certificate generation, public page `/c/:code`, publish/private, revoke
 - [ ] PDF and QR
-- [ ] Monthly, fields, mentor profile, hiring pipeline, and trainee history reports
+- [ ] Monthly, fields, mentor profile, hiring pipeline, and trainee history reports. Done: trainee history (2026-10-31) and the monthly report for HR and Admin with month, field and employee filters (deployed to production 2026-11-03)
 - [ ] Excel and PDF export
 
 ## Phase 3: Automation (about 2 weeks)
