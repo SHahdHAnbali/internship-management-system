@@ -8,6 +8,7 @@ import type {
   HrMentorRequest,
   HrTrainee,
   TraineeHistory,
+  TraineeHistoryFilters,
 } from './models';
 
 /** HR API (`/api/hr/...`, HR role only). */
@@ -36,7 +37,19 @@ export const hrApi = {
     }),
   assignments: () => apiRequest<HrAssignment[]>('GET', '/hr/assignments'),
   trainees: () => apiRequest<HrTrainee[]>('GET', '/hr/trainees'),
-  traineeHistory: (id: string) => apiRequest<TraineeHistory>('GET', `/hr/trainees/${id}/history`),
+  /** One trainee's history; the optional filters narrow its trainings only (period overlap, field). */
+  traineeHistory: (
+    id: string,
+    filters: TraineeHistoryFilters = { from: '', to: '', fieldId: '' },
+  ) => {
+    const query = new URLSearchParams(
+      Object.entries(filters).filter(([, value]) => value) as [string, string][],
+    ).toString();
+    return apiRequest<TraineeHistory>(
+      'GET',
+      `/hr/trainees/${id}/history${query ? `?${query}` : ''}`,
+    );
+  },
   rejectRequest: (id: string) =>
     apiRequest<HrMentorRequest>('POST', `/hr/mentor-requests/${id}/reject`),
 };

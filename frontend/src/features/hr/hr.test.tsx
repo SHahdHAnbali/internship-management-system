@@ -305,6 +305,7 @@ describe('HR report: trainee history (PDF §6, read-only)', () => {
     },
   ];
   const history = {
+    totalTrainings: 1,
     trainee: {
       id: 't1',
       email: 'lina@trainee.example',

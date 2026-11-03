@@ -49,6 +49,7 @@ export class AdminPreviewStore {
       case 'GET accepted-trainees':
         return this.ok([]); // Preview Mode has no trainee records
       case 'GET reports/:id':
+        if (id === 'fields') return this.fieldsReport(url);
         return id === 'monthly' ? this.monthlyReport(url) : this.error(404);
       case 'GET reports/:id/filters':
         return id === 'monthly' ? this.ok({ fields: [], employees: [] }) : this.error(404);
@@ -162,6 +163,16 @@ export class AdminPreviewStore {
     if (!match) return this.error(400);
     const lastDay = new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).getUTCDate();
     return this.ok({ month, monthStart: `${month}-01`, monthEnd: `${month}-${lastDay}`, rows: [] });
+  }
+
+  /** Preview Mode has no applications: every sample field with no applications (one field with `fieldId`). */
+  private fieldsReport(url: string) {
+    const fieldId = new URLSearchParams(url.split('?')[1] ?? '').get('fieldId') ?? '';
+    const rows = [...this.data.fields]
+      .filter((f) => !fieldId || f.id === fieldId)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((f) => ({ field: { id: f.id, name: f.name }, applications: 0, accepted: 0 }));
+    return this.ok({ rows });
   }
 
   private ok(body: unknown, status = 200): Promise<MockResponse> {

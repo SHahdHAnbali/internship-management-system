@@ -9,7 +9,8 @@ import type { HrTrainee, TraineeHistory } from './models';
  * HR report «سجل المتدرب» (PDF §6): all trainings of one selected trainee and the contact notes kept with them, read-only
  * and as recorded. Trainings are the trainee's assignments; contact notes are the contact-log entries of their
  * applications. Only trainees with at least one Accepted application can be chosen (owner decision 2026-11-02); the API
- * enforces it for the list and for a trainee given in the address.
+ * enforces it for the list and for a trainee given in the address. The trainings can be filtered by period (recorded
+ * dates overlapping it, both ends included) and field (PDF §6); the contact notes are always shown in full.
  */
 export function TraineeHistoryReport() {
   const { t } = useI18n();
@@ -64,31 +65,78 @@ export function TraineeHistoryReport() {
   );
 }
 
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 function Report({ traineeId }: { traineeId: string }) {
   const { t, language } = useI18n();
-  const [history, setHistory] = useState<TraineeHistory | null>(null);
+  const id = useId();
+  const [params, setParams] = useSearchParams();
+  // The trainings filters (PDF §6 "filtered by period and field"), kept in the address. Malformed values are ignored.
+  const from = DATE.test(params.get('from') ?? '') ? params.get('from')! : '';
+  const to = DATE.test(params.get('to') ?? '') ? params.get('to')! : '';
+  const fieldId = params.get('field') ?? '';
+  const periodInvalid = Boolean(from && to && to < from);
+  const until = periodInvalid ? '' : to; // an end before the start is flagged and not applied
+  const filtered = Boolean(from || until || fieldId);
+  const key = `${traineeId}|${from}|${until}|${fieldId}`;
+
+  // The latest answer and the filters it was for. Contact notes and the field choices never depend on the filters, so
+  // they stay shown while the trainings of new filters load.
+  const [history, setHistory] = useState<{ key: string; data: TraineeHistory } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    hrApi
-      .traineeHistory(traineeId)
-      .then(setHistory, (failure: unknown) =>
+    let current = true;
+    hrApi.traineeHistory(traineeId, { from, to: until, fieldId }).then(
+      (data) => {
+        if (!current) return;
+        setHistory({ key, data });
+        setError(null);
+      },
+      (failure: unknown) =>
+        current &&
         setError(
           failure instanceof ApiError && (failure.status === 404 || failure.status === 400)
             ? 'hr.reports.traineeHistory.notFound'
             : 'training.errors.loadFailed',
         ),
-      );
-  }, [traineeId]);
+    );
+    return () => {
+      current = false;
+    };
+  }, [traineeId, from, until, fieldId, key]);
+
+  // Filters are offered only when the trainee has two trainings or more in all (the unfiltered total from the API, so
+  // narrowing them down never hides the filters). With fewer, any filters in the address are dropped so that every
+  // training is shown.
+  const fewTrainings = history ? history.data.totalTrainings < 2 : false;
+  const filtersInAddress = ['from', 'to', 'field'].some((name) => params.has(name));
+  useEffect(() => {
+    if (!fewTrainings || !filtersInAddress) return;
+    const next = new URLSearchParams(params);
+    for (const name of ['from', 'to', 'field']) next.delete(name);
+    setParams(next, { replace: true });
+  }, [fewTrainings, filtersInAddress, params, setParams]);
 
   if (error) return <p className="ims-state">{t(error)}</p>;
   if (!history) return null;
 
+  const setFilter = (name: 'from' | 'to' | 'field', value: string) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set(name, value);
+    else next.delete(name);
+    setParams(next, { replace: true });
+  };
+  const fields = [
+    ...new Map(history.data.applications.map((a) => [a.fieldId, a.fieldName])).entries(),
+  ];
+  const trainingsShown = history.key === key && !(fewTrainings && filtersInAddress);
+
   const date = (value: string) => new Date(value).toLocaleDateString(language);
-  const trainings = history.applications.flatMap((a) =>
+  const trainings = history.data.applications.flatMap((a) =>
     a.assignments.map((s) => ({ ...s, fieldName: a.fieldName })),
   );
-  const notes = history.applications
+  const notes = history.data.applications
     .flatMap((a) => a.contactLogs.map((l) => ({ ...l, fieldName: a.fieldName })))
     .sort(
       (x, y) =>
@@ -98,15 +146,90 @@ function Report({ traineeId }: { traineeId: string }) {
   return (
     <div className="flex flex-col gap-10">
       <p className="text-h3 font-semibold text-heading">
-        {history.trainee.fullName ?? history.trainee.email}
+        {history.data.trainee.fullName ?? history.data.trainee.email}
       </p>
 
       <section aria-labelledby="report-trainings">
         <h2 id="report-trainings" className="mb-4 text-h3 font-semibold text-heading">
           {t('hr.reports.traineeHistory.trainings')}
         </h2>
-        {trainings.length === 0 ? (
-          <p className="ims-state">{t('hr.reports.traineeHistory.noTrainings')}</p>
+        {!fewTrainings && (
+          <>
+            <form
+              role="search"
+              aria-label={t('hr.reports.traineeHistory.filters')}
+              aria-describedby={`${id}-filters-hint`}
+              className="mb-2 grid gap-4 sm:grid-cols-3"
+              onSubmit={(event) => event.preventDefault()}
+            >
+              <div className="flex flex-col gap-1">
+                <label className="ims-label" htmlFor={`${id}-from`}>
+                  {t('hr.reports.traineeHistory.from')}
+                </label>
+                <input
+                  id={`${id}-from`}
+                  type="date"
+                  className="ims-input"
+                  value={from}
+                  onChange={(e) => setFilter('from', e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="ims-label" htmlFor={`${id}-to`}>
+                  {t('hr.reports.traineeHistory.to')}
+                </label>
+                <input
+                  id={`${id}-to`}
+                  type="date"
+                  className="ims-input"
+                  value={to}
+                  min={from || undefined}
+                  aria-invalid={periodInvalid}
+                  aria-describedby={periodInvalid ? `${id}-to-error` : undefined}
+                  onChange={(e) => setFilter('to', e.target.value)}
+                />
+                {periodInvalid && (
+                  <p id={`${id}-to-error`} className="ims-error">
+                    {t('hr.reports.traineeHistory.periodInvalid')}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="ims-label" htmlFor={`${id}-field`}>
+                  {t('training.fields.field')}
+                </label>
+                <select
+                  id={`${id}-field`}
+                  className="ims-input"
+                  value={fieldId}
+                  onChange={(e) => setFilter('field', e.target.value)}
+                >
+                  <option value="">{t('hr.reports.traineeHistory.allFields')}</option>
+                  {fields.map(([value, name]) => (
+                    <option key={value} value={value}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </form>
+            <p id={`${id}-filters-hint`} className="mb-4 text-small text-muted">
+              {t('hr.reports.traineeHistory.filtersHint')}
+            </p>
+          </>
+        )}
+        {!trainingsShown ? (
+          <p className="ims-state" role="status">
+            {t('common.loading')}
+          </p>
+        ) : trainings.length === 0 ? (
+          <p className="ims-state">
+            {t(
+              filtered
+                ? 'hr.reports.traineeHistory.noMatchingTrainings'
+                : 'hr.reports.traineeHistory.noTrainings',
+            )}
+          </p>
         ) : (
           <div className="ims-table-card">
             <table className="ims-table">

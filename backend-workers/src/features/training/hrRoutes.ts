@@ -16,7 +16,7 @@ import {
   type ApplicationStatus,
   type MentorRequestStatus,
 } from '../../domain/training';
-import { uuidV7 } from '../../domain/uuid';
+import { parseGuid, uuidV7 } from '../../domain/uuid';
 import { bindJson, type RequestSchema } from '../../http/body';
 import { json, statusProblem } from '../../http/problems';
 import { routeId, type Route } from '../../http/routes';
@@ -425,11 +425,15 @@ export const hrRoutes: Route[] = [
   {
     // The data of the HR report "trainee history" (PDF §6 «سجل المتدرب»: every training of one trainee and the contact
     // notes kept with them). Read-only, as recorded: each application with its assignments and contact-log entries.
+    // Optional filters on the trainings only (PDF §6 "filtered by period and field"): `from` / `to` keep the assignments
+    // whose recorded dates overlap that period (inclusive), `fieldId` those of applications in that field. Applications
+    // and their contact notes are always all returned.
     method: 'GET',
     path: '/api/hr/trainees/:id/history',
     policy: 'HR',
     async handle(c) {
       const id = routeId(c);
+      const filters = historyFilters(c);
       const { rows: trainees } = await c.var.db.query<{
         id: string;
         email: string;
@@ -451,6 +455,7 @@ export const hrRoutes: Route[] = [
       const { rows } = await c.var.db.query<{
         id: string;
         status: ApplicationStatus;
+        field_id: string;
         field_name: string;
         available_from: string;
         available_to: string;
@@ -475,14 +480,18 @@ export const hrRoutes: Route[] = [
           authorName: string;
         }[];
       }>(
-        `SELECT a.id, a.status, f.name AS field_name, a.available_from::text, a.available_to::text, a.hours,
+        `SELECT a.id, a.status, f.id AS field_id, f.name AS field_name, a.available_from::text, a.available_to::text,
+                a.hours,
                 a.submitted_at, a.decided_at, a.rejection_reason,
                 coalesce((SELECT json_agg(json_build_object('id', s.id, 'employeeName', e.full_name, 'status', s.status,
                                                             'startDate', s.start_date, 'endDate', s.end_date,
                                                             'endReason', s.end_reason)
                                           ORDER BY s.start_date, s.created_at)
                             FROM assignments s JOIN employees e ON e.id = s.employee_id
-                           WHERE s.application_id = a.id), '[]') AS assignments,
+                           WHERE s.application_id = a.id
+                             AND ($2::date IS NULL OR s.end_date >= $2::date)
+                             AND ($3::date IS NULL OR s.start_date <= $3::date)
+                             AND ($4::uuid IS NULL OR a.field_id = $4)), '[]') AS assignments,
                 coalesce((SELECT json_agg(json_build_object('id', l.id, 'contactDate', l.contact_date,
                                                             'method', l.method, 'summary', l.summary,
                                                             'recordedAt', l.recorded_at, 'authorName', e.full_name)
@@ -492,9 +501,16 @@ export const hrRoutes: Route[] = [
            FROM training_applications a JOIN fields f ON f.id = a.field_id
           WHERE a.trainee_id = $1
           ORDER BY a.submitted_at`,
+        [t.id, filters.from, filters.to, filters.fieldId],
+      );
+      // How many trainings the trainee has in all, whatever the filters (the page offers filters only from two on).
+      const { rows: total } = await c.var.db.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM assignments s JOIN training_applications a ON a.id = s.application_id
+          WHERE a.trainee_id = $1`,
         [t.id],
       );
       return json({
+        totalTrainings: total[0]!.n,
         trainee: {
           id: t.id,
           email: t.email,
@@ -507,6 +523,7 @@ export const hrRoutes: Route[] = [
         applications: rows.map((a) => ({
           id: a.id,
           status: a.status,
+          fieldId: a.field_id,
           fieldName: a.field_name,
           availableFrom: a.available_from,
           availableTo: a.available_to,
@@ -521,6 +538,24 @@ export const hrRoutes: Route[] = [
     },
   },
 ];
+
+/** The trainee history's optional training filters; a value given but malformed is refused (400). */
+function historyFilters(c: Context<AppEnv>) {
+  const date = (name: string) => {
+    const value = c.req.query(name);
+    if (!value) return null;
+    const parsed = parseDate(value);
+    if (!parsed) throw new DomainError('validation.invalid', `${name} must be a date (YYYY-MM-DD).`);
+    return parsed;
+  };
+  const from = date('from');
+  const to = date('to');
+  if (from && to && to < from) throw new DomainError('validation.period', 'The period must end on or after its start.');
+  const field = c.req.query('fieldId');
+  const fieldId = field ? parseGuid(field) : null;
+  if (field && !fieldId) throw new DomainError('validation.invalid', 'fieldId is not a valid id.');
+  return { from, to, fieldId };
+}
 
 const MENTOR_REQUEST_SELECT = `
   SELECT r.id, r.status, r.note, r.requested_at, r.decided_at, r.application_id, r.employee_id,

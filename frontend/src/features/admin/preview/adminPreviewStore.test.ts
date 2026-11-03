@@ -41,6 +41,19 @@ describe('AdminPreviewStore (Admin Preview Mode mock)', () => {
     expect((await send('GET', '/api/admin/reports/other')).status).toBe(404);
   });
 
+  it('lists the sample fields in the fields report with no applications (Preview Mode has none)', async () => {
+    const fields = (await send('GET', '/api/admin/fields')).body as { id: string; name: string }[];
+    const report = (await send('GET', '/api/admin/reports/fields')).body as {
+      rows: { field: { id: string }; applications: number; accepted: number }[];
+    };
+    expect(report.rows.map((r) => r.field.id).sort()).toEqual(fields.map((f) => f.id).sort());
+    expect(report.rows.every((r) => r.applications === 0 && r.accepted === 0)).toBe(true);
+    const one = (await send('GET', `/api/admin/reports/fields?fieldId=${fields[0]!.id}`)).body as {
+      rows: unknown[];
+    };
+    expect(one.rows).toHaveLength(1);
+  });
+
   it('validates like the real API and forgets everything on reset', async () => {
     expect((await send('POST', '/api/admin/fields', { name: 'Mobile' })).status).toBe(201);
     expect((await send('POST', '/api/admin/fields', { name: 'mobile' })).status).toBe(409);

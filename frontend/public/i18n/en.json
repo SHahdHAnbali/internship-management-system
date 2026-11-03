@@ -517,7 +517,14 @@
         "contactNotes": "Contact notes",
         "noContactNotes": "No contact notes recorded for this trainee.",
         "author": "Recorded by",
-        "notFound": "This trainee is not in this report."
+        "notFound": "This trainee is not in this report.",
+        "filters": "Filter the trainings",
+        "filtersHint": "The filters apply to the trainings only. Contact notes are always shown in full.",
+        "from": "Period from",
+        "to": "Period to",
+        "periodInvalid": "The end of the period must be on or after its start.",
+        "allFields": "All fields",
+        "noMatchingTrainings": "No training of this trainee matches these filters."
       }
     },
     "contactLog": {
@@ -570,6 +577,19 @@
       "empty": "No one was training in this month with these filters.",
       "loadFailed": "Unable to load the report. Please try again.",
       "filtersFailed": "Unable to load the field and employee choices. Please try again."
+    },
+    "fields": {
+      "title": "Fields report",
+      "description": "For each field: the number of applications and of accepted applications.",
+      "filters": "Report filters",
+      "field": "Field",
+      "allFields": "All fields",
+      "applications": "Applications",
+      "accepted": "Accepted",
+      "empty": "No fields yet.",
+      "noMatch": "This field is not in the report.",
+      "loadFailed": "Unable to load the report. Please try again.",
+      "completedNotShown": "The number of completed trainings is not shown yet: when a training counts as completed has not been decided."
     }
   }
 }

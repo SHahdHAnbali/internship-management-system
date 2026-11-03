@@ -184,6 +184,7 @@ function preloadAdminPages() {
     void import('./AcceptedTraineesPage');
     void import('./ReportsPage');
     void import('../../reports/MonthlyReport');
+    void import('../../reports/FieldsReport');
     void import('./SettingsPage');
     void import('./certificate/CertificateTemplatePage');
   };

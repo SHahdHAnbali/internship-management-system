@@ -65,7 +65,16 @@ export interface HrTrainee {
 }
 
 /** PDF §6 "trainee history": each application with its assignments and contact log, as recorded. */
+/** Filters of the trainee history's trainings: a period (`YYYY-MM-DD`, either end optional) and a field; '' = none. */
+export interface TraineeHistoryFilters {
+  from: string;
+  to: string;
+  fieldId: string;
+}
+
 export interface TraineeHistory {
+  /** Every training (assignment) of the trainee, whatever the filters. */
+  totalTrainings: number;
   trainee: {
     id: string;
     email: string;
@@ -78,6 +87,7 @@ export interface TraineeHistory {
   applications: {
     id: string;
     status: ApplicationStatus;
+    fieldId: string;
     fieldName: string;
     availableFrom: string;
     availableTo: string;

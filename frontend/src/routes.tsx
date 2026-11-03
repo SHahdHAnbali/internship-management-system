@@ -128,6 +128,13 @@ export const routes: RouteObject[] = [
               })),
           },
           {
+            path: 'reports/fields',
+            lazy: () =>
+              import('./reports/FieldsReport').then((m) => ({
+                Component: () => <m.FieldsReport area="hr" backTo="/hr/reports" />,
+              })),
+          },
+          {
             path: 'reports/trainee-history',
             lazy: () =>
               import('./features/hr/TraineeHistoryReport').then((m) => ({
@@ -193,6 +200,13 @@ export const routes: RouteObject[] = [
             lazy: () =>
               import('./reports/MonthlyReport').then((m) => ({
                 Component: () => <m.MonthlyReport area="admin" backTo="/admin/reports" />,
+              })),
+          },
+          {
+            path: 'reports/fields',
+            lazy: () =>
+              import('./reports/FieldsReport').then((m) => ({
+                Component: () => <m.FieldsReport area="admin" backTo="/admin/reports" />,
               })),
           },
           {
