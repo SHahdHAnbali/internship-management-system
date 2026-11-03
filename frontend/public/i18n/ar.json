@@ -19,7 +19,8 @@
       "menu": "صفحات الإدارة",
       "label": "صفحات الإدارة",
       "acceptedTrainees": "المتدربون المقبولون",
-      "reports": "التقارير"
+      "reports": "التقارير",
+      "auditLog": "سجل التغييرات"
     },
     "actions": {
       "save": "حفظ",
@@ -256,6 +257,60 @@
     },
     "reports": {
       "title": "التقارير"
+    },
+    "auditLog": {
+      "title": "سجل التغييرات",
+      "description": "كل تغيير مسجَّل: متى، ومن قام به، ونوع العملية، والجدول، والسجل. للعرض فقط؛ لا تُعرض القيم المحفوظة.",
+      "filters": "تصفية سجل التغييرات",
+      "any": "الكل",
+      "operation": "العملية",
+      "table": "الجدول",
+      "actorType": "نوع المنفّذ",
+      "actorId": "معرّف المنفّذ",
+      "actorIdInvalid": "أدخل معرّفاً كاملاً (مثل 01a181df-…) أو اتركه فارغاً.",
+      "from": "من تاريخ",
+      "to": "إلى تاريخ",
+      "rangeInvalid": "يجب أن يكون تاريخ النهاية في تاريخ البداية أو بعده.",
+      "number": "الرقم",
+      "time": "الوقت",
+      "actor": "المنفّذ",
+      "record": "السجل",
+      "recordHidden": "مخفي",
+      "empty": "لا توجد تغييرات تطابق هذه التصفية.",
+      "loadFailed": "تعذّر تحميل سجل التغييرات. يرجى المحاولة مرة أخرى.",
+      "loadMore": "عرض المزيد",
+      "operations": {
+        "INSERT": "إنشاء",
+        "UPDATE": "تعديل"
+      },
+      "actorTypes": {
+        "Staff": "موظف",
+        "Trainee": "متدرب",
+        "Anonymous": "غير مسجّل الدخول",
+        "System": "النظام",
+        "Database": "قاعدة البيانات"
+      },
+      "tables": {
+        "application_attachments": "ملفات الطلبات",
+        "assignments": "عمليات الربط",
+        "certificate_templates": "قالب الشهادة",
+        "contact_logs": "سجل التواصل",
+        "employees": "حسابات الموظفين",
+        "evaluation_criteria": "معايير التقييم",
+        "fields": "المجالات",
+        "mentor_requests": "طلبات التدريب",
+        "notification_settings": "إعدادات الإشعارات",
+        "notifications": "الإشعارات",
+        "progress_notes": "ملاحظات المتابعة",
+        "roles": "الأدوار",
+        "trainee_sign_in_codes": "رموز دخول المتدربين",
+        "trainees": "المتدربون",
+        "training_applications": "طلبات التدريب المقدّمة",
+        "user_sessions": "جلسات الدخول"
+      },
+      "unknownUser": "مستخدم غير معروف",
+      "traineeWithoutName": "متدرب (لم يُدخل اسمه بعد)",
+      "staffCurrentRole": "موظف · الدور الحالي: {{role}}"
     }
   },
   "preview": {

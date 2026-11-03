@@ -54,6 +54,13 @@ describe('AdminPreviewStore (Admin Preview Mode mock)', () => {
     expect(one.rows).toHaveLength(1);
   });
 
+  it('has an empty audit log', async () => {
+    expect((await send('GET', '/api/admin/audit-logs?table=fields')).body).toEqual({
+      hasMore: false,
+      entries: [],
+    });
+  });
+
   it('validates like the real API and forgets everything on reset', async () => {
     expect((await send('POST', '/api/admin/fields', { name: 'Mobile' })).status).toBe(201);
     expect((await send('POST', '/api/admin/fields', { name: 'mobile' })).status).toBe(409);

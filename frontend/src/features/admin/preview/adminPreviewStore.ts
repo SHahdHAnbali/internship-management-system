@@ -48,6 +48,8 @@ export class AdminPreviewStore {
         return this.changeRole(id, input['role']);
       case 'GET accepted-trainees':
         return this.ok([]); // Preview Mode has no trainee records
+      case 'GET audit-logs':
+        return this.ok({ hasMore: false, entries: [] }); // nor an audit log
       case 'GET reports/:id':
         if (id === 'fields') return this.fieldsReport(url);
         return id === 'monthly' ? this.monthlyReport(url) : this.error(404);

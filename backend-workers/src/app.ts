@@ -21,6 +21,7 @@ import {
   NotFoundError,
 } from './domain/errors';
 import { emailSenderFor } from './email';
+import { auditLogRoutes } from './features/admin/auditLogRoutes';
 import { adminRoutes } from './features/admin/routes';
 import { certificateTemplateRoutes } from './features/admin/certificateTemplate';
 import { authRoutes, isSecure } from './features/auth/routes';
@@ -46,6 +47,7 @@ import { matchesTemplate, routingPath, type Route } from './http/routes';
 export const routes: Route[] = [
   ...authRoutes,
   ...adminRoutes,
+  ...auditLogRoutes,
   ...certificateTemplateRoutes,
   ...adminTraineeRoutes,
   ...traineeRoutes,

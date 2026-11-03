@@ -52,14 +52,15 @@ Deploying the site before the Worker exists breaks `/api` (the binding has nothi
 - `/api/auth/config` → the client id and the staff domains `["stu.najah.edu", "progineer.net"]` (AD-45).
 - `/api/auth/me` → 401 when signed out.
 
-### Current deployment (2026-11-03, mentor profile)
-- Worker `ims-api` version `e7c0bda6-c9c9-4b1f-a320-82e21762ad23` (previous: `957f65e2-b288-41d3-9ede-90a7ddc0c527`, the fields report and trainee history filters release); secrets `DATABASE_URL`, `SESSION_SECRET` set.
-- Pages production deployment `8bed5dfc-7245-413d-aaf7-19ec6001bb70` (previous: `384b6599-df21-4280-b396-824c246a0d15`).
+### Current deployment (2026-11-03, Admin audit log viewer)
+- Worker `ims-api` version `043dcafa-fcdc-4c9f-b1c9-fa7c38b238fe` (previous: `e7c0bda6-c9c9-4b1f-a320-82e21762ad23`, the mentor profile release); secrets `DATABASE_URL`, `SESSION_SECRET` set.
+- Pages production deployment `11ae7ac8-4027-41e9-b5e6-339a57870f4f` (previous: `8bed5dfc-7245-413d-aaf7-19ec6001bb70`).
+- Known, separately tracked: the Worker's database account owns `audit_logs` and can bypass its append-only protection (audit inspection 2026-11-03); not changed by this release.
 - No database migration (the reports only read).
 
 ### Rollback
-- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`384b6599…`) → *Rollback*, or redeploy that commit.
-- **Worker:** `npx wrangler rollback 957f65e2-b288-41d3-9ede-90a7ddc0c527` (in `backend-workers/`).
+- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`8bed5dfc…`) → *Rollback*, or redeploy that commit.
+- **Worker:** `npx wrangler rollback e7c0bda6-c9c9-4b1f-a320-82e21762ad23` (in `backend-workers/`).
 
 Neither touches the database.
 

@@ -19,7 +19,8 @@
       "menu": "Admin pages",
       "label": "Admin pages",
       "acceptedTrainees": "Accepted trainees",
-      "reports": "Reports"
+      "reports": "Reports",
+      "auditLog": "Audit log"
     },
     "actions": {
       "save": "Save",
@@ -256,6 +257,60 @@
     },
     "reports": {
       "title": "Reports"
+    },
+    "auditLog": {
+      "title": "Audit log",
+      "description": "Every recorded change: when, by whom, the operation, the table and the record. Read-only; the stored values are not shown.",
+      "filters": "Audit log filters",
+      "any": "Any",
+      "operation": "Operation",
+      "table": "Table",
+      "actorType": "Actor type",
+      "actorId": "Actor ID",
+      "actorIdInvalid": "Enter a full ID (for example 01a181df-…), or leave it empty.",
+      "from": "From date",
+      "to": "To date",
+      "rangeInvalid": "The end date must be on or after the start date.",
+      "number": "No.",
+      "time": "Time",
+      "actor": "Actor",
+      "record": "Record",
+      "recordHidden": "Hidden",
+      "empty": "No audit entries match these filters.",
+      "loadFailed": "Unable to load the audit log. Please try again.",
+      "loadMore": "Load more",
+      "operations": {
+        "INSERT": "Created",
+        "UPDATE": "Changed"
+      },
+      "actorTypes": {
+        "Staff": "Staff",
+        "Trainee": "Trainee",
+        "Anonymous": "Not signed in",
+        "System": "System",
+        "Database": "Database"
+      },
+      "tables": {
+        "application_attachments": "Application files",
+        "assignments": "Assignments",
+        "certificate_templates": "Certificate template",
+        "contact_logs": "Contact log",
+        "employees": "Staff accounts",
+        "evaluation_criteria": "Evaluation criteria",
+        "fields": "Fields",
+        "mentor_requests": "Mentor requests",
+        "notification_settings": "Notification settings",
+        "notifications": "Notifications",
+        "progress_notes": "Progress notes",
+        "roles": "Roles",
+        "trainee_sign_in_codes": "Trainee sign-in codes",
+        "trainees": "Trainees",
+        "training_applications": "Training applications",
+        "user_sessions": "Sign-in sessions"
+      },
+      "unknownUser": "Unknown user",
+      "traineeWithoutName": "Trainee (name not entered yet)",
+      "staffCurrentRole": "Staff · current role: {{role}}"
     }
   },
   "preview": {

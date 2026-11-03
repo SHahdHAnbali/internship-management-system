@@ -68,3 +68,62 @@ export interface NotificationSettings {
   lateEvaluationReminderDays: number;
   pendingRequestAlertDays: number;
 }
+
+/** The tables the audit log records (every table with the audit trigger). */
+export const AUDITED_TABLES = [
+  'application_attachments',
+  'assignments',
+  'certificate_templates',
+  'contact_logs',
+  'employees',
+  'evaluation_criteria',
+  'fields',
+  'mentor_requests',
+  'notification_settings',
+  'notifications',
+  'progress_notes',
+  'roles',
+  'trainee_sign_in_codes',
+  'trainees',
+  'training_applications',
+  'user_sessions',
+] as const;
+export type AuditedTable = (typeof AUDITED_TABLES)[number];
+
+export const AUDIT_OPERATIONS = ['INSERT', 'UPDATE'] as const;
+export const AUDIT_ACTOR_TYPES = ['Staff', 'Trainee', 'Anonymous', 'System', 'Database'] as const;
+
+/**
+ * One audit log entry as the viewer receives it (AD-51): safe metadata only, never the stored values, plus who acted by
+ * name. `entityId` is null for the sign-in tables (session and sign-in code ids are not shown).
+ */
+export interface AuditEntry {
+  id: string;
+  occurredAt: string;
+  actorType: (typeof AUDIT_ACTOR_TYPES)[number];
+  actorId: string | null;
+  /** Staff and Trainee actors: whether the account was found. */
+  actorKnown: boolean;
+  /** The account's name (null when unknown, or a trainee who has not entered one). */
+  actorName: string | null;
+  /** Staff actors: their role now (roles are not kept historically). */
+  actorCurrentRole: 'Admin' | 'HR' | 'Employee' | null;
+  operation: (typeof AUDIT_OPERATIONS)[number];
+  table: AuditedTable;
+  entityId: string | null;
+}
+
+export interface AuditPage {
+  hasMore: boolean;
+  entries: AuditEntry[];
+}
+
+/** Viewer filters; '' = any. `from` / `to` are instants (ISO 8601), the end excluded. */
+export interface AuditFilters {
+  operation: string;
+  table: string;
+  actorType: string;
+  actorId: string;
+  from: string;
+  to: string;
+}

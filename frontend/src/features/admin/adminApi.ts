@@ -6,6 +6,8 @@ import type {
 } from './certificate/model';
 import type {
   AcceptedTrainee,
+  AuditFilters,
+  AuditPage,
   CreateFieldRequest,
   EvaluationCriterion,
   Field,
@@ -33,6 +35,13 @@ export const adminApi = {
   changeUserRole: (id: string, role: UserRole) =>
     apiRequest<User>('PUT', `/admin/users/${id}/role`, { role }),
   listAcceptedTrainees: () => apiRequest<AcceptedTrainee[]>('GET', '/admin/accepted-trainees'),
+  /** The audit log, newest first; `before` = the last entry shown, for the next (older) page. */
+  auditLogs: (filters: AuditFilters, before?: string) => {
+    const query = new URLSearchParams(
+      Object.entries({ ...filters, before: before ?? '' }).filter(([, value]) => value),
+    ).toString();
+    return apiRequest<AuditPage>('GET', `/admin/audit-logs${query ? `?${query}` : ''}`);
+  },
   getNotificationSettings: () =>
     apiRequest<NotificationSettings>('GET', '/admin/settings/notifications'),
   updateNotificationSettings: (settings: NotificationSettings) =>

@@ -231,6 +231,11 @@ export const routes: RouteObject[] = [
               })),
           },
           {
+            path: 'audit-log',
+            lazy: () =>
+              import('./features/admin/AuditLogPage').then((m) => ({ Component: m.AuditLogPage })),
+          },
+          {
             path: 'settings',
             lazy: () =>
               import('./features/admin/SettingsPage').then((m) => ({ Component: m.SettingsPage })),
