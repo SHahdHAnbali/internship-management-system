@@ -11,8 +11,8 @@ import {
   unprotectTicket,
 } from './auth/session';
 import { loadSettings, type Bindings } from './config';
-import type { AppEnv, Dependencies, SessionUser } from './context';
-import { Database, sqlState, type AuditActor } from './db';
+import type { AppEnv, Dependencies } from './context';
+import { Database, sqlState } from './db';
 import {
   ConcurrencyError,
   ConfigurationError,
@@ -35,7 +35,7 @@ import { fileRoutes } from './features/training/files';
 import { hrRoutes } from './features/training/hrRoutes';
 import { traineeRoutes } from './features/training/traineeRoutes';
 import { findSessionUser } from './features/auth/sessionLookup';
-import { findSignedIn, startSession } from './features/auth/sessions';
+import { actorFor, findSignedIn, startSession } from './features/auth/sessions';
 import { errorProblem, internalError, newTraceId, statusProblem, tooManyRequests } from './http/problems';
 import { matchesTemplate, routingPath, type Route } from './http/routes';
 
@@ -289,12 +289,6 @@ const healthHeaders = {
   Expires: 'Thu, 01 Jan 1970 00:00:00 GMT',
   Pragma: 'no-cache',
 };
-
-/** Audit actor: staff and trainees by id; an ordinary Google user has no IMS account, so stays Anonymous. */
-function actorFor(user: SessionUser): AuditActor {
-  if (user.role === null) return { type: 'Anonymous', id: null };
-  return { type: user.role === 'Trainee' ? 'Trainee' : 'Staff', id: user.id };
-}
 
 function unhealthy(error: unknown): Response {
   console.error(

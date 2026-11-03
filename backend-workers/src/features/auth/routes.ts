@@ -6,7 +6,7 @@ import { isNullOrWhiteSpace } from '../../domain/text';
 import { bindJson, type RequestSchema } from '../../http/body';
 import { endpointFailure, json, statusProblem } from '../../http/problems';
 import type { Route } from '../../http/routes';
-import { revokeSession, startSession } from './sessions';
+import { actorFor, revokeSession, startSession } from './sessions';
 import { signInWithGoogle, type GoogleSignInFailure } from './staffSignIn';
 import { requestCode, verifyCode, verifyToken, type TraineeSignInContext } from './traineeSignIn';
 
@@ -63,7 +63,6 @@ export const authRoutes: Route[] = [
 
       const result = await signInWithGoogle(body.value.idToken, {
         db: c.var.db,
-        actor: c.var.actor,
         settings: c.var.settings,
         google: c.var.deps.google,
         now: c.var.deps.now(),
@@ -164,9 +163,11 @@ function traineeContext(c: Context<AppEnv>): TraineeSignInContext {
 async function signIn(c: Context<AppEnv>, user: SessionUser): Promise<Response> {
   const { settings, deps } = c.var;
   const now = deps.now();
+  // Recorded as the user who has just been verified (not the request's actor, which is whoever was signed in before:
+  // usually nobody). That user's sign-in also replaces this browser's previous session, in the same statement.
   const session = await startSession(
     c.var.db,
-    c.var.actor,
+    actorFor(user),
     user,
     now,
     settings.sessionAbsoluteLifetimeMinutes,

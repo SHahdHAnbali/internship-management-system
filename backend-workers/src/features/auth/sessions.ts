@@ -21,6 +21,12 @@ const GOOGLE_PREFIX = 'google:';
  */
 const ACTOR = `actor AS (SELECT set_config('ims.actor_type', $1, true), set_config('ims.actor_id', $2, true))`;
 
+/** Audit actor: staff and trainees by id; an ordinary Google user has no IMS account, so stays Anonymous. */
+export function actorFor(user: SessionUser): AuditActor {
+  if (user.role === null) return { type: 'Anonymous', id: null };
+  return { type: user.role === 'Trainee' ? 'Trainee' : 'Staff', id: user.id };
+}
+
 /**
  * Starts a session for `user`, ending `lifetimeMinutes` from now at the latest. Audited as `actor`.
  * `replacing`: the browser's current session, revoked as `Replaced` in the same transaction, so either both happen or

@@ -170,7 +170,9 @@ describe('audit log viewer: filters and pages', () => {
     await newField(otherAdmin.client);
     const ended = new Date(Date.now() + 1000).toISOString();
     const mine = `actorId=${admin.user.id}`;
-    const shape = (p: Page) => p.entries.map((e) => [e.operation, e.table, e.entityId]);
+    // The Admin's own sign-in (account and session) is recorded as them too; these checks look at the records made here.
+    const made = (p: Page) => p.entries.filter((e) => e.table !== 'employees' && e.table !== 'user_sessions');
+    const shape = (p: Page) => made(p).map((e) => [e.operation, e.table, e.entityId]);
 
     expect(shape(await read(admin.client, `?${mine}`))).toEqual([
       ['INSERT', 'evaluation_criteria', criterion.id],
@@ -191,13 +193,12 @@ describe('audit log viewer: filters and pages', () => {
 
     // Time range: the start is included, the end excluded; offsets other than Z are understood.
     expect(
-      (await read(admin.client, `?${mine}&from=${encodeURIComponent(started)}&to=${encodeURIComponent(ended)}`))
-        .entries,
+      made(await read(admin.client, `?${mine}&from=${encodeURIComponent(started)}&to=${encodeURIComponent(ended)}`)),
     ).toHaveLength(3);
-    expect((await read(admin.client, `?${mine}&to=${encodeURIComponent(started)}`)).entries).toEqual([]);
+    expect(made(await read(admin.client, `?${mine}&to=${encodeURIComponent(started)}`))).toEqual([]);
     expect((await read(admin.client, `?${mine}&from=${encodeURIComponent(ended)}`)).entries).toEqual([]);
     const offset = new Date(started).toISOString().replace('Z', '+00:00');
-    expect((await read(admin.client, `?${mine}&from=${encodeURIComponent(offset)}`)).entries).toHaveLength(3);
+    expect(made(await read(admin.client, `?${mine}&from=${encodeURIComponent(offset)}`))).toHaveLength(3);
 
     // Nothing matches: an empty history for those filters.
     expect(await read(admin.client, `?actorId=${crypto.randomUUID()}`)).toEqual({ hasMore: false, entries: [] });

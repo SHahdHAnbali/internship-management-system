@@ -571,13 +571,13 @@ describe('one-time initial Admin: mohammad.abujoudeh@progineer.net (AD-46)', () 
     ]);
   });
 
-  it('every other new staff member of either domain starts as Employee, recorded as an anonymous sign-in', async () => {
+  it('every other new staff member of either domain starts as Employee, recorded as created by its verified owner', async () => {
     for (const domain of ['progineer.net', 'stu.najah.edu']) {
       const email = uniqueEmail(domain);
       expect((await googleSignIn(email, domain)).user!.role).toBe('Employee');
       const [account] = await accounts(email);
       expect(await audit(account!.id)).toEqual([
-        { operation: 'INSERT', actor_type: 'Anonymous', actor_id: null, old_role: null, new_role: 'Employee' },
+        { operation: 'INSERT', actor_type: 'Staff', actor_id: account!.id, old_role: null, new_role: 'Employee' },
       ]);
     }
   });
@@ -1046,7 +1046,7 @@ describe('server-side sessions (AD-44)', () => {
     expect((await withCookie(forged)).status).toBe(401);
   });
 
-  it('records the session start as Anonymous (sign-in) and the sign-out as the signed-in user', async () => {
+  it('records the session start as the user who signed in, and the sign-out as the signed-in user', async () => {
     const { client, user } = await signInStaff(api, 'Employee');
     const { ticket } = await sessionOf(client.cookies.get('ims.session')!);
     await client.post('/api/auth/sign-out');
@@ -1058,7 +1058,7 @@ describe('server-side sessions (AD-44)', () => {
       ),
     );
     expect(audit.rows).toEqual([
-      { operation: 'INSERT', actor_type: 'Anonymous', actor_id: null },
+      { operation: 'INSERT', actor_type: 'Staff', actor_id: user.id },
       { operation: 'UPDATE', actor_type: 'Staff', actor_id: user.id },
     ]);
   });
@@ -1209,8 +1209,8 @@ describe('server-side sessions (AD-44)', () => {
       expect(rows[0]).toEqual({
         entity_id: old,
         operation: 'INSERT',
-        actor_type: 'Anonymous',
-        actor_id: null,
+        actor_type: 'Staff',
+        actor_id: user.id,
         reason: null,
       });
       // The revocation and the new session come from one statement (one transaction), so their order is not fixed.
@@ -1435,7 +1435,7 @@ describe('server-side sessions (AD-44)', () => {
 });
 
 describe('audit actor', () => {
-  it('records sign-in writes as Anonymous and a signed-in trainee as Trainee', async () => {
+  it('records the code request as Anonymous, and its verified use and the new account as the trainee', async () => {
     const { user, email } = await signInTrainee(api);
     const audit = await withDb((db) =>
       db.query(
@@ -1467,15 +1467,15 @@ describe('audit actor', () => {
       {
         table_name: 'trainee_sign_in_codes',
         operation: 'UPDATE',
-        actor_type: 'Anonymous',
-        actor_id: null,
+        actor_type: 'Trainee',
+        actor_id: user.id,
         columns: ['used_at'],
       },
       {
         table_name: 'trainees',
         operation: 'INSERT',
-        actor_type: 'Anonymous',
-        actor_id: null,
+        actor_type: 'Trainee',
+        actor_id: user.id,
         // The profile columns (PDF §8) exist from the start and are filled in by the first application.
         columns: ['email', 'full_name', 'id', 'major', 'phone', 'study_year', 'university'],
       },

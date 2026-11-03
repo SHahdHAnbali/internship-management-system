@@ -21,7 +21,7 @@ Mark items done here as they ship.
 - [x] Employee: available-trainees list with filters and CV view, mentor request (local; not deployed)
 - [ ] HR: approve/reject mentor requests (sets start/end), direct assignment. Done locally: approve with dates / reject (AD-49). Not yet: direct assignment
 - [ ] Employee: my trainees. Final evaluation form (criteria from Admin). Done and deployed (2026-10-29): my trainees (current, previous, requests) and periodic progress notes (core, see Phase 3). Not yet: final evaluation
-- [x] Audit log viewer: Admin only, read-only, safe metadata only (AD-51; deployed 2026-11-03). Not part of it, still open: a least-privileged database role for the Worker, attributing sign-in writes, a manual-SQL convention, audit retention (Q21)
+- [x] Audit log viewer: Admin only, read-only, safe metadata only (AD-51; deployed 2026-11-03). Sign-in writes recorded as the verified user (deployed 2026-11-03). Not part of it, still open: a least-privileged database role for the Worker, a manual-SQL convention, audit retention (Q21)
 - [ ] Admin: accepted trainees (PDF §2), HR: trainings list (read-only) and the trainee history report under HR › Reports (PDF §6; the other reports, filters and export not built). Done locally, not deployed (2026-10-31)
 - [ ] Emails: application received, accepted/rejected, assignment approved/rejected
 

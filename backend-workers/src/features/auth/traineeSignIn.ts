@@ -125,14 +125,16 @@ export async function verifyToken(token: string, context: TraineeSignInContext):
 }
 
 async function complete(signInCode: TraineeSignInCode, context: TraineeSignInContext): Promise<SessionUser> {
-  const { db, actor, now } = context;
+  const { db, now } = context;
   assertUsable(signInCode, now);
   const { rows } = await db.query<{ id: string; email: string }>('SELECT id, email FROM trainees WHERE email = $1', [
     signInCode.email,
   ]);
   const trainee = rows[0] ?? { id: uuidV7(now), email: normalizeEmail(signInCode.email) };
 
-  await db.transaction(actor, async (tx) => {
+  // The code or link has been verified: using it (and creating the account on a first sign-in) is recorded as the
+  // trainee. Requests and wrong codes, before any verification, stay with the request's actor (Anonymous).
+  await db.transaction({ type: 'Trainee', id: trainee.id }, async (tx) => {
     await updateOrConflict(tx, 'UPDATE trainee_sign_in_codes SET used_at = $1 WHERE id = $2 AND xmin = $3::xid', [
       now.toISOString(),
       signInCode.id,

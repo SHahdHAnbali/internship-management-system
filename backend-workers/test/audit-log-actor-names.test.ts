@@ -116,12 +116,18 @@ describe('audit log viewer: actor names', () => {
     expect(actor(byEntity(unknownTrainee))).toMatchObject({ actorType: 'Trainee', actorKnown: false, actorName: null });
   });
 
-  it('names nobody for sign-in writes (Anonymous), and a known trainee without a name yet as such', async () => {
+  it('names nobody for unverified sign-in writes (Anonymous), and a known trainee without a name yet as such', async () => {
     const admin = await signInStaff(api, 'Admin');
-    const trainee = await signInTrainee(api); // the trainee account is created while not signed in
-    const created = await read(admin.client, '?table=trainees&actorType=Anonymous&operation=INSERT');
-    const own = created.find((e) => e.entityId === trainee.user.id)!;
-    expect(actor(own)).toEqual({ actorType: 'Anonymous', actorKnown: false, actorName: null, actorCurrentRole: null });
+    const trainee = await signInTrainee(api);
+    // The code request comes before any verification: Anonymous, no name.
+    const requests = await read(admin.client, '?table=trainee_sign_in_codes&actorType=Anonymous&operation=INSERT');
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every((e) => actor(e).actorName === null && !e.actorKnown)).toBe(true);
+    // The account is created once the code is verified: recorded as the trainee, known, without a name yet.
+    const created = await read(admin.client, `?table=trainees&actorId=${trainee.user.id}&operation=INSERT`);
+    expect(created.map(actor)).toEqual([
+      { actorType: 'Trainee', actorKnown: true, actorName: null, actorCurrentRole: null },
+    ]);
 
     // Signing out is recorded as the trainee, who has not entered a name.
     expect((await trainee.client.post('/api/auth/sign-out')).status).toBe(204);

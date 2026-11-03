@@ -29,9 +29,9 @@ const INITIAL_ADMIN = { email: 'mohammad.abujoudeh@progineer.net', hostedDomain:
  */
 export async function signInWithGoogle(
   idToken: string,
-  context: { db: Database; actor: AuditActor; settings: Settings; google: GoogleTokenVerifier; now: Date },
+  context: { db: Database; settings: Settings; google: GoogleTokenVerifier; now: Date },
 ): Promise<{ user: SessionUser } | { failure: GoogleSignInFailure }> {
-  const { db, actor, settings, google, now } = context;
+  const { db, settings, google, now } = context;
   if (!settings.google.isConfigured) {
     return { failure: 'NotConfigured' };
   }
@@ -58,6 +58,7 @@ export async function signInWithGoogle(
   if (existing) return { user: existing };
 
   // New staff: Employee, except the one-time initial Admin, whose grant is recorded as made by the system (this rule).
+  // Any other new account is recorded as created by its owner, whose Google identity has just been verified.
   const initialAdmin = email === INITIAL_ADMIN.email && hostedDomain === INITIAL_ADMIN.hostedDomain;
   const role: UserRole = initialAdmin ? 'Admin' : 'Employee';
   const employee = {
@@ -65,7 +66,8 @@ export async function signInWithGoogle(
     email,
     fullName: newEmployeeName(isNullOrWhiteSpace(identity.name) ? email : identity.name),
   };
-  const created = await db.transaction(initialAdmin ? { type: 'System', id: null } : actor, (tx) =>
+  const actor: AuditActor = initialAdmin ? { type: 'System', id: null } : { type: 'Staff', id: employee.id };
+  const created = await db.transaction(actor, (tx) =>
     tx.query(
       `INSERT INTO employees (id, full_name, email, department, role) VALUES ($1, $2, $3, NULL, $4)
        ON CONFLICT (email) DO NOTHING`,
