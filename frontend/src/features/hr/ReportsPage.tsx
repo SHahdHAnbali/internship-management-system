@@ -3,8 +3,9 @@ import { useI18n } from '../../i18n/context';
 
 /**
  * HR: the reports (PDF §6 «السجلات والتقارير»). Built so far: the monthly report (field and employee filters), the fields
- * report (applications and accepted per field, field filter) and the trainee history (period and field filters on its
- * trainings). The other reports, the fields report's "completed" count and Excel / PDF export are not.
+ * report (applications and accepted per field, field filter), the mentor profile (trainees and assignments per
+ * employee) and the trainee history (period and field filters on its trainings). Not built: the hiring pipeline, the
+ * fields report's "completed" count, the mentor profile's average evaluation and Excel / PDF export.
  */
 export function ReportsPage() {
   const { t } = useI18n();
@@ -23,6 +24,12 @@ export function ReportsPage() {
             <Link to="/hr/reports/fields">{t('reports.fields.title')}</Link>
           </h2>
           <p className="text-muted">{t('reports.fields.description')}</p>
+        </li>
+        <li className="ims-card">
+          <h2 className="mb-1 text-h3 font-semibold text-heading">
+            <Link to="/hr/reports/mentor-profile">{t('reports.mentorProfile.title')}</Link>
+          </h2>
+          <p className="text-muted">{t('reports.mentorProfile.description')}</p>
         </li>
         <li className="ims-card">
           <h2 className="mb-1 text-h3 font-semibold text-heading">

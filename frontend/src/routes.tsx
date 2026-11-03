@@ -72,6 +72,20 @@ export const routes: RouteObject[] = [
                 Component: m.MyTraineesPage,
               })),
           },
+          {
+            path: 'reports',
+            lazy: () =>
+              import('./features/employee/ReportsPage').then((m) => ({
+                Component: m.ReportsPage,
+              })),
+          },
+          {
+            path: 'reports/mentor-profile',
+            lazy: () =>
+              import('./reports/MentorProfileReport').then((m) => ({
+                Component: () => <m.MentorProfileReport scope="own" backTo="/employee/reports" />,
+              })),
+          },
         ],
       },
     ],
@@ -132,6 +146,13 @@ export const routes: RouteObject[] = [
             lazy: () =>
               import('./reports/FieldsReport').then((m) => ({
                 Component: () => <m.FieldsReport area="hr" backTo="/hr/reports" />,
+              })),
+          },
+          {
+            path: 'reports/mentor-profile',
+            lazy: () =>
+              import('./reports/MentorProfileReport').then((m) => ({
+                Component: () => <m.MentorProfileReport scope="all" backTo="/hr/reports" />,
               })),
           },
           {

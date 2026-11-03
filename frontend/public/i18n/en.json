@@ -410,7 +410,8 @@
   "employee": {
     "nav": {
       "available": "Available trainees",
-      "trainees": "My trainees"
+      "trainees": "My trainees",
+      "reports": "My reports"
     },
     "available": {
       "title": "Available trainees",
@@ -454,6 +455,9 @@
       "saved": "Note saved.",
       "empty": "No notes yet.",
       "loadFailed": "Unable to load notes. Please try again."
+    },
+    "reports": {
+      "title": "My reports"
     }
   },
   "hr": {
@@ -590,6 +594,18 @@
       "noMatch": "This field is not in the report.",
       "loadFailed": "Unable to load the report. Please try again.",
       "completedNotShown": "The number of completed trainings is not shown yet: when a training counts as completed has not been decided."
+    },
+    "mentorProfile": {
+      "title": "Mentor profile",
+      "description": "For each employee: how many trainees they have had and how many training assignments.",
+      "ownDescription": "How many trainees you have had and how many training assignments.",
+      "employee": "Employee",
+      "trainees": "Trainees",
+      "assignments": "Training assignments",
+      "empty": "No employees yet.",
+      "loadFailed": "Unable to load the report. Please try again.",
+      "countsHint": "Both counts include every recorded training, whatever its status. A trainee trained twice by the same employee counts once as a trainee and twice as an assignment.",
+      "notShown": "The average evaluation and the breakdown over time are not shown yet: they have not been defined."
     }
   }
 }
