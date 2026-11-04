@@ -67,9 +67,9 @@ export function validationProblem(errors: Record<string, string[]>, traceId: str
   return respond(400, body, PROBLEM_UTF8);
 }
 
-/** The rate limiter's rejection. */
-export function tooManyRequests(traceId: string): Response {
-  return respond(429, { status: 429, traceId }, PROBLEM_UTF8);
+/** The rate limiter's rejection: the same body as before, plus when to try again (the limiter's window). */
+export function tooManyRequests(traceId: string, retryAfterSeconds: number): Response {
+  return respond(429, { status: 429, traceId }, PROBLEM_UTF8, { 'Retry-After': String(retryAfterSeconds) });
 }
 
 /** Unhandled error: no details are exposed (they are logged). */

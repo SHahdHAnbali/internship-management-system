@@ -233,6 +233,7 @@ describe('rate limiting (trainee sign-in, per client)', () => {
     expect(limited.status).toBe(429);
     expect(limited.headers.get('content-type')).toBe('application/problem+json; charset=utf-8');
     expect(Object.keys(await body(limited))).toEqual(['status', 'traceId']);
+    expect(limited.headers.get('retry-after')).toBe('60'); // the limiter's window
 
     // Another client is not affected; other endpoints are not limited.
     expect(

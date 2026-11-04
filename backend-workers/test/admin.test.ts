@@ -241,6 +241,39 @@ describe('notification settings (PDF §7: 7 / 3 / 5 days)', () => {
 
     await client.put('/api/admin/settings/notifications', current); // restore for other tests
   });
+
+  // In this file, after the test above: the settings row is shared, and tests in one file run in order.
+  it('a change is audited with the Admin as actor and the intervals before and after', async () => {
+    const { client, user } = await signInStaff(api, 'Admin');
+    const current = await body(await client.get('/api/admin/settings/notifications'));
+    const values = {
+      trainingEndingNoticeDays: current.trainingEndingNoticeDays === 9 ? 8 : 9,
+      lateEvaluationReminderDays: current.lateEvaluationReminderDays,
+      pendingRequestAlertDays: current.pendingRequestAlertDays,
+    };
+    expect((await client.put('/api/admin/settings/notifications', values)).status).toBe(200);
+
+    const audit = await withDb((db) =>
+      db.query(
+        `SELECT operation, entity_id, actor_type, actor_id, old_values, new_values FROM audit_logs
+          WHERE table_name = 'notification_settings' AND actor_id = $1 ORDER BY id`,
+        [user.id],
+      ),
+    );
+    expect(audit.rows).toEqual([
+      {
+        operation: 'UPDATE',
+        entity_id: '1',
+        actor_type: 'Staff',
+        actor_id: user.id,
+        // Only the changed interval.
+        old_values: { training_ending_notice_days: current.trainingEndingNoticeDays },
+        new_values: { training_ending_notice_days: values.trainingEndingNoticeDays },
+      },
+    ]);
+
+    await client.put('/api/admin/settings/notifications', current); // restore for other tests
+  });
 });
 
 describe('database integrity (PDF §6, §8): roles, audit log, no hard deletes', () => {

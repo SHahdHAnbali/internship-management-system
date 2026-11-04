@@ -60,6 +60,12 @@ export const routes: Route[] = [
   ...notificationRoutes,
 ];
 
+/**
+ * The rate limiter's window in seconds (`Retry-After` of its 429): `"period"` of `TRAINEE_RATE_LIMITER` in wrangler.jsonc.
+ * test/security-headers.test.ts fails if the two differ.
+ */
+export const RATE_LIMIT_PERIOD_SECONDS = 60;
+
 export const productionDependencies: Dependencies = {
   now: () => new Date(),
   google: createGoogleVerifier(googleKeySource, (reason) =>
@@ -78,6 +84,7 @@ export const productionDependencies: Dependencies = {
 export function createApp(dependencies: Dependencies = productionDependencies) {
   const app = new Hono<AppEnv>({ getPath: (request) => routingPath(new URL(request.url).pathname) });
 
+  app.use(securityHeaders); // first, so it covers every response, errors included
   app.use(async (c, next) => {
     c.set('traceId', newTraceId());
     c.set('deps', dependencies);
@@ -126,7 +133,9 @@ export function createApp(dependencies: Dependencies = productionDependencies) {
 
       if (route.rateLimited) {
         const client = c.req.header('cf-connecting-ip') ?? 'unknown';
-        if (!(await c.var.deps.rateLimit(c.env, client))) return tooManyRequests(c.var.traceId);
+        if (!(await c.var.deps.rateLimit(c.env, client))) {
+          return tooManyRequests(c.var.traceId, RATE_LIMIT_PERIOD_SECONDS);
+        }
       }
 
       return route.handle(c);
@@ -181,6 +190,19 @@ function noEndpoint(c: Context<AppEnv>): Response {
   return allowed.length > 0
     ? statusProblem(405, c.var.traceId, false, { Allow: [...new Set(allowed)].join(', ') })
     : statusProblem(404, c.var.traceId, false);
+}
+
+/**
+ * Every response that does not set its own policy is never stored by a browser or proxy (API data are personal and
+ * change with each request) and never MIME-sniffed. Responses with their own `Cache-Control` keep it: files and
+ * certificate images (`private, no-store`), session cookies and errors (`no-cache,no-store`), `/health`. The headers
+ * that only matter for HTML pages (CSP, frame and referrer policies) come from `_headers` on the static site.
+ */
+async function securityHeaders(c: Context<AppEnv>, next: Next) {
+  await next();
+  const headers = c.res.headers;
+  if (!headers.has('Cache-Control')) headers.set('Cache-Control', 'no-store');
+  if (!headers.has('X-Content-Type-Options')) headers.set('X-Content-Type-Options', 'nosniff');
 }
 
 /**
