@@ -52,14 +52,14 @@ Deploying the site before the Worker exists breaks `/api` (the binding has nothi
 - `/api/auth/config` → the client id and the staff domains `["stu.najah.edu", "progineer.net"]` (AD-45).
 - `/api/auth/me` → 401 when signed out.
 
-### Current deployment (2026-11-04, least-privilege database role)
+### Current deployment (2026-11-04, report export)
 - Worker `ims-api` version `aaa13c87-f4b6-45d2-b9ce-34dd74a89ba7`: the same code as `6625ef5c-781a-49a3-96da-908a80f9cae6` (the sign-in audit attribution release); only the `DATABASE_URL` secret changed. Secrets `DATABASE_URL`, `SESSION_SECRET` set.
 - **`DATABASE_URL` now connects as `ims_app`** (least-privilege role, Option A; pooled host, `sslmode=verify-full`), no longer as the owner `neondb_owner`. Role, grants and limits: [least-privilege.md](least-privilege.md). Its credential is kept in the developer machine's .NET user-secrets (`ConnectionStrings:NeonApp`); the owner credential (`ConnectionStrings:Neon`) is used for migrations and administration only.
-- Pages production deployment `11ae7ac8-4027-41e9-b5e6-339a57870f4f` (unchanged; previous: `8bed5dfc-7245-413d-aaf7-19ec6001bb70`).
+- Pages production deployment `c81d55dc-0891-4289-9fd3-220335a7a045` (commit `6903209`: Excel and PDF report export, AD-55; verified in production by the owner); previous: `11ae7ac8-4027-41e9-b5e6-339a57870f4f`. The Worker was not redeployed for it.
 - No migration; no change to tables, triggers, functions or data.
 
 ### Rollback
-- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`8bed5dfc…`) → *Rollback*, or redeploy that commit.
+- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`11ae7ac8…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
 - **Worker code:** `npx wrangler rollback 043dcafa-fcdc-4c9f-b1c9-fa7c38b238fe` (the release before sign-in attribution).
 

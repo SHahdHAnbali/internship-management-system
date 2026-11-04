@@ -2,7 +2,8 @@
 
 Every requirement of the original requirements PDF (*خطة نظام إدارة المتدربين*, 22 Oct 2026, the source of truth) and
 the owner-approved decisions, against the **actual code and production**. Last verified: **2026-11-04**, `main` @
-`72614eb`, Worker `aaa13c87`, Pages `11ae7ac8`, Neon `ims_db` with 8 migrations (read-only checks). The earlier snapshot
+`72614eb`, Worker `aaa13c87`, Pages `11ae7ac8`, Neon `ims_db` with 8 migrations (read-only checks). Updated for the
+report export: `main` @ `6903209`, Pages `c81d55dc` (Worker and database unchanged). The earlier snapshot
 (2026-10-27) is in Git history.
 
 **Status:** ✅ Complete · 🟡 Partial (part of the required behaviour is missing) · ❌ Not implemented · ⏸ Deferred by
@@ -13,9 +14,9 @@ the owner · 🔒 Blocked by an external dependency (built where possible). "Pro
 
 | Status | Count |
 |---|---|
-| ✅ Complete | 28 |
+| ✅ Complete | 29 |
 | 🟡 Partial | 8 |
-| ❌ Not implemented | 19 |
+| ❌ Not implemented | 18 |
 | ⏸ Deferred by the owner | 3 |
 | 🔒 Blocked by an external dependency | 3 |
 | **Total** | **61** |
@@ -106,7 +107,7 @@ provider.
 | R41 | Hiring pipeline (HR) | ❌ | — | Needs evaluations; NEW-03 |
 | R42 | Trainee history (HR) | ✅ | Yes | Period and field filters; employee filter NEW-14 |
 | R43 | Every report filtered by period, field and employee | 🟡 | Yes | Where the meaning is defined |
-| R44 | Export every report to Excel or PDF | ❌ | — | **Built locally, not deployed (2026-11-04, AD-55):** Excel and PDF for the four built reports; the hiring pipeline does not exist yet |
+| R44 | Export every report to Excel or PDF | ✅ | Yes | Excel and PDF for the four built reports (AD-55); deployed 2026-11-04 and verified in production by the owner. The hiring pipeline (R41) is not built yet; its export comes with it |
 
 ## Notifications and e-mail (p.3–4)
 

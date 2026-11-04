@@ -27,7 +27,7 @@ Requirement-by-requirement status: [requirements-progress.md](requirements-progr
 - [ ] Certificate generation, public page `/c/:code`, publish/private, revoke (**blocked**: L1, L7, Q2, Q4, Q11; domain Q10)
 - [ ] PDF and QR (**blocked** with certificates; Q8)
 - [ ] Reports: monthly (**done**), fields (**partly**: no completed count, L1), mentor profile (**partly**: no average or "over time", NEW-03, NEW-13), trainee history (**done**); hiring pipeline (**not built**: needs evaluations)
-- [ ] Excel and PDF export of the built reports (**built locally, not deployed**, 2026-11-04, AD-55: in the browser, from the data each page shows; Arabic PDFs with embedded Noto fonts)
+- [x] Excel and PDF export of the built reports (in production since 2026-11-04, verified by the owner; AD-55: in the browser, from the data each page shows; Arabic PDFs with embedded Noto fonts)
 
 ## Phase 3: Automation (about 2 weeks)
 - [ ] Scheduled reminders (7-day, end-of-training, late evaluation every 3 days, 5-day pending) and the weekly summary (**blocked**: NEW-04, NEW-05, NEW-06, NEW-09, L1, N3; e-mail)

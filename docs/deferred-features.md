@@ -92,7 +92,7 @@ blocks it, not built) · **Partly done** · **Done**. Production means the Cloud
 | D-42 | Mentor profile: trainees per employee over time and average evaluation | — | Average: N2, Q11, NEW-03; "over time": NEW-13; Admin access: NEW-02 | **Partly done** (deployed 2026-11-03): HR (every employee) and each employee (own). Distinct trainees and assignment records over every stored status (owner approval 2026-11-03) |
 | D-43 | Hiring pipeline: trainees recommended for hiring, ranked by evaluation | Final evaluation | NEW-03, N2, Q11 | **Blocked** |
 | D-44 | Trainee history: all trainings and contact notes of one trainee | — | Employee filter: NEW-14 | **Done** (deployed 2026-11-02; filters 2026-11-03): HR; trainees with at least one Accepted application; period and field filters on the trainings, offered from two trainings on; contact notes always complete |
-| D-45 | Filter by period, field and employee, and export to Excel or PDF | D-40–D-44 | Filters built where their meaning is defined (monthly: month, field, employee; fields: field; trainee history: period, field) | **Partly done**: filters as listed. Excel and PDF export of the four built reports: built locally, not deployed (2026-11-04, AD-55) |
+| D-45 | Filter by period, field and employee, and export to Excel or PDF | D-40–D-44 | Filters built where their meaning is defined (monthly: month, field, employee; fields: field; trainee history: period, field) | **Partly done**: filters as listed. Excel and PDF export of the four built reports: **done** (deployed 2026-11-04, Pages `c81d55dc`; verified in production by the owner, AD-55) |
 
 ### Notifications and e-mail
 
