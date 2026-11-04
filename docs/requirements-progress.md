@@ -3,7 +3,8 @@
 Every requirement of the original requirements PDF (*خطة نظام إدارة المتدربين*, 22 Oct 2026, the source of truth) and
 the owner-approved decisions, against the **actual code and production**. Last verified: **2026-11-04**, `main` @
 `72614eb`, Worker `aaa13c87`, Pages `11ae7ac8`, Neon `ims_db` with 8 migrations (read-only checks). Updated for the
-report export: `main` @ `6903209`, Pages `c81d55dc` (Worker and database unchanged). The earlier snapshot
+report export: `main` @ `6903209`, Pages `c81d55dc` (Worker and database unchanged). Updated for the security release:
+`main` @ `8f005fa`, Worker `6c144b0b` (Pages and database unchanged). The earlier snapshot
 (2026-10-27) is in Git history.
 
 **Status:** ✅ Complete · 🟡 Partial (part of the required behaviour is missing) · ❌ Not implemented · ⏸ Deferred by
@@ -92,8 +93,8 @@ provider.
 
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
-| R35 | Nothing is deleted; changes are status changes (p.3, p.4) | ✅ | Yes | DELETE/TRUNCATE refused by triggers on every table |
-| R36 | Every action recorded with who and when (p.3, p.5) | ✅ | Yes | Database triggers; actor from the verified session |
+| R35 | Nothing is deleted; changes are status changes (p.3, p.4) | ✅ | Yes | DELETE/TRUNCATE refused by triggers on every table; a catalog test checks every table |
+| R36 | Every action recorded with who and when (p.3, p.5) | ✅ | Yes | Database triggers; actor from the verified session; behaviour tests for the main writes |
 | R37 | Audit log viewer (AD-51) | ✅ | Yes | Admin only; metadata only; actor names |
 | R65 | Least-privilege database role for the Worker (AD-52) | ✅ | Yes | `ims_app`; limits in [least-privilege.md](least-privilege.md) |
 
@@ -127,7 +128,7 @@ provider.
 | R52 | Responsive Arabic (RTL) and English interface (p.5) | ✅ | Yes | React (AD-34) |
 | R53 | A trainee reaches only their own data (p.5) | ✅ | Yes | |
 | R54 | Private files served through temporary links (p.5) | ✅ | Yes | R2, 5-minute signed links (AD-48) |
-| R55 | Rate limiting on the application form (p.5) | ✅ | Yes | Also on trainee sign-in |
+| R55 | Rate limiting on the application form (p.5) | ✅ | Yes | Also on trainee sign-in; the 429 says `Retry-After: 60` |
 | R56 | CAPTCHA on the application form (p.5) | ❌ | — | Q22; provider keys |
 | R57 | Scheduled jobs (p.5) | ❌ | — | Needed by R28, R47, R48 |
 | R58 | Daily database backup (p.5) | ⏸ | — | Deferred until development is complete (AD-54); Neon restore window 6 hours |

@@ -51,17 +51,48 @@ Deploying the site before the Worker exists breaks `/api` (the binding has nothi
 - `https://progineer-ims.pages.dev/health` → `Healthy` (Worker → Neon).
 - `/api/auth/config` → the client id and the staff domains `["stu.najah.edu", "progineer.net"]` (AD-45).
 - `/api/auth/me` → 401 when signed out.
+- Every `/api/*` response carries `Cache-Control: no-store` (unless it sets its own) and `X-Content-Type-Options: nosniff`;
+  `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
+  A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Current deployment (2026-11-04, report export)
-- Worker `ims-api` version `aaa13c87-f4b6-45d2-b9ce-34dd74a89ba7`: the same code as `6625ef5c-781a-49a3-96da-908a80f9cae6` (the sign-in audit attribution release); only the `DATABASE_URL` secret changed. Secrets `DATABASE_URL`, `SESSION_SECRET` set.
+### Current deployment (2026-11-04, security release)
+- Worker `ims-api` version `6c144b0b-bfb4-4f05-a880-a4b1c5eb491b` (commit `8f005fa`, deployed 2026-11-04 14:28 UTC):
+  the security improvements A1, A2, B1 and B3 below. Same bindings, variables and compatibility settings as before;
+  secrets `DATABASE_URL` and `SESSION_SECRET` carried over unchanged (not re-entered). Before the deploy: 337/337 Worker
+  tests passed (as `ims_app`, disposable local PostgreSQL), typecheck and dry-run build passed. After it: the signed-out
+  checks above passed (GET/OPTIONS only); the only change from the pre-deployment baseline was the two new headers;
+  read-only Neon catalog and counts unchanged.
+- Previous known-good version: `aaa13c87-f4b6-45d2-b9ce-34dd74a89ba7`, the same code as
+  `6625ef5c-781a-49a3-96da-908a80f9cae6` (the sign-in audit attribution release) with only the `DATABASE_URL` secret
+  changed to `ims_app`.
 - **`DATABASE_URL` now connects as `ims_app`** (least-privilege role, Option A; pooled host, `sslmode=verify-full`), no longer as the owner `neondb_owner`. Role, grants and limits: [least-privilege.md](least-privilege.md). Its credential is kept in the developer machine's .NET user-secrets (`ConnectionStrings:NeonApp`); the owner credential (`ConnectionStrings:Neon`) is used for migrations and administration only.
 - Pages production deployment `c81d55dc-0891-4289-9fd3-220335a7a045` (commit `6903209`: Excel and PDF report export, AD-55; verified in production by the owner); previous: `11ae7ac8-4027-41e9-b5e6-339a57870f4f`. The Worker was not redeployed for it.
-- No migration; no change to tables, triggers, functions or data.
+- No migration; no change to tables, triggers, functions or data. Pages, Neon, R2 and the secrets were not changed by
+  the security release.
+
+### Security assessment (2026-11-04)
+Items of the read-only security assessment of 2026-11-04 (its own labels, not the question IDs of
+[decisions.md](decisions.md)):
+
+| Item | What | Status |
+|---|---|---|
+| A1 | Catalog tests: every business table has enabled audit, no-delete and no-truncate triggers; `audit_logs` is append-only and refuses TRUNCATE; a new unprotected table is detected; no event trigger or row-level security | **Done**: tests, commit `8f005fa` |
+| A2 | Audit behaviour tests: criterion update, notification settings change, application rejection, trainee profile, attachment metadata (actor, operation, table, values before and after; no file content) | **Done**: tests, commit `8f005fa` |
+| B1 | API headers: `Cache-Control: no-store` and `X-Content-Type-Options: nosniff` by default; explicit headers kept (errors and cookies `no-cache,no-store`; files and images `private, no-store`; `/health`) | **Done**: deployed (Worker `6c144b0b`), verified in production |
+| B3 | `Retry-After: 60` on the rate limiter's 429 (body and limits unchanged); a test keeps it equal to `"period"` in `wrangler.jsonc` | **Done**: deployed (Worker `6c144b0b`); verified by the local tests only (not by exhausting the production limit) |
+| B2 | Rate limit on staff sign-in | **Open**: owner decision on the limits |
+| C1 | What Workers Logs record (tokens or cookies) | **Open**: needs a look in the Cloudflare dashboard |
+| C2 | PostgreSQL error messages in the logs | **Open** (optional) |
+| C3 | One rate-limit counter shared by trainee sign-in and application submit | **Open**: owner decision (optional) |
 
 ### Rollback
 - **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`11ae7ac8…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback 043dcafa-fcdc-4c9f-b1c9-fa7c38b238fe` (the release before sign-in attribution).
+- **Worker code:** `npx wrangler rollback aaa13c87-f4b6-45d2-b9ce-34dd74a89ba7` (in `backend-workers/`; the release
+  before the security headers). It already connects as `ims_app`, and no secret has changed since, so it cannot bring
+  back the owner credential. **Never roll back to `6625ef5c` or an earlier version**: those were deployed with the owner
+  `neondb_owner` credential, and a rollback may bring back the secret values stored with that version. After any rollback,
+  check the role (`/health`, and a read-only look at the Neon connections) before anything else.
 
 None of these touches the data.
 
