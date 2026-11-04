@@ -33,8 +33,8 @@ export function monthBounds(value: string | undefined): { start: string; end: st
   return { start: `${match[1]}-${match[2]}-01`, end: `${match[1]}-${match[2]}-${String(lastDay).padStart(2, '0')}` };
 }
 
-/** An optional id filter: absent or empty means "all"; anything else must be a GUID. */
-function optionalId(c: Context<AppEnv>, name: string): string | null {
+/** An optional id filter: absent or empty means "all"; anything else must be a GUID (else 400). */
+export function optionalId(c: Context<AppEnv>, name: string): string | null {
   const value = c.req.query(name);
   if (!value) return null;
   const id = parseGuid(value);

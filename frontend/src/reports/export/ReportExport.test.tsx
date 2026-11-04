@@ -218,9 +218,130 @@ describe('mentor profile export', () => {
       ['Mentor One', 4, 5],
       ['Mentor Two', 0, 0],
     ]);
+    expect(lastDocument().details[0]).toBe(
+      'reports.mentorProfile.employee: reports.mentorProfile.allEmployees',
+    );
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
       '/api/hr/reports/mentor-profile',
     ]);
+  });
+
+  it('HR with an employee chosen: Excel and PDF hold only that row, and say which employee; clearing restores everyone', async () => {
+    const everyone = [mentor('e1', 'Mentor One', 4, 5), mentor('e2', 'Mentor Two', 0, 0)];
+    const fetchMock = mockFetch((_method, url) => {
+      const chosen = /employeeId=(.+)$/.exec(url)?.[1];
+      return [200, { rows: chosen ? everyone.filter((r) => r.employee.id === chosen) : everyone }];
+    });
+    renderRoutes(
+      [
+        {
+          path: '/hr/reports/mentor-profile',
+          element: <MentorProfileReport scope="all" backTo="/hr/reports" />,
+        },
+      ],
+      { url: '/hr/reports/mentor-profile', i18n: en() },
+    );
+    await screen.findByRole('table');
+    const user = userEvent.setup();
+    const selector = screen.getByRole('combobox', { name: 'reports.mentorProfile.employee' });
+
+    await user.selectOptions(selector, 'e1');
+    await waitFor(() => expect(tableRows()).toEqual([['Mentor One', '4', '5']]));
+    const calls = fetchMock.mock.calls.length;
+    for (const format of ['xlsx', 'pdf'] as const) {
+      await exportAs(format);
+      expect(lastFormat()).toBe(format);
+      expect(lastDocument().sections[0]!.rows).toEqual([['Mentor One', 4, 5]]);
+      expect(lastDocument().details[0]).toBe('reports.mentorProfile.employee: Mentor One');
+      expect(savedName()).toMatch(new RegExp(`^ims-mentor-profile-.*\\.${format}$`));
+    }
+    expect(fetchMock.mock.calls.length).toBe(calls); // exporting fetches nothing
+
+    await user.selectOptions(selector, '');
+    await waitFor(() => expect(tableRows()).toHaveLength(2));
+    await exportAs('xlsx');
+    expect(lastDocument().sections[0]!.rows).toEqual([
+      ['Mentor One', 4, 5],
+      ['Mentor Two', 0, 0],
+    ]);
+    expect(lastDocument().details[0]).toBe(
+      'reports.mentorProfile.employee: reports.mentorProfile.allEmployees',
+    );
+  });
+
+  describe.each([
+    ['en', enMessages, 'No employees yet.', 'No matching employees.', 'All employees'],
+    ['ar', arMessages, 'لا يوجد موظفون بعد.', 'لا يوجد موظفون مطابقون.', 'كل الموظفين'],
+  ] as const)('HR empty exports in %s', (language, raw, none, noMatch, all) => {
+    const i18n = () => testI18n(JSON.parse(raw), language);
+    const messages = JSON.parse(raw);
+    const employeeLabel = messages.reports.mentorProfile.employee as string;
+    /** As `exportAs`, with the buttons' translated names. */
+    const exportIn = async (format: 'xlsx' | 'pdf') => {
+      files.saveFile.mockClear();
+      await userEvent
+        .setup()
+        .click(screen.getByRole('button', { name: messages.reports.export[format] as string }));
+      await waitFor(() => expect(files.saveFile).toHaveBeenCalled());
+    };
+    const openAt = (query: string) =>
+      renderRoutes(
+        [
+          {
+            path: '/hr/reports/mentor-profile',
+            element: <MentorProfileReport scope="all" backTo="/hr/reports" />,
+          },
+        ],
+        { url: `/hr/reports/mentor-profile${query}`, i18n: i18n() },
+      );
+
+    it.each(['xlsx', 'pdf'] as const)(
+      '%s: no employees at all says so, for All employees',
+      async (format) => {
+        mockFetch(() => [200, { rows: [] }]);
+        openAt('');
+        await screen.findByText(none);
+        await exportIn(format);
+        expect(lastFormat()).toBe(format);
+        expect(lastDocument().sections[0]).toMatchObject({ rows: [], empty: none });
+        expect(lastDocument().details[0]).toBe(`${employeeLabel}: ${all}`);
+      },
+    );
+
+    it.each(['xlsx', 'pdf'] as const)(
+      '%s: no row for the chosen employee says no matching employees, as the page',
+      async (format) => {
+        mockFetch((_method, url) => [
+          200,
+          { rows: url.includes('employeeId=') ? [] : [mentor('e1', 'Mentor One', 4, 5)] },
+        ]);
+        openAt('?employee=e404');
+        await screen.findByText(noMatch);
+        await exportIn(format);
+        expect(lastFormat()).toBe(format);
+        expect(lastDocument().sections[0]).toMatchObject({ rows: [], empty: noMatch });
+        expect(lastDocument().details[0]).toBe(`${employeeLabel}: —`); // unknown id, as the selector
+      },
+    );
+
+    it.each(['xlsx', 'pdf'] as const)(
+      '%s: a matching employee exports their row',
+      async (format) => {
+        mockFetch((_method, url) => [
+          200,
+          {
+            rows: url.includes('employeeId=e1')
+              ? [mentor('e1', 'Mentor One', 4, 5)]
+              : [mentor('e1', 'Mentor One', 4, 5), mentor('e2', 'Mentor Two', 0, 0)],
+          },
+        ]);
+        openAt('?employee=e1');
+        await waitFor(() => expect(tableRows()).toEqual([['Mentor One', '4', '5']]));
+        await exportIn(format);
+        expect(lastDocument().sections[0]!.rows).toEqual([['Mentor One', 4, 5]]);
+        expect(lastDocument().details[0]).toBe(`${employeeLabel}: Mentor One`);
+      },
+    );
   });
 
   it('Employee: only their own row, from their own endpoint', async () => {

@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import type { AppEnv } from '../../context';
 import { json } from '../../http/problems';
 import type { Route } from '../../http/routes';
+import { optionalId } from './monthlyReport';
 
 /**
  * The mentor profile (PDF §6 «ملف المدرّب»: how many each employee has trained, over time, and the average of their
@@ -32,13 +33,20 @@ const toMentor = (r: MentorRow) => ({
   assignments: r.assignments,
 });
 
-/** HR: every employee who mentors (the Employee role) or has mentored (has an assignment), with zero counts too. */
+/**
+ * HR: every employee who mentors (the Employee role) or has mentored (has an assignment), with zero counts too.
+ * `employeeId` (optional, PDF §6 employee filter) keeps only that employee's row of the same list: an id outside the
+ * list (or unknown) gives no rows; an id that is not a GUID is a 400.
+ */
 async function allMentors(c: Context<AppEnv>) {
+  const employeeId = optionalId(c, 'employeeId');
   const { rows } = await c.var.db.query<MentorRow>(
     `${MENTOR_SELECT}
-      WHERE e.role = 'Employee' OR EXISTS (SELECT 1 FROM assignments x WHERE x.employee_id = e.id)
+      WHERE (e.role = 'Employee' OR EXISTS (SELECT 1 FROM assignments x WHERE x.employee_id = e.id))
+        AND ($1::uuid IS NULL OR e.id = $1)
       GROUP BY e.id, e.full_name
       ORDER BY e.full_name, e.id`,
+    [employeeId],
   );
   return json({ rows: rows.map(toMentor) });
 }

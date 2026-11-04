@@ -1,20 +1,29 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
+import { useEffect, useId, useState } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import { useI18n } from '../i18n/context';
 import { ExportButtons } from './export/ExportButtons';
 import { fileDate } from './export/files';
 import type { ExportDocument } from './export/model';
 import { mentorProfileApi, type MentorProfile } from './mentorProfileApi';
 
+type Loaded = { rows: MentorProfile[] | null; failed: boolean };
+
 /**
  * The mentor profile (PDF §6 «ملف المدرّب», for HR and each employee for themself), as far as it is defined: how many
- * trainees each employee has had and how many assignment records, over every stored status. HR sees every employee;
- * an employee only their own profile. The average evaluation and the breakdown over time are not shown: neither is
+ * trainees each employee has had and how many assignment records, over every stored status. HR sees every employee and
+ * can filter by one of them (PDF §6 employee filter; the choice is kept in the address, as in the monthly report); an
+ * employee only sees their own profile. The average evaluation and the breakdown over time are not shown: neither is
  * defined yet, and the page says so instead of showing a number.
  */
 export function MentorProfileReport({ scope, backTo }: { scope: 'all' | 'own'; backTo: string }) {
   const { t, language } = useI18n();
-  const [state, setState] = useState<{ rows: MentorProfile[] | null; failed: boolean }>();
+  const id = useId();
+  const [params, setParams] = useSearchParams();
+  const employeeId = scope === 'all' ? (params.get('employee') ?? '') : '';
+  // Every employee (HR) or the employee's own row, loaded once. For HR it is also the list of employees to choose from.
+  const [state, setState] = useState<Loaded>();
+  // HR with an employee chosen: that employee's row from the API, kept with the choice it was loaded for.
+  const [filtered, setFiltered] = useState<Loaded & { employeeId: string }>();
 
   useEffect(() => {
     const load =
@@ -27,12 +36,45 @@ export function MentorProfileReport({ scope, backTo }: { scope: 'all' | 'own'; b
     );
   }, [scope]);
 
-  /** Exactly what the page shows: every employee (HR) or the employee's own row, with the page's notes. */
+  useEffect(() => {
+    if (!employeeId) return; // "All employees" is the list already loaded: nothing to fetch
+    let current = true;
+    mentorProfileApi.all(employeeId).then(
+      (r) => current && setFiltered({ employeeId, rows: r.rows, failed: false }),
+      () => current && setFiltered({ employeeId, rows: null, failed: true }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [employeeId]);
+
+  // What the page shows: never a previous choice's rows while the current one loads.
+  const shown = !employeeId ? state : filtered?.employeeId === employeeId ? filtered : undefined;
+  const employees = scope === 'all' ? (state?.rows ?? []).map((row) => row.employee) : [];
+  const chosenName = employees.find((e) => e.id === employeeId)?.fullName;
+  // The empty message of the page and of its export: nobody to list at all, or no row for the chosen employee.
+  const emptyMessage = t(
+    employeeId ? 'reports.mentorProfile.noMatch' : 'reports.mentorProfile.empty',
+  );
+
+  const choose = (value: string) => setParams(value ? { employee: value } : {}, { replace: true });
+
+  /** Exactly what the page shows: every employee or the chosen one (HR), or the employee's own row, with the notes. */
   const exportDocument = (): ExportDocument | null => {
-    if (!state?.rows) return null;
+    if (!shown?.rows) return null;
     return {
       title: t('reports.mentorProfile.title'),
-      details: [t('reports.mentorProfile.countsHint'), t('reports.mentorProfile.notShown')],
+      details: [
+        ...(scope === 'all'
+          ? [
+              `${t('reports.mentorProfile.employee')}: ${
+                employeeId ? (chosenName ?? '—') : t('reports.mentorProfile.allEmployees')
+              }`,
+            ]
+          : []),
+        t('reports.mentorProfile.countsHint'),
+        t('reports.mentorProfile.notShown'),
+      ],
       generated: t('reports.export.generated', { date: new Date().toLocaleString(language) }),
       direction: language === 'ar' ? 'rtl' : 'ltr',
       language,
@@ -44,8 +86,8 @@ export function MentorProfileReport({ scope, backTo }: { scope: 'all' | 'own'; b
             { label: t('reports.mentorProfile.trainees'), numeric: true },
             { label: t('reports.mentorProfile.assignments'), numeric: true },
           ],
-          rows: state.rows.map((row) => [row.employee.fullName, row.trainees, row.assignments]),
-          empty: t('reports.mentorProfile.empty'),
+          rows: shown.rows.map((row) => [row.employee.fullName, row.trainees, row.assignments]),
+          empty: emptyMessage,
         },
       ],
     };
@@ -65,15 +107,45 @@ export function MentorProfileReport({ scope, backTo }: { scope: 'all' | 'own'; b
         )}
       </p>
 
+      {scope === 'all' && (
+        <form
+          role="search"
+          aria-label={t('reports.mentorProfile.filters')}
+          className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          onSubmit={(event) => event.preventDefault()}
+        >
+          <div className="flex flex-col gap-1">
+            <label className="ims-label" htmlFor={`${id}-employee`}>
+              {t('reports.mentorProfile.employee')}
+            </label>
+            <select
+              id={`${id}-employee`}
+              className="ims-input"
+              value={employeeId}
+              onChange={(e) => choose(e.target.value)}
+            >
+              <option value="">{t('reports.mentorProfile.allEmployees')}</option>
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.fullName}
+                </option>
+              ))}
+              {/* A choice from the address that is not (or no longer) in the list: kept, shown as unknown. */}
+              {employeeId && state?.rows && !chosenName && <option value={employeeId}>—</option>}
+            </select>
+          </div>
+        </form>
+      )}
+
       <div className="mb-4 flex justify-end">
-        <ExportButtons build={exportDocument} disabled={!state?.rows} />
+        <ExportButtons build={exportDocument} disabled={!shown?.rows} />
       </div>
 
-      {!state ? (
+      {!shown ? (
         <p className="ims-state" role="status">
           {t('common.loading')}
         </p>
-      ) : state.failed ? (
+      ) : shown.failed ? (
         <p className="ims-state" role="alert">
           {t('reports.mentorProfile.loadFailed')}
         </p>
@@ -82,20 +154,20 @@ export function MentorProfileReport({ scope, backTo }: { scope: 'all' | 'own'; b
           <div className="sm:col-span-2">
             <dt className="text-small text-muted">{t('reports.mentorProfile.employee')}</dt>
             <dd className="text-h3 font-semibold text-heading">
-              {state.rows![0]!.employee.fullName}
+              {shown.rows![0]!.employee.fullName}
             </dd>
           </div>
           <div>
             <dt className="text-small text-muted">{t('reports.mentorProfile.trainees')}</dt>
-            <dd className="text-h3 font-semibold text-heading">{state.rows![0]!.trainees}</dd>
+            <dd className="text-h3 font-semibold text-heading">{shown.rows![0]!.trainees}</dd>
           </div>
           <div>
             <dt className="text-small text-muted">{t('reports.mentorProfile.assignments')}</dt>
-            <dd className="text-h3 font-semibold text-heading">{state.rows![0]!.assignments}</dd>
+            <dd className="text-h3 font-semibold text-heading">{shown.rows![0]!.assignments}</dd>
           </div>
         </dl>
-      ) : state.rows!.length === 0 ? (
-        <p className="ims-state">{t('reports.mentorProfile.empty')}</p>
+      ) : shown.rows!.length === 0 ? (
+        <p className="ims-state">{emptyMessage}</p>
       ) : (
         <div className="ims-table-card">
           <table className="ims-table">
@@ -107,7 +179,7 @@ export function MentorProfileReport({ scope, backTo }: { scope: 'all' | 'own'; b
               </tr>
             </thead>
             <tbody>
-              {state.rows!.map((row) => (
+              {shown.rows!.map((row) => (
                 <tr key={row.employee.id}>
                   <th scope="row" className="font-semibold text-heading">
                     {row.employee.fullName}

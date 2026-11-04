@@ -138,6 +138,62 @@ describe('mentor profile (PDF §6)', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('filters HR’s list by employee (PDF §6): one row, the same counts; unknown ids give none; bad ids are a 400', async () => {
+    const { hr, field } = await cast();
+    const chosen = await signInStaff(api, 'Employee');
+    const other = await signInStaff(api, 'Employee');
+    const trainee = await signInTrainee(api);
+    for (const end of ['2031-01-31', '2031-03-31']) {
+      // The same trainee twice with the chosen employee: 1 trainee, 2 assignments.
+      await seedAssignment(
+        (await accepted(hr.client, field.id, trainee)).applicationId,
+        chosen.user.id,
+        '2031-01-01',
+        end,
+        'Active',
+      );
+    }
+    await seedAssignment(
+      (await accepted(hr.client, field.id)).applicationId,
+      other.user.id,
+      '2031-01-01',
+      '2031-01-31',
+      'Active',
+    );
+
+    const everyone = await allMentors(hr.client);
+    expect(everyone.map((r) => r.employee.id)).toEqual(expect.arrayContaining([chosen.user.id, other.user.id]));
+    const filtered = async (query: string) => {
+      const response = await hr.client.get(`/api/hr/reports/mentor-profile${query}`);
+      return {
+        status: response.status,
+        rows: response.status === 200 ? (await body<{ rows: Mentor[] }>(response)).rows : null,
+      };
+    };
+
+    // The chosen employee's row only, exactly as in the full list.
+    const one = await filtered(`?employeeId=${chosen.user.id}`);
+    expect(one).toEqual({ status: 200, rows: [everyone.find((r) => r.employee.id === chosen.user.id)] });
+    expect(one.rows![0]).toMatchObject({ trainees: 1, assignments: 2 });
+    // Upper-case GUIDs are the same id.
+    expect((await filtered(`?employeeId=${chosen.user.id.toUpperCase()}`)).rows).toEqual(one.rows);
+    // An empty value means every employee (other test files add employees meanwhile, so only this test's are compared).
+    const unfiltered = await filtered('?employeeId=');
+    expect(unfiltered.status).toBe(200);
+    const mine = (rows: Mentor[]) => rows.filter((r) => [chosen.user.id, other.user.id].includes(r.employee.id));
+    expect(mine(unfiltered.rows!)).toEqual(mine(everyone));
+    expect(mine(unfiltered.rows!)).toHaveLength(2);
+    // A valid id that is not in the list (unknown, or staff who are not mentors such as HR itself): no rows, no data.
+    expect(await filtered(`?employeeId=${crypto.randomUUID()}`)).toEqual({ status: 200, rows: [] });
+    expect(await filtered(`?employeeId=${hr.user.id}`)).toEqual({ status: 200, rows: [] });
+    // Not a GUID: 400, as the monthly report.
+    for (const bad of ['not-a-guid', '123', `${chosen.user.id}x`]) {
+      expect((await filtered(`?employeeId=${encodeURIComponent(bad)}`)).status, bad).toBe(400);
+    }
+    // Still HR only: an employee cannot use it to read another employee's row.
+    expect((await chosen.client.get(`/api/hr/reports/mentor-profile?employeeId=${other.user.id}`)).status).toBe(403);
+  });
+
   it('shows an employee only themself, whatever the request says', async () => {
     const { hr, field } = await cast();
     const me = await signInStaff(api, 'Employee');

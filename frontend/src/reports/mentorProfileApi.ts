@@ -8,8 +8,17 @@ export interface MentorProfile {
   assignments: number;
 }
 
-/** The mentor profile: every employee for HR (`/api/hr/...`), or the signed-in employee's own (`/api/employee/...`). */
+/**
+ * The mentor profile: every employee for HR (`/api/hr/...`, optionally only one: `employeeId`), or the signed-in
+ * employee's own (`/api/employee/...`).
+ */
 export const mentorProfileApi = {
-  all: () => apiRequest<{ rows: MentorProfile[] }>('GET', '/hr/reports/mentor-profile'),
+  all: (employeeId?: string) =>
+    apiRequest<{ rows: MentorProfile[] }>(
+      'GET',
+      employeeId
+        ? `/hr/reports/mentor-profile?${new URLSearchParams({ employeeId })}`
+        : '/hr/reports/mentor-profile',
+    ),
   own: () => apiRequest<MentorProfile>('GET', '/employee/reports/mentor-profile'),
 };
