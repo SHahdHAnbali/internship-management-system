@@ -63,8 +63,9 @@ Deploying the site before the Worker exists breaks `/api` (the binding has nothi
   (`DATABASE_URL`, `SESSION_SECRET`, not re-entered) and `_headers`. Before: 338/338 Worker tests (as `ims_app`,
   disposable local PostgreSQL) and 288/288 frontend tests, typechecks, lint and builds passed. After: the signed-out
   checks (including the report endpoints, 401) identical to the pre-deployment baseline; new translations served;
-  read-only Neon catalog and counts unchanged, the Worker connected as `ims_app`. **Signed-in verification by the owner
-  in production: pending.**
+  read-only Neon catalog and counts unchanged, the Worker connected as `ims_app`. **Owner's signed-in verification in
+  production (2026-11-04): the "No matching employees" empty state verified and working.** The other scenarios (choosing
+  an employee, filtered Excel/PDF export, All employees, the Employee's own profile) are not yet confirmed.
 - Previous (security release): Worker `6c144b0b-bfb4-4f05-a880-a4b1c5eb491b` (commit `8f005fa`, deployed 2026-11-04
   14:28 UTC): the security improvements A1, A2, B1 and B3 below. Same bindings, variables and compatibility settings as before;
   secrets `DATABASE_URL` and `SESSION_SECRET` carried over unchanged (not re-entered). Before the deploy: 337/337 Worker
