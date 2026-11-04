@@ -1,40 +1,43 @@
 # Roadmap: incremental feature plan
 
-Follows the PDF phases (§10). Each item is one vertical slice: Domain → Application → Infrastructure (EF configuration + migration) → Api → React feature → tests.
-Mark items done here as they ship.
+Follows the PDF phases (§10). Each item is one vertical slice with tests. Since 2026-10-27 the production API is the
+Cloudflare Worker (`backend-workers/`, AD-38); the EF Core migrations in `backend/` still own the schema.
+Status as of 2026-11-04 ("in production" = deployed to the Worker and Pages, [deployment.md](deployment.md)).
+Requirement-by-requirement status: [requirements-progress.md](requirements-progress.md). Open questions: [decisions.md](decisions.md) §C–D.
 
-## Step 0: Foundation (next)
-- [x] Install foundation packages ([decisions.md](decisions.md) §E), Docker Compose PostgreSQL, Material + Transloco with an AR/EN runtime switch
-- [x] `AppDbContext` (empty), `IAppDbContext`, DB health check
-- [x] Cookie authentication scheme and role policies wired (no sign-in endpoints yet)
-- [ ] First entities and the first migration (baseline schema)
-- [ ] `AuditInterceptor` with the no-delete guard, plus `ICurrentUser` and `IClock`
-- [x] Authentication: staff Google (domain-restricted, auto-create as Employee) and trainee passwordless link/code (15 min). Needs external configuration ([authentication.md](authentication.md))
-- [x] Frontend role guards and AR/EN switcher (React, after the 2026-10-27 migration)
-- [ ] Persist Data Protection keys (sessions survive restarts)
-- [ ] First Admin bootstrap (Q17)
+## Step 0: Foundation
+- [x] Foundation packages, Docker Compose PostgreSQL, runtime AR/EN (now React, AD-34)
+- [x] Database, health check, schema owned by EF Core migrations (8 applied), audit and no-delete triggers on every table (`ims_protect_table`)
+- [x] Authentication: staff Google (staff domains, auto Employee) and trainee passwordless link/code (15 min); persistent server-side sessions (AD-44)
+- [x] Frontend role guards and AR/EN switcher
+- [x] First Admin bootstrap (Q17 answered: first Admin in the database 2026-10-28, second Admin AD-46)
+- [x] Session keys: the Worker encrypts the session with a Workers secret (AD-40); ASP.NET Data Protection keys are not needed in production
 
 ## Phase 1: Core (MVP, about 6 weeks)
-- [x] Admin: fields (add/edit/activate-deactivate), evaluation criteria and weights, users and their roles, notification intervals (7/3/5 days). `roles` table with the 4 roles. Certificate template: done (AD-43, Workers API). Not yet: viewing accepted trainees and reports (see decisions.md §D, Q30–Q32)
-- [x] Trainee: application form with CV/letter upload (R2, AD-48), status board (local; not deployed). CAPTCHA (Q22) and e-mails not yet
-- [ ] HR: applications inbox, contact log, accept/reject with reason. Done locally: inbox, Under Review, accept, reject with reason, contact log (AD-47)
-- [x] Employee: available-trainees list with filters and CV view, mentor request (local; not deployed)
-- [ ] HR: approve/reject mentor requests (sets start/end), direct assignment. Done locally: approve with dates / reject (AD-49). Not yet: direct assignment
-- [ ] Employee: my trainees. Final evaluation form (criteria from Admin). Done and deployed (2026-10-29): my trainees (current, previous, requests) and periodic progress notes (core, see Phase 3). Not yet: final evaluation
-- [x] Audit log viewer: Admin only, read-only, safe metadata only (AD-51; deployed 2026-11-03). Sign-in writes recorded as the verified user (deployed 2026-11-03). Not part of it, still open: a least-privileged database role for the Worker, a manual-SQL convention, audit retention (Q21)
-- [ ] Admin: accepted trainees (PDF §2), HR: trainings list (read-only) and the trainee history report under HR › Reports (PDF §6; the other reports, filters and export not built). Done locally, not deployed (2026-10-31)
-- [ ] Emails: application received, accepted/rejected, assignment approved/rejected
+- [x] Admin: fields, evaluation criteria and weights, users and roles, notification intervals, certificate template (AD-43), accepted trainees (in production)
+- [x] Trainee: application form with CV/letter upload (R2, AD-48), application status board (in production). Not yet: CAPTCHA (Q22), the board after acceptance (L10)
+- [x] HR: applications inbox, Under Review, accept, reject with reason, contact log (AD-47, in production)
+- [x] Employee: available trainees with filters and CV view, mentor request (in production)
+- [ ] HR: approve/reject mentor requests with dates (**done**, AD-49, in production); direct assignment (**not built**: Q38, L5)
+- [ ] Employee: my trainees and progress notes (**done**, in production); final evaluation form (**not built**: Q3, N1–N7, Q11, Q13, L6)
+- [x] Audit log viewer: Admin only, read-only (AD-51); sign-in writes attributed to the verified user; least-privilege database role `ims_app` (AD-52) (in production)
+- [ ] E-mails: application received, accepted/rejected, assignment approved/rejected (**blocked**: SendGrid not operational, AD-53; NEW-01, NEW-07, Q10)
 
 ## Phase 2: Certificates & reports (about 3 weeks)
-- [ ] Certificate generation, public page `/c/:code`, publish/private, revoke
-- [ ] PDF and QR
-- [ ] Monthly, fields, mentor profile, hiring pipeline, and trainee history reports. Done: trainee history (deployed 2026-11-02) and the monthly report for HR and Admin with month, field and employee filters (deployed 2026-11-03). Deployed 2026-11-03: the fields report for HR and Admin (applications and accepted per field, field filter; the completed count waits for L1) and the trainee history's period and field filters on its trainings. Deployed 2026-11-03: the mentor profile for HR (every employee) and each employee (their own), trainees and assignments; the average evaluation and the breakdown over time are not built
-- [ ] Excel and PDF export
+- [ ] Certificate generation, public page `/c/:code`, publish/private, revoke (**blocked**: L1, L7, Q2, Q4, Q11; domain Q10)
+- [ ] PDF and QR (**blocked** with certificates; Q8)
+- [ ] Reports: monthly (**done**), fields (**partly**: no completed count, L1), mentor profile (**partly**: no average or "over time", NEW-03, NEW-13), trainee history (**done**); hiring pipeline (**not built**: needs evaluations)
+- [ ] Excel and PDF export of the built reports (**built locally, not deployed**, 2026-11-04, AD-55: in the browser, from the data each page shows; Arabic PDFs with embedded Noto fonts)
 
 ## Phase 3: Automation (about 2 weeks)
-- [ ] Scheduled reminders (7-day, end-of-training, late evaluation every 3 days, 5-day pending) and the weekly summary
-- [x] Progress notes: core deployed to production 2026-10-29 (Worker API, Employee "My trainees"): an employee writes and reads notes on their own Active trainees; no deletion; audited. A failed load shows an error instead of an empty list (local, not deployed). Not yet: notes of previous trainees in the web app. Open decisions, not owner-approved: editing and who else reads notes (Q37), the note date (Q40), notes only while Active (AD-49), notes after a transfer, text rules, access after a role change ([deferred-features.md](deferred-features.md) D-32)
-- [ ] Transfer, extend, end early, withdraw
-- [ ] Admin settings: evaluation criteria and weights, intervals, certificate and email templates (AR/EN)
-- [ ] LinkedIn share
-- [ ] In-app notifications and per-field opt-out. Done locally, not deployed (2026-10-31, AD-50): the four in-app events whose workflow exists, with "load more" pages (owner decisions C2–C5). Deployment waits for Q41 (C1). Not yet: "new trainee in your field" with its opt-out (Q14), the 7-day and training-ended notifications (lifecycle, scheduling)
+- [ ] Scheduled reminders (7-day, end-of-training, late evaluation every 3 days, 5-day pending) and the weekly summary (**blocked**: NEW-04, NEW-05, NEW-06, NEW-09, L1, N3; e-mail)
+- [x] Progress notes: core in production since 2026-10-29. Open: B2, B5, B7, B8, Q37, Q40
+- [ ] Transfer, extend, end early, withdraw (**blocked**: L1–L5, L8, L9)
+- [ ] Admin settings: criteria, weights and intervals (**done**); certificate template (**done**, AD-43); e-mail templates AR/EN (**blocked** with e-mail)
+- [ ] LinkedIn share (**blocked** with certificates)
+- [ ] In-app notifications (**partly**, in production since 2026-11-02, AD-50: four events, HR and Employee); "new trainee in your field" and its opt-out (Q14); 7-day and training-ended notifications (lifecycle, scheduling)
+
+## Deferred by the owner
+- Automated daily database backups: after the remaining development (AD-54; Neon restore window 6 hours)
+- Attendance or weekly hours tracking (Q6)
+- HR ownership of individual trainees (NEW-10)

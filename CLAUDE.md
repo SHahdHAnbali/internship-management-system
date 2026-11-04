@@ -16,10 +16,13 @@ Instructions for AI assistants and developers working in this repository.
 
 ## Repository layout
 ```
-backend/    ASP.NET Core 10 solution (Ims.slnx): src/{Ims.Domain, Ims.Application, Ims.Infrastructure, Ims.Api}, tests/
-frontend/   React 19 + TypeScript + Vite SPA (ims-web), deployed to Cloudflare Pages
-docs/       architecture & requirements docs
+backend-workers/  THE PRODUCTION API: TypeScript + Hono on Cloudflare Workers (Worker `ims-api`), Neon PostgreSQL, R2 files
+backend/          ASP.NET Core 10 solution (Ims.slnx): owns the schema (EF Core migrations); not deployed
+frontend/         React 19 + TypeScript + Vite SPA (ims-web), deployed to Cloudflare Pages (proxies /api to the Worker)
+docs/             architecture, requirements, decisions, status (requirements-progress.md), deployment
 ```
+New API features are built in `backend-workers/` (AD-38). Schema changes are EF Core migrations in `backend/`, then
+`npm run schema:generate` in `backend-workers/` and the `ims_app` grants (below).
 
 ## Commands
 ```bash
@@ -43,6 +46,12 @@ npm test -- --run                          # Vitest + React Testing Library
 npm run lint                               # oxlint
 npm run deploy                             # Cloudflare Pages (docs/deployment.md)
 
+# Worker API (from backend-workers/): the production API
+npm run dev -- --port 5106                 # local Worker on :5106 (.dev.vars, git-ignored; connects as ims_app)
+npm test                                   # Vitest in the Workers runtime; disposable PostgreSQL in Docker; runs as ims_app
+npm run typecheck && npm run build         # build = wrangler deploy --dry-run
+npm run schema:generate                    # refresh test/schema.sql after a migration
+
 # Migrations (from backend/)
 dotnet ef migrations add <Name> -p src/Ims.Infrastructure -s src/Ims.Api -o Persistence/Migrations
 dotnet ef database update -p src/Ims.Infrastructure -s src/Ims.Api
@@ -60,7 +69,7 @@ dotnet ef database update -p src/Ims.Infrastructure -s src/Ims.Api
 - IDs: `Guid.CreateVersion7()`. Times: UTC `DateTimeOffset`. Assignment dates: `DateOnly`. Use the injected `TimeProvider`, never `DateTime.Now`.
 - Package versions live only in `backend/Directory.Packages.props`. Shared build settings live in `backend/Directory.Build.props`. Warnings are errors, so fix them; do not suppress them.
 - Secrets never go in `appsettings*.json` or any tracked file. Use `dotnet user-secrets` locally. `.env` is git-ignored, while `.env.example` is tracked and holds placeholders only.
-- **Auth is secure by default**: the fallback policy requires a signed-in user. Mark public endpoints `[AllowAnonymous]` deliberately, and protect role endpoints with `[Authorize(Policy = AuthPolicies.Hr)]` etc. (`Ims.Api/Auth`). The signed-in user's id is the `NameIdentifier` claim (`ICurrentUser.UserId`). **Trainee endpoints must always filter by it** and never by an id taken from the request. Frontend areas use `roleGuard(...)` in `app.routes.ts`.
+- **Auth is secure by default**: the fallback policy requires a signed-in user. Mark public endpoints `[AllowAnonymous]` deliberately, and protect role endpoints with `[Authorize(Policy = AuthPolicies.Hr)]` etc. (`Ims.Api/Auth`). The signed-in user's id is the `NameIdentifier` claim (`ICurrentUser.UserId`). **Trainee endpoints must always filter by it** and never by an id taken from the request. Frontend areas use `<RequireRole role="…">` in `src/routes.tsx`.
 - Validation: DataAnnotations on request DTOs (automatic 400 `ProblemDetails`), plus business rules in Domain methods. Logging: inject `ILogger<T>` and use message templates (`"Accepted {ApplicationId}"`), never string interpolation.
 - Tests: xUnit v3, names like `Method_scenario_expectation` (CA1707 is off in `tests/`). Integration tests use `IClassFixture<ImsApiFactory>` (real, migrated PostgreSQL via Testcontainers). Use `factory.CreateClient("Admin")` to call the API as a role through the test-only `TestAuthHandler`. Pass `TestContext.Current.CancellationToken` to async calls.
 - Request DTOs are records: put DataAnnotations on the constructor parameters (`[Required] string Name`), **not** `[property: …]`, or MVC throws at runtime.
@@ -84,5 +93,6 @@ Use the code names from `docs/requirements-analysis.md` §2: `Trainee`, `Employe
 
 ## Workflow
 - Build one vertical slice at a time, following `docs/roadmap.md`. Each slice includes tests (domain unit tests for state rules, and integration tests for endpoints and role access).
-- Before finishing: `dotnet build && dotnet test` in `backend/`, and `npm run build && npm test -- --run && npm run lint` in `frontend/`.
+- Before finishing: `dotnet build && dotnet test` in `backend/`, `npm run typecheck && npm test && npm run build` in `backend-workers/`, and `npm run build && npm test -- --run && npm run lint` in `frontend/`.
+- Production data are real records: never delete, hide or rewrite them (the database refuses deletes anyway).
 - Do not add libraries outside those listed in `docs/decisions.md` §E without recording the reason there.

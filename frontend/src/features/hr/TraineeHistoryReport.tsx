@@ -2,6 +2,9 @@ import { useEffect, useId, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useI18n } from '../../i18n/context';
 import { ApiError } from '../../lib/api';
+import { ExportButtons } from '../../reports/export/ExportButtons';
+import { fileDate } from '../../reports/export/files';
+import { fileNamePart, type ExportDocument } from '../../reports/export/model';
 import { hrApi } from './hrApi';
 import type { HrTrainee, TraineeHistory } from './models';
 
@@ -143,11 +146,80 @@ function Report({ traineeId }: { traineeId: string }) {
         y.contactDate.localeCompare(x.contactDate) || y.recordedAt.localeCompare(x.recordedAt),
     );
 
+  const traineeName = history.data.trainee.fullName ?? history.data.trainee.email;
+
+  /**
+   * Exactly what the page shows: the trainings as filtered (with the filters in use) and every contact note (never
+   * filtered).
+   */
+  const exportDocument = (): ExportDocument | null => {
+    if (!trainingsShown) return null;
+    const fieldName = fields.find(([value]) => value === fieldId)?.[1];
+    const details = [`${t('hr.reports.traineeHistory.trainee')}: ${traineeName}`];
+    if (from) details.push(`${t('hr.reports.traineeHistory.from')}: ${date(from)}`);
+    if (until) details.push(`${t('hr.reports.traineeHistory.to')}: ${date(until)}`);
+    if (fieldName) details.push(`${t('training.fields.field')}: ${fieldName}`);
+    if (filtered) details.push(t('hr.reports.traineeHistory.filtersHint'));
+    return {
+      title: t('hr.reports.traineeHistory.title'),
+      details,
+      generated: t('reports.export.generated', { date: new Date().toLocaleString(language) }),
+      direction: language === 'ar' ? 'rtl' : 'ltr',
+      language,
+      fileName: `ims-trainee-history-${fileNamePart(traineeName)}-${fileDate()}`,
+      sections: [
+        {
+          heading: t('hr.reports.traineeHistory.trainings'),
+          columns: [
+            { label: t('training.fields.field'), width: 1.5 },
+            { label: t('hr.trainings.mentor'), width: 1.5 },
+            { label: t('hr.mentorRequests.startDate') },
+            { label: t('hr.mentorRequests.endDate') },
+            { label: t('hr.trainings.status') },
+            { label: t('hr.reports.traineeHistory.endReason'), width: 2 },
+          ],
+          rows: trainings.map((s) => [
+            s.fieldName,
+            s.employeeName,
+            date(s.startDate),
+            date(s.endDate),
+            t(`training.assignmentStatus.${s.status}`),
+            s.endReason ?? '—',
+          ]),
+          empty: t(
+            filtered
+              ? 'hr.reports.traineeHistory.noMatchingTrainings'
+              : 'hr.reports.traineeHistory.noTrainings',
+          ),
+        },
+        {
+          heading: t('hr.reports.traineeHistory.contactNotes'),
+          columns: [
+            { label: t('hr.contactLog.date') },
+            { label: t('hr.contactLog.method') },
+            { label: t('hr.contactLog.summary'), width: 4 },
+            { label: t('hr.reports.traineeHistory.author'), width: 1.5 },
+            { label: t('training.fields.field'), width: 1.5 },
+          ],
+          rows: notes.map((l) => [
+            date(l.contactDate),
+            t(`hr.contactLog.methods.${l.method}`),
+            l.summary,
+            l.authorName,
+            l.fieldName,
+          ]),
+          empty: t('hr.reports.traineeHistory.noContactNotes'),
+        },
+      ],
+    };
+  };
+
   return (
     <div className="flex flex-col gap-10">
-      <p className="text-h3 font-semibold text-heading">
-        {history.data.trainee.fullName ?? history.data.trainee.email}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-h3 font-semibold text-heading">{traineeName}</p>
+        <ExportButtons build={exportDocument} disabled={!trainingsShown} />
+      </div>
 
       <section aria-labelledby="report-trainings">
         <h2 id="report-trainings" className="mb-4 text-h3 font-semibold text-heading">

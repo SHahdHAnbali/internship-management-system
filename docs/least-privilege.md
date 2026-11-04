@@ -1,8 +1,8 @@
 # Least-privilege database role for the Worker (`ims_app`)
 
 **Status: Option A, rehearsed locally and deployed to production on 2026-11-04 (owner approval).** The production Worker
-now connects as `ims_app` (Worker version `aaa13c87`). End-to-end verification with a signed-in user is **pending the
-owner's smoke test** (below). Option B is not done. Basis: the read-only Neon least-privilege assessment of 2026-11-03.
+now connects as `ims_app` (Worker version `aaa13c87`). The owner's signed-in smoke test passed on 2026-11-04 (below).
+Option B is not done. Basis: the read-only Neon least-privilege assessment of 2026-11-03.
 
 ## The role
 
@@ -105,9 +105,11 @@ Neon project endpoint `ep-flat-block-b4o5p8gt` (us-east-2), database `ims_db`.
 6. **After:** `/health` Healthy (a query as `ims_app`), auth config unchanged, protected endpoints 401, pages 200; an
    `ims_app` connection live on Neon; 50 triggers enabled, functions unchanged, 98 audit rows untouched.
 
-**Pending, owner:** sign in as Admin, open the audit log and the reports; the newest entries should name you, and new
-rows should have `database_user = ims_app`. Still open (decisions): checking the Neon point-in-time restore window,
-rotating the `neondb_owner` password, Option B.
+**Owner smoke test (2026-11-04): passed.** The Admin signed in and used the audit log and the reports; the new audit
+rows (a sign-out and a new session) were written by `database_user = ims_app` with the Admin as the actor; triggers and
+privileges unchanged (read-only check). The Neon restore window is **6 hours** (owner, AD-54); automated daily backups
+are deferred until development is complete. Still open (decisions): rotating the `neondb_owner` password (NEW-16),
+Option B (NEW-15).
 
 **Rollback:** put the owner's pooled connection string back (`wrangler secret put DATABASE_URL`); the role and grants are
 inert and stay; no data is touched.

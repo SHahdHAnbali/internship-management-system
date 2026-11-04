@@ -2,16 +2,30 @@
 
 ## 1. Summary
 
-**A modular monolith**: one ASP.NET Core Web API, one PostgreSQL database and one React single-page app. The SPA is static and hosted on Cloudflare Pages; the API and database are not deployed yet ([deployment.md](deployment.md)).
+**A modular monolith**: one API, one PostgreSQL database and one React single-page app ([deployment.md](deployment.md)).
 
-- **Backend**: four projects with Clean Architecture dependency rules. Code is organised by **feature (vertical slices)** inside the Application layer.
-- **Frontend**: a React + TypeScript (Vite) app with one **lazy-loaded area per role**, plus the public pages (homepage, sign-in, certificate route). Migrated from Angular on 2026-10-27 (AD-34).
+**In production (since 2026-10-27):**
+- **Web**: React 19 + TypeScript + Vite (`frontend/`), static on **Cloudflare Pages** (`progineer-ims`), one lazy-loaded area per role (AD-34, AD-37).
+- **API**: TypeScript + Hono on **Cloudflare Workers** (`backend-workers/`, Worker `ims-api`, AD-38), reached only through the Pages Function `frontend/functions/api/[[path]].ts` (same origin, service binding). Every feature after 2026-10-27 was built here.
+- **Database**: **Neon PostgreSQL** (`ims_db`), reached over TLS through Neon's pooler as the least-privilege role `ims_app` (AD-52).
+- **Files**: a private **Cloudflare R2** bucket (`ims-files`), downloads through 5-minute signed links (AD-48).
+- **E-mail**: SendGrid selected, not operational yet (AD-53). Development writes e-mails to the log.
+
+**Kept, not deployed:** the **ASP.NET Core** solution (`backend/`). Its EF Core migrations are the only owner of the schema (the Worker never migrates), and its tests still run. It implements only the first modules (authentication, Admin); see §3.
 
 ```
-             ┌───────────────── React SPA (frontend/) ─────────────────┐
-             │  /c/:code (public) │ /trainee │ /employee │ /hr │ /admin │
-             └───────────────────────────────┬──────────────────────────┘
-                                             │ HTTPS  /api/*
+             ┌──────────── React SPA (frontend/) on Cloudflare Pages ────────────┐
+             │  public │ /trainee │ /employee │ /hr │ /admin │ /account         │
+             └──────────────────────────────────┬────────────────────────────────┘
+                                                │ same origin  /api/*  (Pages Function → service binding)
+             ┌──────────────── Cloudflare Worker ims-api (backend-workers/) ─────┐
+             │ Hono routes per feature, session auth, role policies, ProblemDetails│
+             │ pg over TLS (one connection per request) │ R2 binding (files)       │
+             └──────────────────────────────────┬────────────────────────────────┘
+                                                ▼
+                     Neon PostgreSQL ims_db (schema, triggers: owned by EF Core migrations)
+
+Reference implementation and schema owner (not deployed):
 ┌────────────────────────── ASP.NET Core (backend/) ─────────────────────────┐
 │ Ims.Api            controllers, auth schemes, policies, ProblemDetails, DI │
 │   │                                                                        │
@@ -43,7 +57,10 @@
 - Separate read/write models, event sourcing, or a domain-event bus. The audit log covers the history requirement.
 - A UI component library, global state library or monorepo tool. One React app with small contexts is enough.
 
-## 3. Backend
+## 3. Backend (ASP.NET Core, schema owner; not the production API)
+
+The production API is the Worker (§3a). This solution keeps the EF Core migrations (the schema, its constraints and the
+audit/no-delete triggers) and the original authentication and Admin implementation with its tests.
 
 ### Projects & dependency rule
 
@@ -93,6 +110,15 @@ backend/tests/
 - **Health**: `/health` includes a database connectivity check (`DatabaseHealthCheck`).
 - **Build quality**: `TreatWarningsAsErrors`, latest recommended analyzers, and Central Package Management (`Directory.Packages.props`).
 
+## 3a. Production API: Cloudflare Worker (`backend-workers/`)
+
+- **Routing**: Hono; each feature exports `Route[]` (`src/features/<area>/`): `auth`, `admin` (fields, criteria, users, settings, certificate template, audit log), `training` (trainee, HR, employee, accepted trainees, files), `notifications`, `reports` (monthly, fields, mentor profile). Every route declares its policy: `anonymous`, `authenticated` or exactly one role (secure by default).
+- **Database**: `pg` over Workers TCP sockets, one connection per request, plain parameterized SQL (AD-39). Writes run in a transaction that sets the audit actor with `set_config('ims.actor_*', …, true)`; the database triggers write `audit_logs`. The Worker connects as `ims_app` (owns nothing; exactly the table rights its SQL uses, `scripts/ims-app-grants.sql`; AD-52).
+- **Sessions**: encrypted `ims.session` cookie (HttpOnly, Secure, SameSite=Strict) plus a `user_sessions` row checked on every request (AD-40, AD-44).
+- **Files**: R2 binding `FILES`; `/api/files?token=…` serves a file to the user the signed link was made for, after checking access again (AD-48).
+- **Rate limiting**: the Workers Rate Limiting binding on trainee sign-in and application submission (AD-41).
+- **Tests**: Vitest inside the Workers runtime against a disposable PostgreSQL built from `test/schema.sql` (generated from the migrations); the Worker under test connects as `ims_app`.
+
 ## 4. Frontend
 
 ```
@@ -107,8 +133,13 @@ frontend/src/
   preview/        Admin Preview Mode flag (local dev only)
   features/
     public/       homepage, sign-in, e-mailed link verification
-    admin/        fields, evaluation criteria, users and roles, notification settings (+ preview mock)
-    areas/        landing page of the HR / Employee / Trainee areas (until their modules exist)
+    admin/        fields, criteria, users and roles, accepted trainees, reports, audit log, settings, certificate (+ preview mock)
+    trainee/      status board, application form
+    employee/     available trainees, my trainees and progress notes, my reports
+    hr/           applications, mentor requests, trainings, reports (trainee history)
+    areas/        landing page for signed-in users without a role (/account)
+  reports/        report pages shared by several areas (monthly, fields, mentor profile)
+  notifications/  the HR and Employee notifications menu
   styles/         SCSS design tokens and base styles; index.css = Tailwind entry and design-system classes
 ```
 
@@ -124,10 +155,12 @@ frontend/src/
 |---|---|---|
 | Unit | `Ims.UnitTests` (xUnit) | Domain state transitions, grade calculation, Application use cases |
 | Integration | `Ims.IntegrationTests` (xUnit v3 + `WebApplicationFactory` + Testcontainers PostgreSQL) | Endpoints, authorization per role, audit/no-delete behaviour, against real PostgreSQL. Shared fixture: `Infrastructure/ImsApiFactory` |
-| Frontend unit | `frontend` (Vitest via `ng test`) | Components, services, guards |
+| Worker | `backend-workers` (Vitest in the Workers runtime + disposable PostgreSQL in Docker) | Every endpoint, role access, trainee isolation, audit attribution, least-privilege refusals |
+| Frontend unit | `frontend` (Vitest + React Testing Library) | Pages, guards, API modules, translations |
 
 ## 6. Environments & runtime
 
 - .NET SDK 10 (pinned by `global.json`) and Node 22 (`.nvmrc`; React Router 8 requires Node ≥ 22.22).
-- Local PostgreSQL: `compose.yaml` (PostgreSQL 18.6, host port 5434, named volume `ims-db-data`). Credentials are in the git-ignored `.env` and the API connection string is in user-secrets. No cloud resources are configured.
-- Ports: API `http://localhost:5106` / `https://localhost:7146`, SPA `http://localhost:4200`, PostgreSQL `localhost:5434`.
+- Local PostgreSQL: `compose.yaml` (PostgreSQL 18.6, host port 5434, named volume `ims-db-data`). Credentials are in the git-ignored `.env`; the migration connection string (owner `ims`) is in user-secrets; the local Worker connects as `ims_app` (`backend-workers/.dev.vars`, git-ignored).
+- Ports: API `http://localhost:5106` (the local Worker, `npm run dev -- --port 5106`, or the ASP.NET API), SPA `http://localhost:4200`, PostgreSQL `localhost:5434`.
+- Production: Cloudflare Pages + Worker, Neon PostgreSQL, R2 ([deployment.md](deployment.md)). Restore window 6 hours; automated daily backups deferred (AD-54).

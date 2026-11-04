@@ -108,7 +108,10 @@ describe('MonthlyReport', () => {
     expect(reportCalls(fetchMock)).toEqual(['/api/hr/reports/monthly?month=2031-02']);
     expect(fetchMock).toHaveBeenCalledWith('/api/hr/reports/monthly/filters', expect.anything());
     expect(fetchMock.mock.calls.every(([, init]) => (init?.method ?? 'GET') === 'GET')).toBe(true);
-    expect(screen.queryByRole('button')).not.toBeInTheDocument(); // nothing to change
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'reports.export.xlsx',
+      'reports.export.pdf',
+    ]); // only the export buttons: no actions
     expect(screen.getByRole('link', { name: 'reports.back' })).toHaveAttribute(
       'href',
       '/hr/reports',

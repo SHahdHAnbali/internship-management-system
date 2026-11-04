@@ -4,8 +4,8 @@
 
 | Part | Stack | Path |
 |---|---|---|
-| API | ASP.NET Core 10 Web API, EF Core, PostgreSQL | [backend/](backend/) |
-| API (Workers port, not deployed) | TypeScript + Hono on Cloudflare Workers, same database and contracts | [backend-workers/](backend-workers/) |
+| API (production) | TypeScript + Hono on Cloudflare Workers (`ims-api`), Neon PostgreSQL, Cloudflare R2 files | [backend-workers/](backend-workers/) |
+| Schema and reference API (not deployed) | ASP.NET Core 10, EF Core: the migrations own the database schema | [backend/](backend/) |
 | Web | React 19 + TypeScript + Vite + Tailwind (RTL/LTR), hosted on Cloudflare Pages | [frontend/](frontend/) |
 | Docs | Requirements, architecture, decisions, roadmap | [docs/](docs/) |
 
@@ -26,7 +26,7 @@ dotnet user-secrets set "ConnectionStrings:Database" \
 
 ## Run locally
 ```bash
-cd backend && dotnet run --project src/Ims.Api      # API on http://localhost:5106, /health
+cd backend-workers && npm install && npm run dev -- --port 5106   # the Worker API on :5106 (.dev.vars, see its README)
 cd frontend && npm install && npm start             # SPA on http://localhost:4200 (proxies /api)
 ```
 
@@ -35,6 +35,7 @@ Admin pages without sign-in (local mock data, dev only): `cd frontend && npm run
 ## Test
 ```bash
 cd backend && dotnet test                           # needs Docker running
+cd backend-workers && npm test                      # needs Docker running
 cd frontend && npm test -- --run
 ```
 
@@ -44,10 +45,11 @@ cd frontend && npm test -- --run
 - [Domain model](docs/domain-model.md)
 - [Decisions, assumptions & open questions](docs/decisions.md)
 - [Roadmap](docs/roadmap.md)
-- [Deferred features](docs/deferred-features.md): features waiting for other modules
+- [Deferred features](docs/deferred-features.md): features not yet complete and what they wait for
 - [Requirements progress](docs/requirements-progress.md): every PDF requirement and its implementation status
 - [Authentication](docs/authentication.md): sign-in flows, roles, and the configuration you must provide
-- [Deployment](docs/deployment.md): Cloudflare Pages (frontend) and its limitations
+- [Deployment](docs/deployment.md): Cloudflare Pages and Worker, rollback, backups
+- [Least privilege](docs/least-privilege.md): the Worker's restricted database role `ims_app`
 - [Workers migration](docs/workers-migration.md): the TypeScript/Hono API port, checklist, test results, configuration
 - [Certificate template](docs/certificate-template.md): the Admin certificate editor, its fonts and PDF-rendering requirements
 - [CLAUDE.md](CLAUDE.md): coding standards

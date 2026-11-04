@@ -163,6 +163,12 @@ See [domain-model.md](domain-model.md).
 
 **Security**: a trainee can access only their own data. Files are served through temporary links. The application form is protected with rate limiting and CAPTCHA.
 
+*As built (2026-11-04; the table above is the PDF's proposal, unchanged):* React instead of Angular (AD-34); the
+production API is TypeScript + Hono on Cloudflare Workers (AD-38), the ASP.NET Core solution keeps the schema
+migrations; Neon PostgreSQL; files in Cloudflare R2 (AD-48); e-mail: SendGrid selected, not operational (AD-53);
+hosting on Cloudflare (Q10: domain and name still open); scheduled jobs, PDF and QR not built; daily backup deferred
+(AD-54); CAPTCHA not built (Q22). Status of every requirement: [requirements-progress.md](requirements-progress.md).
+
 ## 11. Delivery phases (PDF §10)
 
 About 11 weeks for one full-stack developer, plus about 1 week of testing with HR. Phase 1 alone is enough to start using the system.

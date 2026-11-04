@@ -65,6 +65,14 @@ Deploying the site before the Worker exists breaks `/api` (the binding has nothi
 
 None of these touches the data.
 
+### Backups and recovery (AD-54)
+- **Neon restore history window: 6 hours** (owner, 2026-11-04). Point-in-time restore is done in the Neon console.
+- **Automated daily backups (PDF §9): deferred** by the owner until the remaining development is complete.
+- Until then, take a manual logical backup (`pg_dump -Fc`, as the owner, read-only) before any risky production change,
+  verify it by restoring it into a disposable local PostgreSQL, and keep it outside the repository. One was taken and
+  verified on 2026-11-04 before the `ims_app` rollout.
+- Rolling back the Worker or Pages never touches the database (above).
+
 ### Google sign-in
 In Google Cloud Console → the OAuth Web client, **Authorized JavaScript origins** must contain `https://progineer-ims.pages.dev` (and `http://localhost:4200` for development). No client secret is used.
 

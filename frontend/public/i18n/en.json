@@ -661,6 +661,14 @@
       "loadFailed": "Unable to load the report. Please try again.",
       "countsHint": "Both counts include every recorded training, whatever its status. A trainee trained twice by the same employee counts once as a trainee and twice as an assignment.",
       "notShown": "The average evaluation and the breakdown over time are not shown yet: they have not been defined."
+    },
+    "export": {
+      "label": "Export the report",
+      "xlsx": "Export Excel",
+      "pdf": "Export PDF",
+      "working": "Preparing…",
+      "failed": "The file could not be prepared. Please try again.",
+      "generated": "Exported on {{date}}"
     }
   }
 }

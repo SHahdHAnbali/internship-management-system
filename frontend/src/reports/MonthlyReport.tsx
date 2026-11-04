@@ -1,6 +1,8 @@
 import { useEffect, useId, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useI18n } from '../i18n/context';
+import { ExportButtons } from './export/ExportButtons';
+import type { ExportDocument } from './export/model';
 import {
   monthlyReportApi,
   type MonthlyReport as Report,
@@ -77,6 +79,44 @@ export function MonthlyReport({ area, backTo }: { area: ReportArea; backTo: stri
     timeZone: 'UTC',
   }).format(Date.UTC(Number(year), Number(monthNumber) - 1, 1));
   const shown = report?.key === key ? report : undefined;
+
+  /** Exactly what the table shows, with the month and the filters in use. */
+  const exportDocument = (): ExportDocument | null => {
+    if (!shown?.data) return null;
+    const fieldName = filters?.fields.find((f) => f.id === fieldId)?.name;
+    const employeeName = filters?.employees.find((e) => e.id === employeeId)?.fullName;
+    return {
+      title: t('reports.monthly.title'),
+      details: [
+        `${t('reports.monthly.month')}: ${monthLabel}`,
+        `${t('reports.monthly.field')}: ${fieldName ?? t('reports.monthly.allFields')}`,
+        `${t('reports.monthly.employee')}: ${employeeName ?? t('reports.monthly.allEmployees')}`,
+      ],
+      generated: t('reports.export.generated', { date: new Date().toLocaleString(language) }),
+      direction: language === 'ar' ? 'rtl' : 'ltr',
+      language,
+      fileName: `ims-monthly-report-${month}`,
+      sections: [
+        {
+          columns: [
+            { label: t('reports.monthly.trainee'), width: 2 },
+            { label: t('reports.monthly.employee'), width: 2 },
+            { label: t('reports.monthly.field'), width: 1.5 },
+            { label: t('reports.monthly.from') },
+            { label: t('reports.monthly.to') },
+          ],
+          rows: shown.data.rows.map((row) => [
+            row.traineeName ?? '—',
+            row.employee.fullName,
+            row.field.name,
+            formatDate(row.startDate, language),
+            formatDate(row.endDate, language),
+          ]),
+          empty: t('reports.monthly.empty'),
+        },
+      ],
+    };
+  };
 
   return (
     <>
@@ -184,9 +224,12 @@ export function MonthlyReport({ area, backTo }: { area: ReportArea; backTo: stri
       )}
 
       <section aria-labelledby={`${id}-results`}>
-        <h2 id={`${id}-results`} className="mb-4 text-h3 font-semibold text-heading">
-          {monthLabel}
-        </h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 id={`${id}-results`} className="text-h3 font-semibold text-heading">
+            {monthLabel}
+          </h2>
+          <ExportButtons build={exportDocument} disabled={!shown?.data} />
+        </div>
         {!shown ? (
           <p className="ims-state" role="status">
             {t('common.loading')}

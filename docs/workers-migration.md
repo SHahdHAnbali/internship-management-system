@@ -1,5 +1,8 @@
 # API migration: ASP.NET Core → TypeScript + Hono on Cloudflare Workers
 
+> Historical record of the port (2026-10-27). Since then the Worker is the production API and every later feature was
+> built in it; current status: [requirements-progress.md](requirements-progress.md).
+
 **Status (2026-10-27):** **deployed.** Worker `ims-api` (no public URL) behind the Pages site through a service binding; `https://progineer-ims.pages.dev/api/*` and `/health` reach it, and it uses Neon `ims_db` (pooled host, `sslmode=verify-full`). See [deployment.md](deployment.md). The ASP.NET Core API in `backend/` is unchanged and not deployed. The database schema is unchanged.
 
 Code: [`backend-workers/`](../backend-workers/) (how to run it: [its README](../backend-workers/README.md)). Decisions: AD-38 to AD-41 in [decisions.md](decisions.md).

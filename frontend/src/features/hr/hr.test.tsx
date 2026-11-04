@@ -422,7 +422,10 @@ describe('HR report: trainee history (PDF §6, read-only)', () => {
     expect(screen.queryByText('000-0001')).not.toBeInTheDocument();
     expect(screen.queryByText('Period is full')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /openApplication/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'reports.export.xlsx',
+      'reports.export.pdf',
+    ]); // only the export buttons: no actions
     expect(fetchMock.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${url}`)).toEqual([
       'GET /api/hr/trainees',
       'GET /api/hr/trainees/t1/history',

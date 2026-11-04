@@ -37,9 +37,9 @@ Nothing below is invented or defaulted. Without it, the flow reports clearly tha
 | `Authentication:Google:ClientId` | user-secrets (dev) / host secret store | OAuth 2.0 **Web application** client ID from Google Cloud Console (APIs & Services → Credentials). **Authorized JavaScript origins**: `http://localhost:4200` for development, plus the production web origin. No client secret is needed (ID-token flow) |
 | `Authentication:Google:HostedDomain` | same | The company's Google Workspace domain, e.g. `company.com` (Q10) |
 | First Admin | one-time operator step | Accounts start as Employee, and only an Admin can grant roles (PDF §2), so the first Admin must be set once **after that person's first Google sign-in**: `docker exec -it ims-db-1 psql -U ims -d ims_dev -c "UPDATE employees SET role = 'Admin' WHERE email = 'name@company.com';"` (recorded in `audit_logs` with actor `Database`). How to bootstrap in production is open (Q17) |
-| `Email:Provider` (+ provider credentials) | appsettings / secrets | **Development** uses `Log`: sign-in e-mails are written to the API console (look for `DEVELOPMENT E-MAIL`). **Production**: the PDF names SendGrid or Amazon SES (vendor open, Q10). Until a provider is added, trainee code requests return 503 |
+| `Email:Provider` (+ provider credentials) | appsettings / secrets | **Development** uses `Log`: sign-in e-mails are written to the API console (look for `DEVELOPMENT E-MAIL`). **Production**: the PDF names SendGrid or Amazon SES; the owner selected **SendGrid** (AD-53), whose account is awaiting reactivation. The production Worker runs with `EMAIL_PROVIDER` empty, so trainee code requests return 503 and trainees cannot sign in until it works (also needs the sender, NEW-01, and the domain, Q10) |
 | `Authentication:Trainee:SignInLinkBaseUrl` | appsettings | Public URL of the web app, used in the e-mailed link (`http://localhost:4200` in Development) |
-| Data Protection key storage | hosting | Persist the cookie-encryption keys in production (otherwise everyone is signed out on restart or scale-out) |
+| Data Protection key storage | hosting | ASP.NET API only (not deployed): persist the cookie-encryption keys. The production Worker encrypts sessions with the `SESSION_SECRET` Workers secret instead (AD-40) |
 
 ```bash
 # Development: set the Google values once (from backend/)

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { useI18n } from '../i18n/context';
+import { ExportButtons } from './export/ExportButtons';
+import { fileDate } from './export/files';
+import type { ExportDocument } from './export/model';
 import { mentorProfileApi, type MentorProfile } from './mentorProfileApi';
 
 /**
@@ -10,7 +13,7 @@ import { mentorProfileApi, type MentorProfile } from './mentorProfileApi';
  * defined yet, and the page says so instead of showing a number.
  */
 export function MentorProfileReport({ scope, backTo }: { scope: 'all' | 'own'; backTo: string }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [state, setState] = useState<{ rows: MentorProfile[] | null; failed: boolean }>();
 
   useEffect(() => {
@@ -23,6 +26,30 @@ export function MentorProfileReport({ scope, backTo }: { scope: 'all' | 'own'; b
       () => setState({ rows: null, failed: true }),
     );
   }, [scope]);
+
+  /** Exactly what the page shows: every employee (HR) or the employee's own row, with the page's notes. */
+  const exportDocument = (): ExportDocument | null => {
+    if (!state?.rows) return null;
+    return {
+      title: t('reports.mentorProfile.title'),
+      details: [t('reports.mentorProfile.countsHint'), t('reports.mentorProfile.notShown')],
+      generated: t('reports.export.generated', { date: new Date().toLocaleString(language) }),
+      direction: language === 'ar' ? 'rtl' : 'ltr',
+      language,
+      fileName: `ims-${scope === 'own' ? 'my-' : ''}mentor-profile-${fileDate()}`,
+      sections: [
+        {
+          columns: [
+            { label: t('reports.mentorProfile.employee'), width: 3 },
+            { label: t('reports.mentorProfile.trainees'), numeric: true },
+            { label: t('reports.mentorProfile.assignments'), numeric: true },
+          ],
+          rows: state.rows.map((row) => [row.employee.fullName, row.trainees, row.assignments]),
+          empty: t('reports.mentorProfile.empty'),
+        },
+      ],
+    };
+  };
 
   return (
     <>
@@ -37,6 +64,10 @@ export function MentorProfileReport({ scope, backTo }: { scope: 'all' | 'own'; b
             : 'reports.mentorProfile.ownDescription',
         )}
       </p>
+
+      <div className="mb-4 flex justify-end">
+        <ExportButtons build={exportDocument} disabled={!state?.rows} />
+      </div>
 
       {!state ? (
         <p className="ims-state" role="status">

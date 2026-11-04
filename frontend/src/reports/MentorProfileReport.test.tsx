@@ -77,7 +77,10 @@ describe('MentorProfileReport', () => {
       ['New Mentor', '0', '0'],
     ]);
     expect(reportCalls(fetchMock)).toEqual(['/api/hr/reports/mentor-profile']);
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'reports.export.xlsx',
+      'reports.export.pdf',
+    ]); // only the export buttons: no actions
     // The undefined parts are named as not shown, never as a number.
     expect(screen.getByText('reports.mentorProfile.notShown')).toBeInTheDocument();
     expect(screen.getByText('reports.mentorProfile.countsHint')).toBeInTheDocument();

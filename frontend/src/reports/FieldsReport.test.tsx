@@ -76,7 +76,10 @@ describe('FieldsReport', () => {
     expect(screen.queryByText(/complet/i, { selector: 'th' })).not.toBeInTheDocument();
     expect(reportCalls(fetchMock)).toEqual(['/api/hr/reports/fields']);
     expect(fetchMock.mock.calls.every(([, init]) => (init?.method ?? 'GET') === 'GET')).toBe(true);
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'reports.export.xlsx',
+      'reports.export.pdf',
+    ]); // only the export buttons: no actions
     expect(screen.getByRole('link', { name: 'reports.back' })).toHaveAttribute(
       'href',
       '/hr/reports',

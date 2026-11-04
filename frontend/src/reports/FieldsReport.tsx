@@ -1,6 +1,9 @@
 import { useEffect, useId, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useI18n } from '../i18n/context';
+import { ExportButtons } from './export/ExportButtons';
+import { fileDate } from './export/files';
+import type { ExportDocument } from './export/model';
 import { fieldsReportApi, type FieldsReport as Report } from './fieldsReportApi';
 import type { ReportArea } from './monthlyReportApi';
 
@@ -11,7 +14,7 @@ import type { ReportArea } from './monthlyReportApi';
  * in the address.
  */
 export function FieldsReport({ area, backTo }: { area: ReportArea; backTo: string }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const id = useId();
   const [params, setParams] = useSearchParams();
   const fieldId = params.get('field') ?? '';
@@ -40,6 +43,34 @@ export function FieldsReport({ area, backTo }: { area: ReportArea; backTo: strin
   }, [area, fieldId]);
 
   const shown = fieldId ? (one?.fieldId === fieldId ? one : undefined) : all;
+
+  /** Exactly what the table shows, with the field filter and the note on the completed count. */
+  const exportDocument = (): ExportDocument | null => {
+    if (!shown?.data) return null;
+    const fieldName = all?.data?.rows.find((r) => r.field.id === fieldId)?.field.name;
+    return {
+      title: t('reports.fields.title'),
+      details: [
+        `${t('reports.fields.field')}: ${fieldName ?? t('reports.fields.allFields')}`,
+        t('reports.fields.completedNotShown'),
+      ],
+      generated: t('reports.export.generated', { date: new Date().toLocaleString(language) }),
+      direction: language === 'ar' ? 'rtl' : 'ltr',
+      language,
+      fileName: `ims-fields-report-${fileDate()}`,
+      sections: [
+        {
+          columns: [
+            { label: t('reports.fields.field'), width: 3 },
+            { label: t('reports.fields.applications'), numeric: true },
+            { label: t('reports.fields.accepted'), numeric: true },
+          ],
+          rows: shown.data.rows.map((row) => [row.field.name, row.applications, row.accepted]),
+          empty: t(fieldId ? 'reports.fields.noMatch' : 'reports.fields.empty'),
+        },
+      ],
+    };
+  };
 
   return (
     <>
@@ -76,6 +107,10 @@ export function FieldsReport({ area, backTo }: { area: ReportArea; backTo: strin
           </select>
         </div>
       </form>
+
+      <div className="mb-4 flex justify-end">
+        <ExportButtons build={exportDocument} disabled={!shown?.data} />
+      </div>
 
       {!shown ? (
         <p className="ims-state" role="status">
