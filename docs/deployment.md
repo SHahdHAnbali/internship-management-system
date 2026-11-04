@@ -55,18 +55,27 @@ Deploying the site before the Worker exists breaks `/api` (the binding has nothi
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Current deployment (2026-11-04, security release)
-- Worker `ims-api` version `6c144b0b-bfb4-4f05-a880-a4b1c5eb491b` (commit `8f005fa`, deployed 2026-11-04 14:28 UTC):
-  the security improvements A1, A2, B1 and B3 below. Same bindings, variables and compatibility settings as before;
+### Current deployment (2026-11-04, RN-1: HR mentor profile employee filter)
+- Worker `ims-api` version `92b6c658-f4b8-4ce7-840e-af99c0a4ab64` and Pages production deployment
+  `528f0cb3-a425-4eb4-b3d7-9c4e54d49c8f` (commit `eaf01fe`, 2026-11-04; Worker first, then Pages): the HR mentor profile's
+  employee filter (PDF §6; optional `employeeId` on `GET /api/hr/reports/mentor-profile`, an Employee selector, filtered
+  Excel/PDF export, empty states "No employees yet." / "No matching employees."). Same bindings, variables, secrets
+  (`DATABASE_URL`, `SESSION_SECRET`, not re-entered) and `_headers`. Before: 338/338 Worker tests (as `ims_app`,
+  disposable local PostgreSQL) and 288/288 frontend tests, typechecks, lint and builds passed. After: the signed-out
+  checks (including the report endpoints, 401) identical to the pre-deployment baseline; new translations served;
+  read-only Neon catalog and counts unchanged, the Worker connected as `ims_app`. **Signed-in verification by the owner
+  in production: pending.**
+- Previous (security release): Worker `6c144b0b-bfb4-4f05-a880-a4b1c5eb491b` (commit `8f005fa`, deployed 2026-11-04
+  14:28 UTC): the security improvements A1, A2, B1 and B3 below. Same bindings, variables and compatibility settings as before;
   secrets `DATABASE_URL` and `SESSION_SECRET` carried over unchanged (not re-entered). Before the deploy: 337/337 Worker
   tests passed (as `ims_app`, disposable local PostgreSQL), typecheck and dry-run build passed. After it: the signed-out
   checks above passed (GET/OPTIONS only); the only change from the pre-deployment baseline was the two new headers;
   read-only Neon catalog and counts unchanged.
-- Previous known-good version: `aaa13c87-f4b6-45d2-b9ce-34dd74a89ba7`, the same code as
+- Before it: `aaa13c87-f4b6-45d2-b9ce-34dd74a89ba7`, the same code as
   `6625ef5c-781a-49a3-96da-908a80f9cae6` (the sign-in audit attribution release) with only the `DATABASE_URL` secret
   changed to `ims_app`.
 - **`DATABASE_URL` now connects as `ims_app`** (least-privilege role, Option A; pooled host, `sslmode=verify-full`), no longer as the owner `neondb_owner`. Role, grants and limits: [least-privilege.md](least-privilege.md). Its credential is kept in the developer machine's .NET user-secrets (`ConnectionStrings:NeonApp`); the owner credential (`ConnectionStrings:Neon`) is used for migrations and administration only.
-- Pages production deployment `c81d55dc-0891-4289-9fd3-220335a7a045` (commit `6903209`: Excel and PDF report export, AD-55; verified in production by the owner); previous: `11ae7ac8-4027-41e9-b5e6-339a57870f4f`. The Worker was not redeployed for it.
+- Previous Pages production deployment `c81d55dc-0891-4289-9fd3-220335a7a045` (commit `6903209`: Excel and PDF report export, AD-55; verified in production by the owner); before it: `11ae7ac8-4027-41e9-b5e6-339a57870f4f`.
 - No migration; no change to tables, triggers, functions or data. Pages, Neon, R2 and the secrets were not changed by
   the security release.
 
@@ -86,11 +95,12 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 | C3 | One rate-limit counter shared by trainee sign-in and application submit | **Open**: owner decision (optional) |
 
 ### Rollback
-- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`11ae7ac8…`) → *Rollback*, or redeploy that commit.
+- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`c81d55dc…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback aaa13c87-f4b6-45d2-b9ce-34dd74a89ba7` (in `backend-workers/`; the release
-  before the security headers). It already connects as `ims_app`, and no secret has changed since, so it cannot bring
-  back the owner credential. **Never roll back to `6625ef5c` or an earlier version**: those were deployed with the owner
+- **Worker code:** `npx wrangler rollback 6c144b0b-bfb4-4f05-a880-a4b1c5eb491b` (in `backend-workers/`; the release
+  before RN-1), or `aaa13c87-f4b6-45d2-b9ce-34dd74a89ba7` (before the security headers). Both already connect as
+  `ims_app`, and no secret has changed since, so neither can bring back the owner credential. The old site works with
+  either (it never sends `employeeId`); the new site with `6c144b0b` would show the full list for any chosen employee. **Never roll back to `6625ef5c` or an earlier version**: those were deployed with the owner
   `neondb_owner` credential, and a rollback may bring back the secret values stored with that version. After any rollback,
   check the role (`/health`, and a read-only look at the Neon connections) before anything else.
 

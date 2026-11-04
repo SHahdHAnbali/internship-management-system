@@ -4,7 +4,8 @@ Every requirement of the original requirements PDF (*خطة نظام إدارة 
 the owner-approved decisions, against the **actual code and production**. Last verified: **2026-11-04**, `main` @
 `72614eb`, Worker `aaa13c87`, Pages `11ae7ac8`, Neon `ims_db` with 8 migrations (read-only checks). Updated for the
 report export: `main` @ `6903209`, Pages `c81d55dc` (Worker and database unchanged). Updated for the security release:
-`main` @ `8f005fa`, Worker `6c144b0b` (Pages and database unchanged). The earlier snapshot
+`main` @ `8f005fa`, Worker `6c144b0b` (Pages and database unchanged). Updated for RN-1 (HR mentor profile employee
+filter): `main` @ `eaf01fe`, Worker `92b6c658`, Pages `528f0cb3` (database unchanged). The earlier snapshot
 (2026-10-27) is in Git history.
 
 **Status:** ✅ Complete · 🟡 Partial (part of the required behaviour is missing) · ❌ Not implemented · ⏸ Deferred by
@@ -104,10 +105,10 @@ provider.
 |---|---|---|---|---|
 | R38 | Monthly report (HR, Admin) | ✅ | Yes | Month, field, employee filters |
 | R39 | Fields report (HR, Admin) | 🟡 | Yes | No completed count (L1); filters NEW-12 |
-| R40 | Mentor profile (HR; each employee for themself) | 🟡 | Yes | No average (N2, Q11, NEW-03), no "over time" (NEW-13) |
+| R40 | Mentor profile (HR; each employee for themself) | 🟡 | Yes | HR employee filter (RN-1, 2026-11-04). No average (N2, Q11, NEW-03), no "over time" (NEW-13) |
 | R41 | Hiring pipeline (HR) | ❌ | — | Needs evaluations; NEW-03 |
 | R42 | Trainee history (HR) | ✅ | Yes | Period and field filters; employee filter NEW-14 |
-| R43 | Every report filtered by period, field and employee | 🟡 | Yes | Where the meaning is defined |
+| R43 | Every report filtered by period, field and employee | 🟡 | Yes | Where the meaning is defined (mentor profile: employee, HR, 2026-11-04) |
 | R44 | Export every report to Excel or PDF | ✅ | Yes | Excel and PDF for the four built reports (AD-55); deployed 2026-11-04 and verified in production by the owner. The hiring pipeline (R41) is not built yet; its export comes with it |
 
 ## Notifications and e-mail (p.3–4)
