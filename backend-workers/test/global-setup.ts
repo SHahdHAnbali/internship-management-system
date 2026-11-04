@@ -11,16 +11,24 @@ import type { TestProject } from 'vitest/node';
  * Testcontainers), creates the schema from test/schema.sql (generated from the EF Core migrations) and provides its
  * URL to the tests. The container keeps its data in memory and is removed afterwards. Requires Docker.
  * Set TEST_DATABASE_URL to use an existing, empty, disposable database instead.
+ *
+ * The Worker under test connects as `ims_app`, the least-privilege role (scripts/ims-app-grants.sql), so every test
+ * also proves the role has exactly the rights the Worker needs; seeding and assertions use the owner (`ownerDatabaseUrl`).
+ * Set TEST_DATABASE_ROLE=owner to run the Worker as the owner instead. With TEST_DATABASE_URL, both use that URL.
  */
 declare module 'vitest' {
   export interface ProvidedContext {
+    /** What the Worker connects with: `ims_app`, unless TEST_DATABASE_ROLE=owner or TEST_DATABASE_URL is set. */
     databaseUrl: string;
+    /** The schema owner, for seeding and assertions. */
+    ownerDatabaseUrl: string;
   }
 }
 
 const IMAGE = 'postgres:18.6-alpine';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCHEMA = join(HERE, 'schema.sql');
+const APP_GRANTS = join(HERE, '../scripts/ims-app-grants.sql');
 const MIGRATIONS = join(HERE, '../../backend/src/Ims.Infrastructure/Persistence/Migrations');
 
 export default async function setup(project: TestProject) {
@@ -51,15 +59,30 @@ export default async function setup(project: TestProject) {
   }
 
   await waitForDatabase(databaseUrl);
-  const client = new pg.Client({ connectionString: databaseUrl });
+  const ownerUrl = databaseUrl;
+  let appUrl = ownerUrl;
+  const client = new pg.Client({ connectionString: ownerUrl });
   await client.connect();
   try {
     await client.query(readFileSync(SCHEMA, 'utf8'));
+    if (container && process.env.TEST_DATABASE_ROLE !== 'owner') {
+      // A throwaway password for this disposable container only.
+      const appPassword = randomBytes(18).toString('hex');
+      await client.query(
+        `CREATE ROLE ims_app LOGIN PASSWORD '${appPassword}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION`,
+      );
+      await client.query(readFileSync(APP_GRANTS, 'utf8'));
+      const url = new URL(ownerUrl);
+      url.username = 'ims_app';
+      url.password = appPassword;
+      appUrl = url.toString();
+    }
   } finally {
     await client.end();
   }
 
-  project.provide('databaseUrl', databaseUrl);
+  project.provide('databaseUrl', appUrl);
+  project.provide('ownerDatabaseUrl', ownerUrl);
 
   return () => {
     if (container) docker('stop', container);

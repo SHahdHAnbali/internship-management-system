@@ -179,9 +179,9 @@ export class TestClient {
   put = (path: string, body?: unknown) => this.request('PUT', path, body);
 }
 
-/** Runs SQL directly against the test database (assertions and seeding, outside the API). */
+/** Runs SQL directly against the test database as its owner (assertions and seeding, outside the API). */
 export async function withDb<T>(work: (db: pg.Client) => Promise<T>): Promise<T> {
-  const client = new pg.Client({ connectionString: (env as unknown as Bindings).DATABASE_URL });
+  const client = new pg.Client({ connectionString: ownerDatabaseUrl() });
   client.on('error', () => undefined); // pg-cloudflare reports its socket shutdown after end()
   await client.connect();
   try {
@@ -189,6 +189,11 @@ export async function withDb<T>(work: (db: pg.Client) => Promise<T>): Promise<T>
   } finally {
     await client.end();
   }
+}
+
+/** The schema owner's URL (the Worker itself connects as `ims_app`, see test/global-setup.ts). */
+export function ownerDatabaseUrl(): string {
+  return (env as unknown as { OWNER_DATABASE_URL: string }).OWNER_DATABASE_URL;
 }
 
 /** Seeds a staff account as the C# tests do (actor System), returning its id. */

@@ -13,6 +13,8 @@ export default defineConfig({
         bindings: {
           ENVIRONMENT: 'development',
           DATABASE_URL: inject('databaseUrl'),
+          // Tests only: the schema owner, for seeding and assertions (test/helpers.ts `withDb`). Not a Worker setting.
+          OWNER_DATABASE_URL: inject('ownerDatabaseUrl'),
           SESSION_SECRET: 'test-session-secret-0123456789abcdef0123456789',
           GOOGLE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com',
           GOOGLE_HOSTED_DOMAIN: 'company.example',

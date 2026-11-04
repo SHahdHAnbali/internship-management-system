@@ -55,7 +55,7 @@ dotnet ef database update -p src/Ims.Infrastructure -s src/Ims.Api
 - Controllers are thin: bind input → call a use case → map the result to an HTTP response. Routes start with `api/`. Errors are returned as `ProblemDetails`.
 - Domain entities protect their invariants. State changes go through methods (`application.Accept(...)`, `assignment.Transfer(...)`) that validate the current status, not through public setters.
 - **Never hard-delete.** Model reject, withdraw, cancel and revoke as status changes with a reason. PostgreSQL triggers reject DELETE/TRUNCATE on every table, and `PreventDeleteInterceptor` fails fast in EF.
-- **Every write is audited automatically by database triggers** (`audit_logs`, actor from `ICurrentUser`). Never write audit rows in code. **Every new table's migration must run `SELECT ims_protect_table('<table>');`**.
+- **Every write is audited automatically by database triggers** (`audit_logs`, actor from `ICurrentUser`). Never write audit rows in code. **Every new table's migration must run `SELECT ims_protect_table('<table>');`**, and the table's grants for the Worker's least-privilege role go in `backend-workers/scripts/ims-app-grants.sql` (the Worker tests run as `ims_app`; see `docs/least-privilege.md`).
 - **Trainee isolation**: every query reachable by a trainee filters by the current trainee's id. Add an integration test for it.
 - IDs: `Guid.CreateVersion7()`. Times: UTC `DateTimeOffset`. Assignment dates: `DateOnly`. Use the injected `TimeProvider`, never `DateTime.Now`.
 - Package versions live only in `backend/Directory.Packages.props`. Shared build settings live in `backend/Directory.Build.props`. Warnings are errors, so fix them; do not suppress them.
