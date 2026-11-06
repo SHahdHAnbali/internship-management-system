@@ -18,6 +18,22 @@ import {
  */
 const api = createTestApi();
 
+/**
+ * The token with one real byte of its signature changed. Editing the last base64url character is not enough: a 256-byte
+ * signature leaves 4 unused bits in it, so some edits decode to the same bytes and the token stays valid.
+ */
+function withTamperedSignature(token: string): string {
+  const [header, payload, signature] = token.split('.') as [string, string, string];
+  const bytes = Uint8Array.from(atob(signature.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+  const middle = bytes.length >> 1;
+  bytes[middle] = bytes[middle]! ^ 0x01;
+  const tampered = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  return `${header}.${payload}.${tampered}`;
+}
+
 const auditOf = (where: string, params: unknown[]) =>
   withDb((db) =>
     db.query<{
@@ -106,10 +122,15 @@ describe('nothing unverified is recorded as a user', () => {
   it('a refused Google token creates nothing and records nothing', async () => {
     const email = uniqueEmail(COMPANY_DOMAIN);
     const client = api.client();
-    const forged = (await api.google.issue(email, COMPANY_DOMAIN)).replace(/.$/, (c) => (c === 'A' ? 'B' : 'A'));
-    expect((await client.post('/api/auth/staff/google', { idToken: forged })).status).not.toBe(200);
+    const token = await api.google.issue(email, COMPANY_DOMAIN);
+    const refused = await client.post('/api/auth/staff/google', { idToken: withTamperedSignature(token) });
+    expect(refused.status).toBe(401);
+    expect(await body(refused)).toMatchObject({ code: 'auth.invalid_token' });
     const accounts = await withDb((db) => db.query('SELECT id FROM employees WHERE email = $1', [email]));
     expect(accounts.rows).toEqual([]);
+
+    // The same token untouched is accepted: the changed signature byte was the only reason for the refusal.
+    expect((await client.post('/api/auth/staff/google', { idToken: token })).status).toBe(200);
   });
 
   it('a wrong trainee code is counted as Anonymous, and the account is not created', async () => {
