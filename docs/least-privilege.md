@@ -1,7 +1,7 @@
 # Least-privilege database role for the Worker (`ims_app`)
 
 **Status: Option A, rehearsed locally and deployed to production on 2026-11-04 (owner approval).** The production Worker
-now connects as `ims_app` (since Worker version `aaa13c87`; kept by the current `6c144b0b`, 2026-11-04). The owner's signed-in smoke test passed on 2026-11-04 (below).
+now connects as `ims_app` (since Worker version `aaa13c87`; kept by the current `6900a9e2`, 2026-11-07). The owner's signed-in smoke test passed on 2026-11-04 (below).
 Option B is not done. Basis: the read-only Neon least-privilege assessment of 2026-11-03.
 
 ## The role
