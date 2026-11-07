@@ -1,3 +1,5 @@
+import { useId } from 'react';
+import { useAuth } from '../../auth/context';
 import { useI18n } from '../../i18n/context';
 import { PageHeader } from './AdminLayout';
 import { adminApi } from './adminApi';
@@ -7,10 +9,13 @@ import { useLoad } from './useLoad';
 
 /**
  * Admin: users and their roles (PDF §2, §4). Staff accounts are created as Employee on first Google sign-in;
- * the Admin grants higher roles here.
+ * the Admin grants higher roles here. An Admin cannot change their own role, and a change that would leave no Admin is
+ * refused (owner decisions AUD-01, AUD-02, AUD-03). The API enforces both; this page only explains them.
  */
 export function UsersPage() {
   const { t } = useI18n();
+  const { user: signedIn } = useAuth();
+  const ownRoleHint = useId();
   const feedback = useAdminFeedback();
   const {
     data: users,
@@ -52,29 +57,39 @@ export function UsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
-                  <tr key={user.id}>
-                    <td>{user.fullName}</td>
-                    <td dir="ltr" className="text-start">
-                      {user.email}
-                    </td>
-                    <td className="text-muted!">{user.department}</td>
-                    <td>
-                      <select
-                        className="ims-input h-10 w-44 py-0"
-                        aria-label={`${t('admin.users.role')}: ${user.fullName}`}
-                        value={user.role}
-                        onChange={(e) => void changeRole(user, e.target.value as UserRole)}
-                      >
-                        {STAFF_ROLES.map((role) => (
-                          <option key={role} value={role}>
-                            {t(`roles.${role}`)}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
+                {users.map((user) => {
+                  const own = user.id === signedIn?.id;
+                  return (
+                    <tr key={user.id}>
+                      <td>{user.fullName}</td>
+                      <td dir="ltr" className="text-start">
+                        {user.email}
+                      </td>
+                      <td className="text-muted!">{user.department}</td>
+                      <td>
+                        <select
+                          className="ims-input h-10 w-44 py-0 disabled:bg-surface-subtle disabled:text-muted"
+                          aria-label={`${t('admin.users.role')}: ${user.fullName}`}
+                          aria-describedby={own ? ownRoleHint : undefined}
+                          disabled={own}
+                          value={user.role}
+                          onChange={(e) => void changeRole(user, e.target.value as UserRole)}
+                        >
+                          {STAFF_ROLES.map((role) => (
+                            <option key={role} value={role}>
+                              {t(`roles.${role}`)}
+                            </option>
+                          ))}
+                        </select>
+                        {own && (
+                          <p id={ownRoleHint} className="mt-1 text-small text-muted">
+                            {t('admin.users.ownRole')}
+                          </p>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

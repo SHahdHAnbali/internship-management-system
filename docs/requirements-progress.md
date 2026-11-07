@@ -44,7 +44,7 @@ provider.
 |---|---|---|---|---|
 | R06 | Fields: add, edit, activate/deactivate (p.2, p.4) | ✅ | Yes | |
 | R07 | Evaluation criteria and weights (p.2, p.4) | ✅ | Yes | Configuration only; the real list is open (Q3); retiring a criterion (Q31) |
-| R08 | Users and roles (p.2) | ✅ | Yes | |
+| R08 | Users and roles (p.2) | ✅ | Yes | Admin governance (AD-56): no self-change of role, never zero Admins, safe under simultaneous changes |
 | R09 | Certificate template (p.2) | ✅ | Yes | Settings (AD-43); certificates are not built |
 | R10 | Admin-changeable 7/3/5-day intervals (p.4) | ✅ | Yes | Stored; used by no reminder yet (R47) |
 | R11 | The Admin sees the accepted trainees (p.1) | ✅ | Yes | No e-mail, phone or CV (C5) |

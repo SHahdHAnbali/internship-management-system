@@ -14,7 +14,7 @@ import {
 import { DomainError, NotFoundError } from '../../domain/errors';
 import { uuidV7 } from '../../domain/uuid';
 import { bindJson, type RequestSchema, type RoleValue } from '../../http/body';
-import { json } from '../../http/problems';
+import { endpointFailure, json, statusProblem } from '../../http/problems';
 import { routeId, type Route } from '../../http/routes';
 
 /**
@@ -256,29 +256,48 @@ export const adminRoutes: Route[] = [
       const body = await bindJson<{ role: RoleValue }>(c.req.raw, changeRoleRequest, c.var.traceId);
       if (!body.ok) return body.response;
 
-      const employee = await single<EmployeeRow>(
-        c.var.db,
-        'SELECT id, full_name, email, department, role, xmin::text AS version FROM employees WHERE id = $1',
-        id,
-        'Employee',
-      );
-      const requested = body.value.role;
-      if (requested === 'invalid') {
-        throw new DomainError('employee.invalid_role', "A staff member's role must be Employee, HR or Admin.");
+      // Owner decisions (2026-11-07): an Admin never changes their own role (AUD-02); an Admin may change another
+      // Admin's role (AUD-03) as long as at least one Admin remains (AUD-01).
+      const actorId = c.var.user!.id;
+      if (id === actorId) {
+        return endpointFailure(403, 'employee.self_role_change', 'An Admin cannot change their own role.');
       }
 
-      const role = staffRole(requested);
-      if (role !== employee.role) {
-        await c.var.db.transaction(c.var.actor, (tx) =>
-          updateOrConflict(tx, 'UPDATE employees SET role = $1 WHERE id = $2 AND xmin = $3::xid', [
+      return c.var.db.transaction(c.var.actor, async (tx) => {
+        // Every role change first locks the Admin rows, so changes run one at a time across Worker instances and each
+        // one sees the result of the one before it. NO KEY UPDATE does not block sign-ins (their foreign keys take KEY
+        // SHARE). This statement waits for the lock, then returns only the rows that are still Admin.
+        const { rows: admins } = await tx.query<{ id: string }>(
+          "SELECT id FROM employees WHERE role = 'Admin' ORDER BY id FOR NO KEY UPDATE",
+        );
+        const employee = await single<EmployeeRow>(
+          tx,
+          'SELECT id, full_name, email, department, role, xmin::text AS version FROM employees WHERE id = $1 FOR NO KEY UPDATE',
+          id,
+          'Employee',
+        );
+        const requested = body.value.role;
+        if (requested === 'invalid') {
+          throw new DomainError('employee.invalid_role', "A staff member's role must be Employee, HR or Admin.");
+        }
+
+        const role = staffRole(requested);
+        if (employee.role === 'Admin' && role !== 'Admin' && admins.every((admin) => admin.id === id)) {
+          return endpointFailure(409, 'employee.last_admin', 'This change would leave the system with no Admin.');
+        }
+        // The caller passed the Admin check before the wait; another Admin may have changed their role during it.
+        if (!admins.some((admin) => admin.id === actorId)) return statusProblem(403, c.var.traceId, true);
+
+        if (role !== employee.role) {
+          await updateOrConflict(tx, 'UPDATE employees SET role = $1 WHERE id = $2 AND xmin = $3::xid', [
             role,
             id,
             employee.version,
-          ]),
-        );
-      }
+          ]);
+        }
 
-      return json(toUser({ ...employee, role }));
+        return json(toUser({ ...employee, role }));
+      });
     },
   },
 

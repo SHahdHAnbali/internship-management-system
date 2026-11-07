@@ -3,8 +3,16 @@ import { useToast } from '../../components/toastContext';
 import { ApiError } from '../../lib/api';
 import { previewActive } from '../../preview/mode';
 
+/** Refusals that have their own message; other errors are told apart by their HTTP status. */
+const CODE_MESSAGES: Record<string, string> = {
+  'employee.self_role_change': 'admin.users.ownRole',
+  'employee.last_admin': 'admin.users.lastAdmin',
+};
+
 /** Maps an API error to the translated Admin message. */
 export function adminErrorKey(error: unknown): string {
+  const message = error instanceof ApiError && error.code ? CODE_MESSAGES[error.code] : undefined;
+  if (message) return message;
   const status = error instanceof ApiError ? error.status : 0;
   switch (status) {
     case 400:

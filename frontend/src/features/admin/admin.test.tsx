@@ -1,7 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import arMessages from '../../../public/i18n/ar.json?raw';
+import enMessages from '../../../public/i18n/en.json?raw';
 import { ApiError } from '../../lib/api';
-import { mockFetch, renderPage } from '../../test/render';
+import { fakeAuth, mockFetch, renderPage, testI18n } from '../../test/render';
 import { adminErrorKey } from './feedback';
 import { FieldsPage } from './FieldsPage';
 import { isValidDays } from './settingsValidation';
@@ -106,6 +108,84 @@ describe('UsersPage', () => {
     );
     await waitFor(() => expect(select).toHaveValue('HR'));
   });
+
+  describe('role change rules (AUD-01, AUD-02, AUD-03)', () => {
+    const person = (id: string, fullName: string, role: string) => ({
+      id,
+      fullName,
+      email: `${id}@company.example`,
+      department: null,
+      role,
+    });
+    const signedInAs = (id: string) =>
+      fakeAuth({ user: { id, role: 'Admin', email: `${id}@company.example`, name: 'Me' } });
+    const everyone = [person('me', 'Me', 'Admin'), person('u2', 'Other Admin', 'Admin')];
+    const select = (name: string) =>
+      screen.findByRole('combobox', { name: `admin.users.role: ${name}` });
+
+    it('disables only the signed-in Admin’s own role, says why, and sends nothing', async () => {
+      const fetchMock = mockFetch(() => [200, everyone]);
+      renderPage(<UsersPage />, { auth: signedInAs('me') });
+      const own = await select('Me');
+      expect(own).toBeDisabled();
+      expect(own).toHaveAccessibleDescription('admin.users.ownRole');
+      await userEvent.setup().selectOptions(own, 'HR');
+      expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')).toEqual([]);
+
+      const other = await select('Other Admin');
+      expect(other).toBeEnabled();
+      expect(other).not.toHaveAttribute('aria-describedby');
+      expect(screen.getAllByText('admin.users.ownRole')).toHaveLength(1);
+    });
+
+    it('lets an Admin change another Admin', async () => {
+      const fetchMock = mockFetch((method) =>
+        method === 'GET' ? [200, everyone] : [200, person('u2', 'Other Admin', 'Employee')],
+      );
+      renderPage(<UsersPage />, { auth: signedInAs('me') });
+      const other = await select('Other Admin');
+      await userEvent.setup().selectOptions(other, 'Employee');
+      await waitFor(() => expect(other).toHaveValue('Employee'));
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/users/u2/role',
+        expect.objectContaining({ method: 'PUT', body: '{"role":"Employee"}' }),
+      );
+    });
+
+    it.each([
+      [409, 'employee.last_admin', 'admin.users.lastAdmin'],
+      [403, 'employee.self_role_change', 'admin.users.ownRole'],
+    ])('explains a %i %s and shows the stored role again', async (status, code, message) => {
+      mockFetch((method) =>
+        method === 'GET' ? [200, everyone] : [status, { status, code, detail: 'technical detail' }],
+      );
+      renderPage(<UsersPage />, { auth: signedInAs('me') });
+      const other = await select('Other Admin');
+      await userEvent.setup().selectOptions(other, 'Employee');
+      await waitFor(() => expect(screen.getAllByText(message).length).toBeGreaterThan(0));
+      expect(screen.queryByText('technical detail')).not.toBeInTheDocument();
+      expect(await select('Other Admin')).toHaveValue('Admin');
+    });
+
+    it.each([
+      ['en', enMessages, "You can't change your own role", 'no Admin'],
+      ['ar', arMessages, 'لا يمكنك تغيير دورك بنفسك', 'بلا مدير'],
+    ] as const)('reads in %s', async (language, raw, own, last) => {
+      mockFetch((method) =>
+        method === 'GET'
+          ? [200, everyone]
+          : [409, { status: 409, code: 'employee.last_admin', detail: 'x' }],
+      );
+      renderPage(<UsersPage />, {
+        auth: signedInAs('me'),
+        i18n: testI18n(JSON.parse(raw), language),
+      });
+      expect(await screen.findByText(new RegExp(own))).toBeInTheDocument();
+      const others = await screen.findAllByRole('combobox');
+      await userEvent.setup().selectOptions(others[1]!, 'Employee');
+      expect(await screen.findByText(new RegExp(last))).toBeInTheDocument();
+    });
+  });
 });
 
 describe('SettingsPage', () => {
@@ -169,5 +249,12 @@ describe('adminErrorKey', () => {
     [500, 'admin.errors.generic'],
   ])('maps HTTP %i to %s', (status, key) => {
     expect(adminErrorKey(new ApiError(status, null))).toBe(key);
+  });
+
+  it('gives the role rules their own message; another 409 stays as it was', () => {
+    const error = (status: number, code: string) => new ApiError(status, { code });
+    expect(adminErrorKey(error(409, 'employee.last_admin'))).toBe('admin.users.lastAdmin');
+    expect(adminErrorKey(error(403, 'employee.self_role_change'))).toBe('admin.users.ownRole');
+    expect(adminErrorKey(error(409, 'conflict.duplicate'))).toBe('admin.errors.conflict');
   });
 });

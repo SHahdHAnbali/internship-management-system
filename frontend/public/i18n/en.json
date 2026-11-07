@@ -70,7 +70,9 @@
       "email": "Email",
       "department": "Department",
       "role": "Role",
-      "empty": "No users yet"
+      "empty": "No users yet",
+      "ownRole": "You can't change your own role. Another Admin can change it.",
+      "lastAdmin": "This change was not made because it would leave the system with no Admin."
     },
     "acceptedTrainees": {
       "title": "Accepted trainees",
