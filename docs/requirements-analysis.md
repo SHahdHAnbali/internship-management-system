@@ -142,6 +142,8 @@ Every report can be filtered by period, field and employee, and exported to Exce
 
 The 7-, 3- and 5-day intervals are Admin settings. Email templates exist in Arabic and English.
 
+The table governs the channels exactly; the introduction's "every important event sends an e-mail and an in-app notification" adds none (Q42, answered by the owner on 2026-11-10, [decisions.md](decisions.md) AD-59).
+
 ## 9. Data model (PDF §8)
 
 See [domain-model.md](domain-model.md).

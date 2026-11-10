@@ -21,7 +21,7 @@ Requirement-by-requirement status: [requirements-progress.md](requirements-progr
 - [ ] HR: approve/reject mentor requests with dates (**done**, AD-49, in production); direct assignment (**not built**: Q38, L5)
 - [ ] Employee: my trainees and progress notes (**done**, in production); final evaluation form (**not built**: Q3, N1–N7, Q11, Q13, L6)
 - [x] Audit log viewer: Admin only, read-only (AD-51); sign-in writes attributed to the verified user; least-privilege database role `ims_app` (AD-52) (in production)
-- [ ] E-mails: transport **done** (Gmail SMTP with Nodemailer, AD-58, replaces SendGrid; verified in production on 2026-11-10 with the trainee sign-in e-mail); application received, accepted/rejected, assignment approved/rejected **not built** (NEW-01 display name, NEW-07, Q42)
+- [ ] E-mails: transport **done** (Gmail SMTP with Nodemailer, AD-58, replaces SendGrid; verified in production on 2026-11-10 with the trainee sign-in e-mail); application received, accepted/rejected, assignment approved/rejected **not built** (NEW-01 display name, NEW-07; channels settled by Q42, AD-59)
 
 ## Phase 2: Certificates & reports (about 3 weeks)
 - [ ] Certificate generation, public page `/c/:code`, publish/private, revoke (**blocked**: L1, L7, Q2, Q4, Q11; domain Q10)

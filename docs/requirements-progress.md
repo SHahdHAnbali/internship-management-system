@@ -120,10 +120,10 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R45 | In-app notifications | 🟡 | Yes | 4 of the in-app events (AD-50); Q14, lifecycle, scheduler |
-| R46 | E-mail events and bilingual templates | ❌ | — | The provider works (Gmail SMTP, AD-58; the sign-in e-mail is R03), but the event e-mails of PDF §7 are not built and the templates are not bilingual (the sign-in e-mail has a bilingual subject, an English body): NEW-01 display name, NEW-07, Q42, Q36 |
+| R46 | E-mail events and bilingual templates | ❌ | — | The provider works (Gmail SMTP, AD-58; the sign-in e-mail is R03), but the event e-mails of PDF §7 are not built and the templates are not bilingual (the sign-in e-mail has a bilingual subject, an English body): NEW-01 display name, NEW-07, Q36 (the channels are settled: Q42 answered 2026-11-10, AD-59) |
 | R47 | Timed reminders (7 days, late evaluation every 3 days, pending > 5 days) | ❌ | — | NEW-05, NEW-06, NEW-09, L1, N3; scheduler; e-mail |
 | R48 | Weekly summary to HR | ❌ | — | NEW-04; e-mail |
-| R50 | Notification "email status" field (p.4) | ❌ | — | Q42; e-mail |
+| R50 | Notification "email status" field (p.4) | ❌ | — | Needs the event e-mails (D-50); Q42 answered 2026-11-10 (AD-59) |
 
 ## Data, platform and security
 
