@@ -55,8 +55,20 @@ Deploying the site before the Worker exists breaks `/api` (the binding has nothi
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Current deployment (2026-11-07, Admin role governance, AD-56)
-- Worker `ims-api` version `6900a9e2-178e-4fb7-875a-2e49d75393e6` and Pages production deployment
+### Current deployment (2026-11-10, audit log descriptions, AD-57)
+- Worker `ims-api` version `61ea9041-5fcd-41a9-a6a1-24033784a2a3` and Pages production deployment
+  `94081d2f-cf15-41fb-a862-a5a5e7e3a176` (commit `cb2b215`, 2026-11-10 11:41 UTC; Worker first, then Pages): every audit
+  log entry, historical and future, described in Arabic and English (ADL-01 to ADL-06), derived when the log is read from
+  allowlisted facts; raw stored values still never returned; Admin only. Same bindings, variables, secrets
+  (`DATABASE_URL`, `SESSION_SECRET`, not re-entered) and `_headers`. No migration; no change to tables, triggers,
+  functions, grants or data. Before: 362/362 Worker tests (3 runs with Mac sleep prevented; as `ims_app`, disposable
+  local PostgreSQL) and 313/313 frontend tests, typechecks, lint, formatting and builds passed. After: the signed-out
+  checks identical to the pre-deployment baseline (the audit log API 401 signed out); new translations and bundle served;
+  read-only Neon snapshot unchanged, including a fingerprint of audit rows 1–110, the audit trigger functions, grants,
+  record counts and settings, the Worker connected as `ims_app`; read-only coverage with the deployed code: 110 of 110
+  entries described, none needing the universal fallback. The owner verified the feature locally. **Signed-in verification
+  in production: not confirmed.**
+- Previous (Admin role governance, AD-56): Worker `6900a9e2-178e-4fb7-875a-2e49d75393e6` and Pages
   `0551650d-7780-4a22-a7a4-629efc947e13` (commit `316f6ac`, 2026-11-07 13:36 UTC; Worker first, then Pages): owner decisions
   AUD-01 (never zero Admins), AUD-02 (no self-change of role) and AUD-03 (an Admin may change another Admin while one
   remains), enforced by the API with row locks. Same bindings, variables, secrets (`DATABASE_URL`, `SESSION_SECRET`, not
@@ -106,12 +118,14 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 | C3 | One rate-limit counter shared by trainee sign-in and application submit | **Open**: owner decision (optional) |
 
 ### Rollback
-- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`528f0cb3…`) → *Rollback*, or redeploy that commit.
+- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback 92b6c658-f4b8-4ce7-840e-af99c0a4ab64` (in `backend-workers/`; the release
-  before the Admin role rules: **it does not enforce AD-56**, so the only Admin could lose access again), then
+- **Worker code:** `npx wrangler rollback 6900a9e2-178e-4fb7-875a-2e49d75393e6` (in `backend-workers/`; the release
+  before the audit log descriptions: it still enforces AD-56; the new site then describes entries from their table and
+  operation only), then `92b6c658-f4b8-4ce7-840e-af99c0a4ab64` (before the Admin role rules: **it does not enforce
+  AD-56**, so the only Admin could lose access again), then
   `6c144b0b-bfb4-4f05-a880-a4b1c5eb491b` (before RN-1) or `aaa13c87-f4b6-45d2-b9ce-34dd74a89ba7` (before the security
-  headers). All three already connect as `ims_app`, and no secret has changed since, so none can bring back the owner
+  headers). All of them already connect as `ims_app`, and no secret has changed since, so none can bring back the owner
   credential. The site with `6c144b0b` or older would show the full list for any chosen employee (RN-1). **Never roll back to `6625ef5c` or an earlier version**: those were deployed with the owner
   `neondb_owner` credential, and a rollback may bring back the secret values stored with that version. After any rollback,
   check the role (`/health`, and a read-only look at the Neon connections) before anything else.

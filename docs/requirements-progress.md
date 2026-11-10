@@ -6,7 +6,8 @@ the owner-approved decisions, against the **actual code and production**. Last v
 report export: `main` @ `6903209`, Pages `c81d55dc` (Worker and database unchanged). Updated for the security release:
 `main` @ `8f005fa`, Worker `6c144b0b` (Pages and database unchanged). Updated for RN-1 (HR mentor profile employee
 filter): `main` @ `eaf01fe`, Worker `92b6c658`, Pages `528f0cb3` (database unchanged). Updated for Admin role governance
-(AD-56): `main` @ `316f6ac`, Worker `6900a9e2`, Pages `0551650d` (database unchanged). The earlier snapshot
+(AD-56): `main` @ `316f6ac`, Worker `6900a9e2`, Pages `0551650d` (database unchanged). Updated for the audit log
+descriptions (AD-57): `main` @ `cb2b215`, Worker `61ea9041`, Pages `94081d2f` (database unchanged). The earlier snapshot
 (2026-10-27) is in Git history.
 
 **Status:** ✅ Complete · 🟡 Partial (part of the required behaviour is missing) · ❌ Not implemented · ⏸ Deferred by
