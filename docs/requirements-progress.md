@@ -59,7 +59,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R13 | Application form with CV and university letter (p.2) | ✅ | Yes | Rules pending confirmation (Q35); files in R2 (AD-48) |
-| R14 | Status board (p.2) | 🟡 | Yes | Application status only (L10, Q36) |
+| R14 | Status board (p.2) | 🟡 | Yes | Application status only (L10); the rejection reason is not shown yet (Q36 answered 2026-11-10, AD-61) |
 | R15 | Apply again later; every training stays on record (p.2) | ✅ | Yes | Concurrent applications (Q16) |
 | R16 | Publish or hide, print and download the certificate as PDF (p.2, p.3) | ❌ | — | Needs certificates |
 
@@ -68,7 +68,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R17 | Inbox, review and contact log (date, method, summary) (p.2) | ✅ | Yes | Editing open (Q37) |
-| R18 | Accept, or reject with a reason; rejected kept (p.2) | ✅ | Yes | Reason visibility (Q36) |
+| R18 | Accept, or reject with a reason; rejected kept (p.2) | ✅ | Yes | The trainee will see the reason (Q36 answered 2026-11-10, AD-61; not built) |
 | R19 | Mentor requests: approve with dates, or reject (the trainee returns to the list) (p.2) | ✅ | Yes | Other pending requests (Q38) |
 | R20 | Direct assignment (p.2) | ❌ | — | Q38, L5 |
 | R21 | Running training: extend, end early, transfer, withdraw, with a reason (p.2) | ❌ | — | L2–L5, L8, L9 |
@@ -120,7 +120,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R45 | In-app notifications | 🟡 | Yes | 4 of the in-app events (AD-50); Q14, lifecycle, scheduler |
-| R46 | E-mail events and bilingual templates | ❌ | — | The provider works (Gmail SMTP, AD-58; the sign-in e-mail is R03), but the event e-mails of PDF §7 are not built and the templates are not bilingual (the sign-in e-mail has a bilingual subject, an English body): NEW-01 display name, NEW-07, Q36 (the channels are settled: Q42 answered 2026-11-10, AD-59) |
+| R46 | E-mail events and bilingual templates | ❌ | — | The provider works (Gmail SMTP, AD-58; the sign-in e-mail is R03), but the event e-mails of PDF §7 are not built and there are no HTML templates (the sign-in e-mail is plain text, Arabic first then English). Decided 2026-11-10 but not built: channels (AD-59), sender name, HTML + text, retries, Admin failed-e-mail page (AD-60), rejection reason (AD-61), schedules (AD-62); open NEW-19 to NEW-31 |
 | R47 | Timed reminders (7 days, late evaluation every 3 days, pending > 5 days) | ❌ | — | NEW-05, NEW-06, NEW-09, L1, N3; scheduler; e-mail |
 | R48 | Weekly summary to HR | ❌ | — | NEW-04; e-mail |
 | R50 | Notification "email status" field (p.4) | ❌ | — | Needs the event e-mails (D-50); Q42 answered 2026-11-10 (AD-59) |
