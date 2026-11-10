@@ -21,6 +21,9 @@ export default defineConfig({
           TRAINEE_SIGN_IN_LINK_BASE_URL: 'http://localhost:4200',
           CORS_ALLOWED_ORIGINS: 'http://localhost:4200',
           EMAIL_PROVIDER: '',
+          // .dev.vars is read too: never let a developer's real SMTP credentials reach the tests.
+          SMTP_USER: '',
+          SMTP_APP_PASSWORD: '',
         },
       },
     })),

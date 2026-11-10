@@ -26,8 +26,19 @@ export interface Bindings {
   SESSION_ABSOLUTE_LIFETIME_MINUTES?: string;
   /** Comma-separated origins allowed to call the API with credentials (CORS). Empty: same origin only. */
   CORS_ALLOWED_ORIGINS?: string;
-  /** `log` (development only) writes e-mails to the console. Empty: no provider, sign-in e-mails fail with 503. */
+  /**
+   * `log` (development only) writes e-mails to the console; `smtp` sends them through an SMTP server such as Gmail
+   * (SMTP_* below). Empty: no provider, sign-in e-mails fail with 503.
+   */
   EMAIL_PROVIDER?: string;
+  /** SMTP server for EMAIL_PROVIDER=smtp (default `smtp.gmail.com`). */
+  SMTP_HOST?: string;
+  /** SMTP port for EMAIL_PROVIDER=smtp: 465 only (TLS from the first byte; default 465). */
+  SMTP_PORT?: string;
+  /** The SMTP account, also the sender address (for Gmail, the Gmail address the App Password belongs to). */
+  SMTP_USER?: string;
+  /** Secret. The SMTP password; for Gmail an App Password (spaces are ignored). */
+  SMTP_APP_PASSWORD?: string;
   /** Private R2 bucket for application attachments (CVs, university letters). */
   FILES?: R2Bucket;
   /** Workers Rate Limiting binding for the trainee sign-in endpoints (limit and period are set in wrangler.jsonc). */
@@ -43,7 +54,16 @@ export interface Settings {
   sessionIdleTimeoutMinutes: number;
   sessionAbsoluteLifetimeMinutes: number;
   corsAllowedOrigins: string[];
-  emailProvider: 'log' | 'none';
+  emailProvider: 'log' | 'smtp' | 'none';
+  /** Set when emailProvider is `smtp`. */
+  smtp: SmtpSettings | null;
+}
+
+export interface SmtpSettings {
+  host: string;
+  port: 465;
+  user: string;
+  password: string;
 }
 
 const MIN_SESSION_SECRET_LENGTH = 32;
@@ -70,9 +90,12 @@ export function loadSettings(env: Bindings): Settings {
   const clientId = env.GOOGLE_CLIENT_ID?.trim() ?? '';
   const hostedDomains = staffDomains(env.GOOGLE_HOSTED_DOMAIN);
   const emailProvider = env.EMAIL_PROVIDER?.trim().toLowerCase() ?? '';
-  if (emailProvider !== '' && emailProvider !== 'log') {
-    throw new ConfigurationError(`EMAIL_PROVIDER '${env.EMAIL_PROVIDER}' is not supported (use 'log' in development).`);
+  if (emailProvider !== '' && emailProvider !== 'log' && emailProvider !== 'smtp') {
+    throw new ConfigurationError(
+      `EMAIL_PROVIDER '${env.EMAIL_PROVIDER}' is not supported (use 'smtp', or 'log' in development).`,
+    );
   }
+  const smtp = emailProvider === 'smtp' ? smtpSettings(env) : null;
 
   // Session policy (AD-44): 7 days idle, 30 days absolute.
   const sessionIdleTimeoutMinutes = positiveInteger(
@@ -107,8 +130,33 @@ export function loadSettings(env: Bindings): Settings {
       .map((origin) => origin.trim())
       .filter((origin) => origin.length > 0),
     // Writing sign-in codes to the log would let anyone with log access sign in as a trainee: development only.
-    emailProvider: emailProvider === 'log' && isDevelopment ? 'log' : 'none',
+    emailProvider: smtp ? 'smtp' : emailProvider === 'log' && isDevelopment ? 'log' : 'none',
+    smtp,
   };
+}
+
+/**
+ * The SMTP settings. Messages never quote the password (they are logged); TLS is required from the first byte (port
+ * 465), because a Worker cannot upgrade a plain connection the way STARTTLS on port 587 needs.
+ */
+function smtpSettings(env: Bindings): SmtpSettings {
+  const host = env.SMTP_HOST?.trim().toLowerCase() || 'smtp.gmail.com';
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) {
+    throw new ConfigurationError('SMTP_HOST must be a host name such as smtp.gmail.com.');
+  }
+  const port = env.SMTP_PORT?.trim() || '465';
+  if (port !== '465') {
+    throw new ConfigurationError('SMTP_PORT must be 465 (TLS from the first byte); other ports are not supported.');
+  }
+  const user = env.SMTP_USER?.trim() ?? '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user)) {
+    throw new ConfigurationError('SMTP_USER must be the e-mail address of the SMTP account.');
+  }
+  const password = (env.SMTP_APP_PASSWORD ?? '').replace(/\s+/g, '');
+  if (password === '') {
+    throw new ConfigurationError('SMTP_APP_PASSWORD is not set (a Worker secret, or .dev.vars locally).');
+  }
+  return { host, port: 465, user, password };
 }
 
 /** The staff domains: lower case, trimmed, without duplicates. A blank entry or one that is not a domain is refused. */

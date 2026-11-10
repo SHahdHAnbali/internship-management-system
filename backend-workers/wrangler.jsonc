@@ -26,7 +26,11 @@
     "SESSION_IDLE_TIMEOUT_MINUTES": "10080",
     "SESSION_ABSOLUTE_LIFETIME_MINUTES": "43200",
     "CORS_ALLOWED_ORIGINS": "",
-    "EMAIL_PROVIDER": ""
+    // E-mail through Gmail SMTP with Nodemailer (owner decision 2026-11-10, AD-58). SMTP_USER and SMTP_APP_PASSWORD are
+    // Worker secrets (`wrangler secret put`), never vars; locally they are in .dev.vars, which overrides these.
+    "EMAIL_PROVIDER": "smtp",
+    "SMTP_HOST": "smtp.gmail.com",
+    "SMTP_PORT": "465"
   },
   // Private file storage for application CVs and university letters (owner decision 2026-10-29). Never public: files are
   // read only through the Worker, after an authorization check, with short-lived links. Locally Wrangler simulates it.

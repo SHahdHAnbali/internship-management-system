@@ -41,6 +41,14 @@ export class EmailNotConfiguredError extends Error {
   }
 }
 
+/** The e-mail provider did not accept the message (HTTP 503). The cause is logged by its code only. */
+export class EmailSendError extends Error {
+  constructor() {
+    super('The e-mail could not be sent.');
+    this.name = 'EmailSendError';
+  }
+}
+
 /** The Worker's configuration (vars, secrets, bindings) is missing or invalid (HTTP 500, details logged). */
 export class ConfigurationError extends Error {
   constructor(message: string) {

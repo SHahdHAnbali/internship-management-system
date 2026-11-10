@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "hono": "4.13.13",
+    "nodemailer": "10.2.1",
     "pg": "8.23.1"
   },
   "devDependencies": {
