@@ -60,8 +60,21 @@ version ignores them).
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Current deployment (2026-11-10, bilingual HTML sign-in e-mail, AD-60 Phase 1)
-- Worker `ims-api` version `7ae6b96c-eaab-469e-b86c-9a01f92e77ef` (commit `6525ed2`, 2026-11-10 20:52 UTC): the trainee
+### Current deployment (2026-11-10, trainee rejection reason, AD-61 Phase 2)
+- Worker `ims-api` version `3f953830-4316-42bd-990f-61adad908937` and Pages production deployment
+  `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72` (commit `a8955c6`, 2026-11-10 21:23 UTC; Worker first, then Pages): the trainee's
+  status board shows the reason HR recorded for each of their own rejected applications, including earlier rejections
+  (AD-61, Q36, NEW-25), as plain text with `dir="auto"`; other statuses never carry a reason. The existing
+  `rejection_reason` column is reused: no migration, no change to tables, triggers, grants, data, `wrangler.jsonc`,
+  `frontend/wrangler.toml`, bindings, variables or secrets (the four secret names present, not re-entered). No e-mail is
+  sent (the rejection e-mail is a later phase). Before: 388/388 Worker tests (Mac sleep prevented; disposable PostgreSQL
+  as `ims_app`), Worker typecheck and dry-run build, 316/316 frontend tests, frontend build and lint (no findings) passed;
+  signed-out baseline taken. After the Worker: `/health` Healthy; `/api/auth/config` 200 (same domains, 15-minute code);
+  `/api/auth/me`, `/api/trainee/applications` and an unknown `/api/*` path 401 signed out; `no-store` and `nosniff`;
+  no CORS headers for a foreign origin. After Pages: `/`, `/trainee`, `/sign-in` 200; the same API checks through the
+  site; both translation files serve the new label; the served trainee page chunk is byte-identical to the local build.
+  No application was created, changed or read for testing. **Automated tests passed; production visual verification pending a legitimate rejected application.**
+- Previous (bilingual HTML sign-in e-mail, AD-60 Phase 1): Worker `ims-api` version `7ae6b96c-eaab-469e-b86c-9a01f92e77ef` (commit `6525ed2`, 2026-11-10 20:52 UTC): the trainee
   sign-in e-mail is sent as `ProGineer <configured address>` with an HTML part and an equivalent plain-text part, Arabic
   first, then English, in both (AD-60 items 1–3). Subject and plain text unchanged; sign-in behaviour unchanged (code
   saved only after Gmail accepts the message, `503 email.send_failed` otherwise). Worker only: no change to
@@ -148,9 +161,11 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 | C3 | One rate-limit counter shared by trainee sign-in and application submit | **Open**: owner decision (optional) |
 
 ### Rollback
-- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`0551650d…`) → *Rollback*, or redeploy that commit.
+- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; earlier: `0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback 273dc51a-a930-4053-a3a0-d3b35296e255` (in `backend-workers/`; before the HTML
+- **Worker code:** `npx wrangler rollback 7ae6b96c-eaab-469e-b86c-9a01f92e77ef` (in `backend-workers/`; before the
+  rejection reason: the trainee board then returns no reason and the new page shows none), or
+  `273dc51a-a930-4053-a3a0-d3b35296e255` (before the HTML
   sign-in e-mail: Gmail SMTP with the plain-text e-mail, verified by the owner), or
   `b5d7f08d-52f3-45b1-83f1-68d2297943b4` (the code before
   Gmail SMTP, with the SMTP secrets present but unused: e-mail fails with 503 again, as before), or

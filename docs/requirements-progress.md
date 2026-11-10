@@ -59,7 +59,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R13 | Application form with CV and university letter (p.2) | ✅ | Yes | Rules pending confirmation (Q35); files in R2 (AD-48) |
-| R14 | Status board (p.2) | 🟡 | Yes | Application status only (L10); the rejection reason is not shown yet (Q36 answered 2026-11-10, AD-61) |
+| R14 | Status board (p.2) | 🟡 | Yes | Application status, and the rejection reason of a rejected application (AD-61, Q36; deployed 2026-11-10; production visual verification pending a legitimate rejected application). After acceptance nothing more (L10) |
 | R15 | Apply again later; every training stays on record (p.2) | ✅ | Yes | Concurrent applications (Q16) |
 | R16 | Publish or hide, print and download the certificate as PDF (p.2, p.3) | ❌ | — | Needs certificates |
 
@@ -68,7 +68,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R17 | Inbox, review and contact log (date, method, summary) (p.2) | ✅ | Yes | Editing open (Q37) |
-| R18 | Accept, or reject with a reason; rejected kept (p.2) | ✅ | Yes | The trainee will see the reason (Q36 answered 2026-11-10, AD-61; not built) |
+| R18 | Accept, or reject with a reason; rejected kept (p.2) | ✅ | Yes | The trainee sees the reason on the status page (AD-61, Q36; deployed 2026-11-10; production visual verification pending a legitimate rejected application); not in an e-mail yet (R46) |
 | R19 | Mentor requests: approve with dates, or reject (the trainee returns to the list) (p.2) | ✅ | Yes | Other pending requests (Q38) |
 | R20 | Direct assignment (p.2) | ❌ | — | Q38, L5 |
 | R21 | Running training: extend, end early, transfer, withdraw, with a reason (p.2) | ❌ | — | L2–L5, L8, L9 |

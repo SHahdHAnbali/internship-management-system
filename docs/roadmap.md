@@ -15,7 +15,7 @@ Requirement-by-requirement status: [requirements-progress.md](requirements-progr
 
 ## Phase 1: Core (MVP, about 6 weeks)
 - [x] Admin: fields, evaluation criteria and weights, users and roles, notification intervals, certificate template (AD-43), accepted trainees (in production)
-- [x] Trainee: application form with CV/letter upload (R2, AD-48), application status board (in production). Not yet: CAPTCHA (Q22), the board after acceptance (L10)
+- [x] Trainee: application form with CV/letter upload (R2, AD-48), application status board (in production; since 2026-11-10 it also shows the rejection reason of a rejected application, AD-61, production visual verification pending a legitimate rejected application). Not yet: CAPTCHA (Q22), the board after acceptance (L10)
 - [x] HR: applications inbox, Under Review, accept, reject with reason, contact log (AD-47, in production)
 - [x] Employee: available trainees with filters and CV view, mentor request (in production)
 - [ ] HR: approve/reject mentor requests with dates (**done**, AD-49, in production); direct assignment (**not built**: Q38, L5)
