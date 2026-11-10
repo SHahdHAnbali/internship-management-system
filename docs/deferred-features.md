@@ -12,13 +12,13 @@ Status values: **Blocked** (a module, an owner decision or an external dependenc
 blocks it, not built) · **Partly done** · **Done**. Production means the Cloudflare Worker `ims-api` and Pages
 `progineer-ims` ([deployment.md](deployment.md)).
 
-## Modules (state 2026-11-04)
+## Modules (state 2026-11-04; e-mail rows updated 2026-11-10)
 
 | Module | PDF reference | State |
 |---|---|---|
 | Admin | §2, §4 Admin | **Built, in production**: fields, evaluation criteria and weights, users and roles, notification intervals, certificate template (AD-43), accepted trainees, reports (monthly, fields), audit log viewer (AD-51) |
 | Authentication: staff (Google, staff domains) | §2, §9 | **Built, in production** (AD-42, AD-44, AD-45, AD-46) |
-| Authentication: trainee (passwordless e-mail link/code, 15 min) | §2, §4 Trainee, §9 | **Built**; **not usable in production** until e-mail works (AD-53) |
+| Authentication: trainee (passwordless e-mail link/code, 15 min) | §2, §4 Trainee, §9 | **Built, in production**: verified by the owner on 2026-11-10 (e-mail through Gmail SMTP, AD-58) |
 | Trainee: applications | §3 steps 1–4, §4 Trainee | **Built, in production** (AD-47, AD-48) |
 | HR: applications, contact log, mentor requests | §3 steps 2–6, §4 HR | **Built, in production** (AD-47, AD-49); direct assignment and the running-training actions are not built |
 | Employee: mentoring and progress notes | §3 steps 4–5, §4 Employee | **Built, in production**; the final evaluation is not built |
@@ -26,7 +26,7 @@ blocks it, not built) · **Partly done** · **Done**. Production means the Cloud
 | Certificates: public page, PDF, QR | §3 step 9, §5 | **Not built** (template settings only, AD-43) |
 | Reports and export | §6 | **Partly built, in production**: monthly, fields (no completed count), mentor profile (no average), trainee history; filters where defined. Hiring pipeline not built. Excel/PDF export: see D-45 |
 | Notifications (in-app) | §7 | **Partly built, in production** (AD-50): four in-app events |
-| E-mail | §7, §9 | **Not operational**: SendGrid selected, account awaiting reactivation (AD-53) |
+| E-mail | §7, §9 | **Transport operational, in production**: Gmail SMTP with Nodemailer (AD-58, replaces the planned SendGrid integration of AD-53), verified on 2026-11-10 with the trainee sign-in e-mail. Not built: the event e-mails, bilingual templates and scheduled reminders (D-50 to D-53) |
 | File storage (CVs, university letters) | §4 Trainee, §9 | **Built, in production**: private Cloudflare R2, temporary links (AD-48) |
 | Scheduled jobs (reminders, weekly summary) | §7, §9 | **Not built** (needs the decisions in D-51, D-52) |
 
@@ -46,7 +46,7 @@ blocks it, not built) · **Partly done** · **Done**. Production means the Cloud
 
 | ID | Feature (PDF) | Depends on | Why | Status |
 |---|---|---|---|---|
-| D-10 | Register and sign in with e-mail only, by link or code | Authentication: trainee; e-mail | Built and tested; production needs e-mail (AD-53: SendGrid reactivation, NEW-01, Q10) | **Blocked** (external: e-mail provider) |
+| D-10 | Register and sign in with e-mail only, by link or code | Authentication: trainee; e-mail | — (was blocked by the e-mail provider until 2026-11-10) | **Done** (in production; the sign-in e-mail is sent through Gmail SMTP, AD-58; verified by the owner on 2026-11-10: e-mail received, code accepted, trainee signed in) |
 | D-11 | Application form (name, phone, university, major, study year, field, period, hours, mandatory flag) | — | Form rules are implementation choices pending confirmation (Q35) | **Done** (in production by 2026-10-29) |
 | D-12 | Upload CV and university letter | File storage | — | **Done** (in production; private R2, temporary links) |
 | D-13 | Status board: where my application is, without seeing other trainees | — | After acceptance the board shows nothing more (L10); rejection reason not shown (Q36) | **Partly done** (in production): the application status |
@@ -98,10 +98,10 @@ blocks it, not built) · **Partly done** · **Done**. Production means the Cloud
 
 | ID | Feature (PDF §7) | Depends on | Why | Status |
 |---|---|---|---|---|
-| D-50 | Event e-mails and in-app notifications | The modules that raise each event; e-mail | E-mail is not operational (AD-53); "new trainee in your field" (Q14); 7-day and training-ended (lifecycle, scheduling, NEW-09); channel question (Q42); the "email status" field | **Partly done** (deployed 2026-11-02, AD-50): in-app new application → HR, mentor request → HR, assignment approved / rejected → the employee; HR and Employee only; every HR member gets their own copy (owner, 2026-11-02) |
-| D-51 | Timed reminders using the Admin intervals: training ending in 7 days, late evaluation every 3 days, request pending more than 5 days | Scheduled jobs; lifecycle; evaluation | NEW-05, NEW-06, NEW-09, L1, N3; e-mail | **Blocked** (the intervals are stored) |
-| D-52 | Weekly summary to HR | Scheduled jobs; e-mail | NEW-04; e-mail | **Blocked** |
-| D-53 | Bilingual (Arabic/English) e-mail templates | E-mail | NEW-01, NEW-07; e-mail | **Blocked** |
+| D-50 | Event e-mails and in-app notifications | The modules that raise each event; e-mail | No event e-mail is built yet (the transport works: Gmail SMTP, AD-58); "new trainee in your field" (Q14); 7-day and training-ended (lifecycle, scheduling, NEW-09); channel question (Q42); the "email status" field | **Partly done** (deployed 2026-11-02, AD-50): in-app new application → HR, mentor request → HR, assignment approved / rejected → the employee; HR and Employee only; every HR member gets their own copy (owner, 2026-11-02) |
+| D-51 | Timed reminders using the Admin intervals: training ending in 7 days, late evaluation every 3 days, request pending more than 5 days | Scheduled jobs; lifecycle; evaluation | NEW-05, NEW-06, NEW-09, L1, N3; no scheduled jobs yet (the e-mail transport is available, AD-58) | **Blocked** (decisions; the intervals are stored) |
+| D-52 | Weekly summary to HR | Scheduled jobs; e-mail | NEW-04; no scheduled jobs yet (the e-mail transport is available, AD-58) | **Blocked** (decision NEW-04) |
+| D-53 | Bilingual (Arabic/English) e-mail templates | E-mail | NEW-07 (format), NEW-01 (display name); templates of the event e-mails come with D-50 | **Partly done**: the only e-mail, the trainee sign-in e-mail, has a bilingual subject and an English body; no template system |
 
 ## Dependency order
 
@@ -109,5 +109,5 @@ blocks it, not built) · **Partly done** · **Done**. Production means the Cloud
 Authentication (staff, trainee) ─► Trainee: applications (+ R2 files) ─► HR: applications & contact log
         ─► Employee: mentor requests ─► HR: assignment ─► Employee: progress notes        (built)
         ─► Running training (L-decisions) ─► Final evaluation (N-decisions, Q3) ─► Certificates ─► remaining reports
-E-mail (SendGrid, AD-53) and scheduled jobs follow each module whose events they report.
+E-mail transport: Gmail SMTP (AD-58, operational since 2026-11-10). Event e-mails and scheduled jobs follow each module whose events they report.
 ```

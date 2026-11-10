@@ -2,7 +2,7 @@
 
 Follows the PDF phases (§10). Each item is one vertical slice with tests. Since 2026-10-27 the production API is the
 Cloudflare Worker (`backend-workers/`, AD-38); the EF Core migrations in `backend/` still own the schema.
-Status as of 2026-11-04 ("in production" = deployed to the Worker and Pages, [deployment.md](deployment.md)).
+Status as of 2026-11-04, e-mail items updated 2026-11-10 ("in production" = deployed to the Worker and Pages, [deployment.md](deployment.md)).
 Requirement-by-requirement status: [requirements-progress.md](requirements-progress.md). Open questions: [decisions.md](decisions.md) §C–D.
 
 ## Step 0: Foundation
@@ -21,7 +21,7 @@ Requirement-by-requirement status: [requirements-progress.md](requirements-progr
 - [ ] HR: approve/reject mentor requests with dates (**done**, AD-49, in production); direct assignment (**not built**: Q38, L5)
 - [ ] Employee: my trainees and progress notes (**done**, in production); final evaluation form (**not built**: Q3, N1–N7, Q11, Q13, L6)
 - [x] Audit log viewer: Admin only, read-only (AD-51); sign-in writes attributed to the verified user; least-privilege database role `ims_app` (AD-52) (in production)
-- [ ] E-mails: application received, accepted/rejected, assignment approved/rejected (**blocked**: SendGrid not operational, AD-53; NEW-01, NEW-07, Q10)
+- [ ] E-mails: transport **done** (Gmail SMTP with Nodemailer, AD-58, replaces SendGrid; verified in production on 2026-11-10 with the trainee sign-in e-mail); application received, accepted/rejected, assignment approved/rejected **not built** (NEW-01 display name, NEW-07, Q42)
 
 ## Phase 2: Certificates & reports (about 3 weeks)
 - [ ] Certificate generation, public page `/c/:code`, publish/private, revoke (**blocked**: L1, L7, Q2, Q4, Q11; domain Q10)
@@ -30,10 +30,10 @@ Requirement-by-requirement status: [requirements-progress.md](requirements-progr
 - [x] Excel and PDF export of the built reports (in production since 2026-11-04, verified by the owner; AD-55: in the browser, from the data each page shows; Arabic PDFs with embedded Noto fonts)
 
 ## Phase 3: Automation (about 2 weeks)
-- [ ] Scheduled reminders (7-day, end-of-training, late evaluation every 3 days, 5-day pending) and the weekly summary (**blocked**: NEW-04, NEW-05, NEW-06, NEW-09, L1, N3; e-mail)
+- [ ] Scheduled reminders (7-day, end-of-training, late evaluation every 3 days, 5-day pending) and the weekly summary (**blocked**: NEW-04, NEW-05, NEW-06, NEW-09, L1, N3; no scheduled jobs yet; the e-mail transport is available, AD-58)
 - [x] Progress notes: core in production since 2026-10-29. Open: B2, B5, B7, B8, Q37, Q40
 - [ ] Transfer, extend, end early, withdraw (**blocked**: L1–L5, L8, L9)
-- [ ] Admin settings: criteria, weights and intervals (**done**); certificate template (**done**, AD-43); e-mail templates AR/EN (**blocked** with e-mail)
+- [ ] Admin settings: criteria, weights and intervals (**done**); certificate template (**done**, AD-43); e-mail templates AR/EN (**not built**: NEW-07, NEW-01; the sign-in e-mail has a bilingual subject and an English body)
 - [ ] LinkedIn share (**blocked** with certificates)
 - [ ] In-app notifications (**partly**, in production since 2026-11-02, AD-50: four events, HR and Employee); "new trainee in your field" and its opt-out (Q14); 7-day and training-ended notifications (lifecycle, scheduling)
 
