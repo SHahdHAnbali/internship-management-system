@@ -64,6 +64,7 @@ describe('audit log viewer: what it returns', () => {
         'actorKnown',
         'actorName',
         'actorType',
+        'description',
         'entityId',
         'id',
         'occurredAt',

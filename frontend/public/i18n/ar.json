@@ -283,7 +283,8 @@
       "loadMore": "عرض المزيد",
       "operations": {
         "INSERT": "إنشاء",
-        "UPDATE": "تعديل"
+        "UPDATE": "تعديل",
+        "other": "أخرى"
       },
       "actorTypes": {
         "Staff": "موظف",
@@ -308,11 +309,165 @@
         "trainee_sign_in_codes": "رموز دخول المتدربين",
         "trainees": "المتدربون",
         "training_applications": "طلبات التدريب المقدّمة",
-        "user_sessions": "جلسات الدخول"
+        "user_sessions": "جلسات الدخول",
+        "other": "بيانات أخرى"
       },
       "unknownUser": "مستخدم غير معروف",
       "traineeWithoutName": "متدرب (لم يُدخل اسمه بعد)",
-      "staffCurrentRole": "موظف · الدور الحالي: {{role}}"
+      "staffCurrentRole": "موظف · الدور الحالي: {{role}}",
+      "descriptionColumn": "الوصف",
+      "listSeparator": "، ",
+      "properties": {
+        "criterion": {
+          "name": "الاسم",
+          "weight": "الوزن",
+          "order": "الترتيب"
+        },
+        "intervals": {
+          "trainingEnding": "إشعار اقتراب نهاية التدريب",
+          "lateEvaluation": "تذكير التقييم المتأخر",
+          "pendingRequest": "تنبيه الطلب المعلّق"
+        }
+      },
+      "events": {
+        "application": {
+          "createdWithStatus": "تم إنشاء طلب تدريب (الحالة: «{{status}}»)",
+          "underReview": "تم وضع طلب تدريب قيد المراجعة",
+          "accepted": "تم قبول طلب تدريب",
+          "rejected": "تم رفض طلب تدريب"
+        },
+        "attachment": {
+          "cv": "تم إرفاق سيرة ذاتية بطلب تدريب",
+          "universityLetter": "تم إرفاق كتاب من الجامعة بطلب تدريب"
+        },
+        "trainee": {
+          "profileRecorded": "تم تسجيل بيانات الملف الشخصي لمتدرب"
+        },
+        "signInCode": {
+          "used": "تم استخدام رمز دخول",
+          "superseded": "تم استبدال رمز دخول برمز أحدث",
+          "failedAttempt": "تم إدخال رمز دخول خاطئ"
+        },
+        "session": {
+          "startedStaff": "بدأت جلسة دخول لحساب موظف",
+          "startedTrainee": "بدأت جلسة دخول لحساب متدرب",
+          "startedGoogle": "بدأت جلسة دخول لحساب Google من خارج نطاقات الموظفين",
+          "signedOut": "انتهت جلسة دخول (السبب المسجّل: تسجيل الخروج)",
+          "replaced": "انتهت جلسة دخول لأن دخولاً جديداً حلّ محلها"
+        },
+        "employee": {
+          "createdWithRole": "تم إنشاء حساب موظف بدور «{{role}}»",
+          "roleChanged": "تم تغيير دور حساب موظف من «{{fromRole}}» إلى «{{toRole}}»"
+        },
+        "field": {
+          "createdActive": "تمت إضافة مجال تدريب (مفعّل)",
+          "createdInactive": "تمت إضافة مجال تدريب (غير مفعّل)",
+          "activated": "تم تفعيل مجال تدريب",
+          "deactivated": "تم إيقاف مجال تدريب",
+          "updatedActivated": "تم تحديث مجال تدريب وتفعيله",
+          "updatedDeactivated": "تم تحديث مجال تدريب وإيقافه"
+        },
+        "criterion": {
+          "changed": "تم تعديل معيار تقييم ({{changes}})"
+        },
+        "intervals": {
+          "changed": "تم تغيير مدد الإشعارات ({{changes}})"
+        },
+        "certificate": {
+          "settingsChanged": "تم تعديل إعدادات قالب الشهادة",
+          "logoUploaded": "تم رفع شعار الشهادة",
+          "logoReplaced": "تم استبدال شعار الشهادة",
+          "logoRemoved": "تمت إزالة شعار الشهادة",
+          "signatureUploaded": "تم رفع صورة توقيع الشهادة",
+          "signatureReplaced": "تم استبدال صورة توقيع الشهادة",
+          "signatureRemoved": "تمت إزالة صورة توقيع الشهادة"
+        },
+        "mentorRequest": {
+          "approved": "تم اعتماد طلب تدريب متدرب",
+          "rejected": "تم رفض طلب تدريب متدرب"
+        },
+        "assignment": {
+          "createdFromRequest": "تم ربط متدرب بموظف بعد اعتماد طلب التدريب",
+          "createdDirect": "تم ربط متدرب بموظف",
+          "statusChanged": "تغيّرت حالة ربط من «{{fromAssignmentStatus}}» إلى «{{toAssignmentStatus}}»"
+        },
+        "notification": {
+          "createdApplicationSubmitted": "تم إنشاء إشعار: طلب تدريب جديد",
+          "createdMentorRequestSubmitted": "تم إنشاء إشعار: موظف طلب تدريب متدرب",
+          "createdMentorRequestApproved": "تم إنشاء إشعار: اعتماد طلب تدريب متدرب",
+          "createdMentorRequestRejected": "تم إنشاء إشعار: رفض طلب تدريب متدرب",
+          "read": "تم تعليم إشعار كمقروء"
+        },
+        "application_attachments": {
+          "created": "تم إرفاق ملف بطلب تدريب",
+          "updated": "تم تحديث بيانات ملف مرفق"
+        },
+        "assignments": {
+          "created": "تم ربط متدرب بموظف",
+          "updated": "تم تحديث ربط"
+        },
+        "certificate_templates": {
+          "created": "تم إنشاء قالب الشهادة",
+          "updated": "تم تحديث قالب الشهادة"
+        },
+        "contact_logs": {
+          "created": "تمت إضافة ملاحظة إلى سجل التواصل لطلب تدريب",
+          "updated": "تم تحديث ملاحظة في سجل التواصل"
+        },
+        "employees": {
+          "created": "تم إنشاء حساب موظف",
+          "updated": "تم تحديث حساب موظف"
+        },
+        "evaluation_criteria": {
+          "created": "تمت إضافة معيار تقييم",
+          "updated": "تم تحديث معيار تقييم"
+        },
+        "fields": {
+          "created": "تمت إضافة مجال تدريب",
+          "updated": "تم تحديث مجال تدريب"
+        },
+        "mentor_requests": {
+          "created": "تم تقديم طلب لتدريب متدرب",
+          "updated": "تم تحديث طلب تدريب متدرب"
+        },
+        "notification_settings": {
+          "created": "تم إنشاء إعدادات الإشعارات",
+          "updated": "تم تحديث إعدادات الإشعارات"
+        },
+        "notifications": {
+          "created": "تم إنشاء إشعار",
+          "updated": "تم تحديث إشعار"
+        },
+        "progress_notes": {
+          "created": "تمت إضافة ملاحظة متابعة",
+          "updated": "تم تحديث ملاحظة متابعة"
+        },
+        "roles": {
+          "created": "تمت إضافة دور إلى النظام",
+          "updated": "تم تحديث دور"
+        },
+        "trainee_sign_in_codes": {
+          "created": "تم طلب رمز دخول لمتدرب",
+          "updated": "تم تحديث رمز دخول"
+        },
+        "trainees": {
+          "created": "تم إنشاء حساب متدرب",
+          "updated": "تم تحديث بيانات متدرب"
+        },
+        "training_applications": {
+          "created": "تم إنشاء طلب تدريب",
+          "updated": "تم تحديث طلب تدريب"
+        },
+        "user_sessions": {
+          "created": "بدأت جلسة دخول",
+          "updated": "تم تحديث جلسة دخول"
+        },
+        "other": {
+          "created": "تم إنشاء سجل في جزء آخر من النظام",
+          "updated": "تم تعديل سجل في جزء آخر من النظام"
+        },
+        "unknown": "تم تسجيل تغيير على بيانات النظام"
+      }
     }
   },
   "preview": {

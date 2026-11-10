@@ -64,29 +64,25 @@ describe('AuditLogPage', () => {
         ],
       },
     ]);
-    open();
+    open(testI18n(JSON.parse(enMessages), 'en'));
     await screen.findByRole('table');
     expect(
       within(screen.getByRole('table'))
         .getAllByRole('columnheader')
         .map((h) => h.textContent),
-    ).toEqual([
-      'admin.auditLog.number',
-      'admin.auditLog.time',
-      'admin.auditLog.actor',
-      'admin.auditLog.operation',
-      'admin.auditLog.table',
-      'admin.auditLog.record',
-    ]);
+    ).toEqual(['No.', 'Time', 'Description', 'Actor', 'Operation', 'Table', 'Record']);
     const [first, second] = rows();
     expect(within(first!).getByText('12')).toBeInTheDocument();
     expect(within(first!).getByText('Synthetic Admin')).toBeInTheDocument();
-    expect(within(first!).getByText('admin.auditLog.staffCurrentRole')).toBeInTheDocument();
+    expect(within(first!).getByText('Staff · current role: Admin')).toBeInTheDocument();
     expect(within(first!).getByText(ADMIN_ID)).toBeInTheDocument();
-    expect(within(first!).getByText('admin.auditLog.operations.UPDATE')).toBeInTheDocument();
-    expect(within(first!).getByText('admin.auditLog.tables.fields')).toBeInTheDocument();
-    expect(within(second!).getByText('admin.auditLog.actorTypes.Anonymous')).toBeInTheDocument();
-    expect(within(second!).getByText('admin.auditLog.recordHidden')).toBeInTheDocument();
+    expect(within(first!).getByText('Changed')).toBeInTheDocument();
+    expect(within(first!).getByText('Fields')).toBeInTheDocument();
+    // No description from the API (an older Worker): what the table and operation say.
+    expect(within(first!).getByText('A training field was updated')).toBeInTheDocument();
+    expect(within(second!).getByText('Not signed in')).toBeInTheDocument();
+    expect(within(second!).getByText('Hidden')).toBeInTheDocument();
+    expect(within(second!).getByText('A sign-in session started')).toBeInTheDocument();
 
     expect(document.body.textContent).not.toMatch(
       /SECRET-HASH|SYNTHETIC-PHONE-555|code_hash|phone/,
@@ -269,7 +265,7 @@ describe('AuditLogPage', () => {
     ];
     const actorLines = () =>
       rows().map((r) =>
-        Array.from(within(r).getAllByRole('cell')[2]!.querySelectorAll('span')).map(
+        Array.from(within(r).getAllByRole('cell')[3]!.querySelectorAll('span')).map(
           (span) => span.textContent,
         ),
       );
@@ -311,7 +307,7 @@ describe('AuditLogPage', () => {
       await screen.findByRole('table');
       expect(actorLines()).toEqual(expected);
       // The name is the prominent line; the recorded id is secondary.
-      const firstLines = within(rows()[0]!).getAllByRole('cell')[2]!.querySelectorAll('span');
+      const firstLines = within(rows()[0]!).getAllByRole('cell')[3]!.querySelectorAll('span');
       expect(firstLines[0]!.className).toContain('font-semibold');
       expect(firstLines[2]!.className).toContain('text-muted');
     });
@@ -331,6 +327,44 @@ describe('AuditLogPage', () => {
       expect(within(rows()[1]!).getByText('Synthetic Trainee')).toBeInTheDocument();
     });
   });
+
+  it.each([
+    [
+      'en',
+      enMessages,
+      ['A training application was accepted', 'A record was created in another part of the system'],
+      'Other data',
+    ],
+    ['ar', arMessages, ['تم قبول طلب تدريب', 'تم إنشاء سجل في جزء آخر من النظام'], 'بيانات أخرى'],
+  ] as const)(
+    'shows each entry’s description in %s',
+    async (language, raw, descriptions, otherTable) => {
+      api(() => [
+        200,
+        {
+          hasMore: false,
+          entries: [
+            entry(31, {
+              table: 'training_applications',
+              description: { event: 'application.accepted' },
+            }),
+            entry(30, {
+              operation: 'INSERT',
+              table: 'a_future_table',
+              description: { event: 'other.created' },
+            }),
+          ],
+        },
+      ]);
+      open(testI18n(JSON.parse(raw), language));
+      await screen.findByRole('table');
+      expect(rows().map((r) => within(r).getAllByRole('cell')[2]!.textContent)).toEqual(
+        descriptions,
+      );
+      expect(within(rows()[1]!).getByText(otherTable)).toBeInTheDocument();
+      expect(document.body.textContent).not.toMatch(/admin\.auditLog|a_future_table/);
+    },
+  );
 
   it('lays out with logical (RTL/LTR-neutral) classes only', () => {
     expect(source).not.toMatch(/\b(ml|mr|pl|pr|left|right)-|text-(left|right)\b/);

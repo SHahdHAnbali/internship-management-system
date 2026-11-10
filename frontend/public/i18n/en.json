@@ -283,7 +283,8 @@
       "loadMore": "Load more",
       "operations": {
         "INSERT": "Created",
-        "UPDATE": "Changed"
+        "UPDATE": "Changed",
+        "other": "Other"
       },
       "actorTypes": {
         "Staff": "Staff",
@@ -308,11 +309,165 @@
         "trainee_sign_in_codes": "Trainee sign-in codes",
         "trainees": "Trainees",
         "training_applications": "Training applications",
-        "user_sessions": "Sign-in sessions"
+        "user_sessions": "Sign-in sessions",
+        "other": "Other data"
       },
       "unknownUser": "Unknown user",
       "traineeWithoutName": "Trainee (name not entered yet)",
-      "staffCurrentRole": "Staff · current role: {{role}}"
+      "staffCurrentRole": "Staff · current role: {{role}}",
+      "descriptionColumn": "Description",
+      "listSeparator": ", ",
+      "properties": {
+        "criterion": {
+          "name": "name",
+          "weight": "weight",
+          "order": "order"
+        },
+        "intervals": {
+          "trainingEnding": "training ending soon notice",
+          "lateEvaluation": "late evaluation reminder",
+          "pendingRequest": "pending request alert"
+        }
+      },
+      "events": {
+        "application": {
+          "createdWithStatus": "A training application was created (status: {{status}})",
+          "underReview": "A training application was put under review",
+          "accepted": "A training application was accepted",
+          "rejected": "A training application was rejected"
+        },
+        "attachment": {
+          "cv": "A CV was attached to a training application",
+          "universityLetter": "A university letter was attached to a training application"
+        },
+        "trainee": {
+          "profileRecorded": "A trainee's profile details were recorded"
+        },
+        "signInCode": {
+          "used": "A sign-in code was used",
+          "superseded": "A sign-in code was replaced by a newer one",
+          "failedAttempt": "A wrong sign-in code was entered"
+        },
+        "session": {
+          "startedStaff": "A sign-in session started for a staff account",
+          "startedTrainee": "A sign-in session started for a trainee account",
+          "startedGoogle": "A sign-in session started for a Google account outside the staff domains",
+          "signedOut": "A sign-in session ended (recorded reason: sign-out)",
+          "replaced": "A sign-in session ended because a new sign-in replaced it"
+        },
+        "employee": {
+          "createdWithRole": "A staff account was created with the {{role}} role",
+          "roleChanged": "A staff account's role was changed from {{fromRole}} to {{toRole}}"
+        },
+        "field": {
+          "createdActive": "A training field was added (active)",
+          "createdInactive": "A training field was added (inactive)",
+          "activated": "A training field was activated",
+          "deactivated": "A training field was deactivated",
+          "updatedActivated": "A training field was updated and activated",
+          "updatedDeactivated": "A training field was updated and deactivated"
+        },
+        "criterion": {
+          "changed": "An evaluation criterion was changed ({{changes}})"
+        },
+        "intervals": {
+          "changed": "Notification intervals were changed ({{changes}})"
+        },
+        "certificate": {
+          "settingsChanged": "The certificate template's settings were changed",
+          "logoUploaded": "The certificate logo was uploaded",
+          "logoReplaced": "The certificate logo was replaced",
+          "logoRemoved": "The certificate logo was removed",
+          "signatureUploaded": "The certificate signature image was uploaded",
+          "signatureReplaced": "The certificate signature image was replaced",
+          "signatureRemoved": "The certificate signature image was removed"
+        },
+        "mentorRequest": {
+          "approved": "A request to train a trainee was approved",
+          "rejected": "A request to train a trainee was rejected"
+        },
+        "assignment": {
+          "createdFromRequest": "A trainee was assigned to an employee after a mentor request was approved",
+          "createdDirect": "A trainee was assigned to an employee",
+          "statusChanged": "An assignment's status changed from {{fromAssignmentStatus}} to {{toAssignmentStatus}}"
+        },
+        "notification": {
+          "createdApplicationSubmitted": "A notification was created: new training application",
+          "createdMentorRequestSubmitted": "A notification was created: an employee asked to train a trainee",
+          "createdMentorRequestApproved": "A notification was created: a request to train a trainee was approved",
+          "createdMentorRequestRejected": "A notification was created: a request to train a trainee was rejected",
+          "read": "A notification was marked as read"
+        },
+        "application_attachments": {
+          "created": "A file was attached to a training application",
+          "updated": "An attached file's details were updated"
+        },
+        "assignments": {
+          "created": "A trainee was assigned to an employee",
+          "updated": "An assignment was updated"
+        },
+        "certificate_templates": {
+          "created": "The certificate template was created",
+          "updated": "The certificate template was updated"
+        },
+        "contact_logs": {
+          "created": "A contact log entry was added to a training application",
+          "updated": "A contact log entry was updated"
+        },
+        "employees": {
+          "created": "A staff account was created",
+          "updated": "A staff account was updated"
+        },
+        "evaluation_criteria": {
+          "created": "An evaluation criterion was added",
+          "updated": "An evaluation criterion was updated"
+        },
+        "fields": {
+          "created": "A training field was added",
+          "updated": "A training field was updated"
+        },
+        "mentor_requests": {
+          "created": "A request to train a trainee was submitted",
+          "updated": "A request to train a trainee was updated"
+        },
+        "notification_settings": {
+          "created": "Notification settings were created",
+          "updated": "Notification settings were updated"
+        },
+        "notifications": {
+          "created": "A notification was created",
+          "updated": "A notification was updated"
+        },
+        "progress_notes": {
+          "created": "A progress note was added",
+          "updated": "A progress note was updated"
+        },
+        "roles": {
+          "created": "A role was added to the system",
+          "updated": "A role was updated"
+        },
+        "trainee_sign_in_codes": {
+          "created": "A trainee sign-in code was requested",
+          "updated": "A sign-in code was updated"
+        },
+        "trainees": {
+          "created": "A trainee account was created",
+          "updated": "A trainee's details were updated"
+        },
+        "training_applications": {
+          "created": "A training application was created",
+          "updated": "A training application was updated"
+        },
+        "user_sessions": {
+          "created": "A sign-in session started",
+          "updated": "A sign-in session was updated"
+        },
+        "other": {
+          "created": "A record was created in another part of the system",
+          "updated": "A record was changed in another part of the system"
+        },
+        "unknown": "A change to the system's data was recorded"
+      }
     }
   },
   "preview": {

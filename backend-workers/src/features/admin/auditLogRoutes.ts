@@ -4,6 +4,7 @@ import { DomainError } from '../../domain/errors';
 import { parseGuid } from '../../domain/uuid';
 import { json } from '../../http/problems';
 import type { Route } from '../../http/routes';
+import { AUDIT_FACTS_SQL, AUDITED_TABLES, describeAudit } from './auditDescriptions';
 
 /**
  * `GET /api/admin/audit-logs` (Admin role only; owner decision AD-51): the audit log, read-only, newest first, in pages.
@@ -15,28 +16,15 @@ import type { Route } from '../../http/routes';
  * historically, so it may differ from their role when they acted); for a Trainee actor the trainee's name, which is
  * null until the trainee enters it. `actorKnown` says whether the account was found. Names come from the same query
  * (one join per account table), never from the stored values, and nothing else about the account (e-mail, phone) is read.
+ *
+ * Each entry also has a `description`: an event code and safe parameters, derived when the log is read from allowlisted
+ * facts of the stored values (`auditDescriptions.ts`, owner requirements ADL-01 to ADL-06). The facts stay in the Worker;
+ * only the code and enum parameters (roles, statuses, names of changed properties) are returned.
  */
 export const AUDIT_PAGE_SIZE = 50;
 
 /** Every table with the audit trigger (`ims_protect_table`); the table filter accepts only these. */
-export const AUDITED_TABLES = [
-  'application_attachments',
-  'assignments',
-  'certificate_templates',
-  'contact_logs',
-  'employees',
-  'evaluation_criteria',
-  'fields',
-  'mentor_requests',
-  'notification_settings',
-  'notifications',
-  'progress_notes',
-  'roles',
-  'trainee_sign_in_codes',
-  'trainees',
-  'training_applications',
-  'user_sessions',
-] as const;
+export { AUDITED_TABLES };
 
 /** Tables whose record ids are session or sign-in code ids: shown without them. */
 export const HIDDEN_ENTITY_TABLES = ['user_sessions', 'trainee_sign_in_codes'] as const;
@@ -53,6 +41,7 @@ interface AuditRow {
   actor_known: boolean;
   actor_name: string | null;
   actor_current_role: string | null;
+  facts: unknown;
   operation: string;
   table_name: string;
   entity_id: string | null;
@@ -113,7 +102,8 @@ export const auditLogRoutes: Route[] = [
                 CASE WHEN a.table_name = ANY($9::text[]) THEN NULL ELSE a.entity_id END AS entity_id,
                 (e.id IS NOT NULL OR t.id IS NOT NULL) AS actor_known,
                 coalesce(e.full_name, t.full_name) AS actor_name,
-                e.role AS actor_current_role
+                e.role AS actor_current_role,
+                ${AUDIT_FACTS_SQL} AS facts
            FROM audit_logs a
            LEFT JOIN employees e ON a.actor_type = 'Staff' AND e.id = a.actor_id
            LEFT JOIN trainees t ON a.actor_type = 'Trainee' AND t.id = a.actor_id
@@ -152,6 +142,7 @@ export const auditLogRoutes: Route[] = [
           operation: r.operation,
           table: r.table_name,
           entityId: r.entity_id,
+          description: describeAudit(r.table_name, r.operation, r.facts),
         })),
       });
     },

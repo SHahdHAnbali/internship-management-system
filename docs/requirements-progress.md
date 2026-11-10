@@ -97,7 +97,7 @@ provider.
 |---|---|---|---|---|
 | R35 | Nothing is deleted; changes are status changes (p.3, p.4) | ✅ | Yes | DELETE/TRUNCATE refused by triggers on every table; a catalog test checks every table |
 | R36 | Every action recorded with who and when (p.3, p.5) | ✅ | Yes | Database triggers; actor from the verified session; behaviour tests for the main writes |
-| R37 | Audit log viewer (AD-51) | ✅ | Yes | Admin only; metadata only; actor names |
+| R37 | Audit log viewer (AD-51) | ✅ | Yes | Admin only; metadata only; actor names; a description of every entry in Arabic and English, historical ones included (AD-57) |
 | R65 | Least-privilege database role for the Worker (AD-52) | ✅ | Yes | `ims_app`; limits in [least-privilege.md](least-privilege.md) |
 
 ## Reports (p.3)

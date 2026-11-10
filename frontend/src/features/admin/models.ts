@@ -111,6 +111,8 @@ export interface AuditEntry {
   operation: (typeof AUDIT_OPERATIONS)[number];
   table: AuditedTable;
   entityId: string | null;
+  /** What happened, as an event code and safe parameters (roles, statuses, property codes) to translate. */
+  description?: { event: string; params?: Record<string, string | string[]> };
 }
 
 export interface AuditPage {

@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { useI18n } from '../../i18n/context';
 import { PageHeader } from './AdminLayout';
 import { adminApi } from './adminApi';
+import { describeEntry, labelOf } from './auditDescription';
 import {
   AUDIT_ACTOR_TYPES,
   AUDIT_OPERATIONS,
@@ -69,7 +70,8 @@ const NO_INPUTS: Inputs = {
 
 /**
  * Admin: the audit log (PDF §5 «سجل التغييرات»; owner decision AD-51: Admin only, read-only, sensitive data hidden).
- * Every recorded change, newest first, with who made it, when, on which table and record; never the stored values.
+ * Every recorded change, newest first, with what happened in words (in the reader's language, derived from safe facts of
+ * the record; requirements ADL-01 to ADL-06), who made it, when, on which table and record; never the stored values.
  * Filters: operation, table, actor (type and id) and a date range (whole days on this device). Load More adds older
  * entries.
  */
@@ -257,6 +259,7 @@ export function AuditLogPage() {
                 <tr>
                   <th scope="col">{t('admin.auditLog.number')}</th>
                   <th scope="col">{t('admin.auditLog.time')}</th>
+                  <th scope="col">{t('admin.auditLog.descriptionColumn')}</th>
                   <th scope="col">{t('admin.auditLog.actor')}</th>
                   <th scope="col">{t('admin.auditLog.operation')}</th>
                   <th scope="col">{t('admin.auditLog.table')}</th>
@@ -270,15 +273,14 @@ export function AuditLogPage() {
                       {entry.id}
                     </td>
                     <td>{new Date(entry.occurredAt).toLocaleString(language)}</td>
+                    <td className="min-w-56">{describeEntry(t, entry)}</td>
                     <td>
                       <ActorCell entry={entry} />
                     </td>
                     <td>
-                      <span className="ims-badge">
-                        {t(`admin.auditLog.operations.${entry.operation}`)}
-                      </span>
+                      <span className="ims-badge">{labelOf(t, 'operations', entry.operation)}</span>
                     </td>
-                    <td>{t(`admin.auditLog.tables.${entry.table}`)}</td>
+                    <td>{labelOf(t, 'tables', entry.table)}</td>
                     <td>
                       {entry.entityId ? (
                         <span dir="ltr" className="break-all text-small">
