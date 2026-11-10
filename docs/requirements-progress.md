@@ -120,7 +120,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R45 | In-app notifications | 🟡 | Yes | 4 of the in-app events (AD-50); Q14, lifecycle, scheduler |
-| R46 | E-mail events and bilingual templates | ❌ | — | The provider works (Gmail SMTP, AD-58; the sign-in e-mail is R03), but the event e-mails of PDF §7 are not built and there are no HTML templates (the sign-in e-mail is plain text, Arabic first then English). Decided 2026-11-10 but not built: channels (AD-59), sender name, HTML + text, retries, Admin failed-e-mail page (AD-60), rejection reason (AD-61), schedules (AD-62); open NEW-19 to NEW-31 |
+| R46 | E-mail events and bilingual templates | ❌ | — | The provider works (Gmail SMTP, AD-58; the sign-in e-mail is R03), but the event e-mails of PDF §7 are not built. Only the sign-in e-mail uses the bilingual format (HTML and plain text, Arabic first, sender ProGineer; deployed 2026-11-10, Worker `7ae6b96c`, verified in production by the owner on 2026-11-10). Decided 2026-11-10 but not built for the event e-mails: channels (AD-59), sender name and HTML + text (AD-60, built for the sign-in e-mail only), retries and the Admin failed-e-mail page (AD-60), rejection reason (AD-61), schedules (AD-62); open NEW-19 to NEW-31 |
 | R47 | Timed reminders (7 days, late evaluation every 3 days, pending > 5 days) | ❌ | — | NEW-05, NEW-06, NEW-09, L1, N3; scheduler; e-mail |
 | R48 | Weekly summary to HR | ❌ | — | NEW-04; e-mail |
 | R50 | Notification "email status" field (p.4) | ❌ | — | Needs the event e-mails (D-50); Q42 answered 2026-11-10 (AD-59) |

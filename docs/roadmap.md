@@ -33,7 +33,7 @@ Requirement-by-requirement status: [requirements-progress.md](requirements-progr
 - [ ] Scheduled reminders (7-day, end-of-training, late evaluation every 3 days, 5-day pending) and the weekly summary (**blocked**: NEW-06, NEW-22, NEW-24, NEW-26, NEW-27, NEW-28, NEW-31, L1, N3; NEW-04 partly, NEW-05 and NEW-09 answered 2026-11-10, AD-61, AD-62; no scheduled jobs yet; the e-mail transport is available, AD-58)
 - [x] Progress notes: core in production since 2026-10-29. Open: B2, B5, B7, B8, Q37, Q40
 - [ ] Transfer, extend, end early, withdraw (**blocked**: L1–L5, L8, L9)
-- [ ] Admin settings: criteria, weights and intervals (**done**); certificate template (**done**, AD-43); e-mail templates AR/EN (**not built**; format decided 2026-11-10, AD-60; the sign-in e-mail is plain text, Arabic first then English)
+- [ ] Admin settings: criteria, weights and intervals (**done**); certificate template (**done**, AD-43); e-mail templates AR/EN (**partly**: format decided 2026-11-10, AD-60; the bilingual HTML layout is used by the sign-in e-mail only, deployed and verified in production by the owner on 2026-11-10; event e-mail templates not built)
 - [ ] LinkedIn share (**blocked** with certificates)
 - [ ] In-app notifications (**partly**, in production since 2026-11-02, AD-50: four events, HR and Employee); "new trainee in your field" and its opt-out (Q14); 7-day and training-ended notifications (lifecycle, scheduling)
 

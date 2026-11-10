@@ -60,8 +60,20 @@ version ignores them).
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Current deployment (2026-11-10, Gmail SMTP, AD-58)
-- Worker `ims-api` version `273dc51a-a930-4053-a3a0-d3b35296e255` (commit `65355e6`, 2026-11-10 14:33 UTC): e-mail
+### Current deployment (2026-11-10, bilingual HTML sign-in e-mail, AD-60 Phase 1)
+- Worker `ims-api` version `7ae6b96c-eaab-469e-b86c-9a01f92e77ef` (commit `6525ed2`, 2026-11-10 20:52 UTC): the trainee
+  sign-in e-mail is sent as `ProGineer <configured address>` with an HTML part and an equivalent plain-text part, Arabic
+  first, then English, in both (AD-60 items 1–3). Subject and plain text unchanged; sign-in behaviour unchanged (code
+  saved only after Gmail accepts the message, `503 email.send_failed` otherwise). Worker only: no change to
+  `wrangler.jsonc`, bindings, variables, secrets (`DATABASE_URL`, `SESSION_SECRET`, `SMTP_USER`, `SMTP_APP_PASSWORD`
+  present, not re-entered), packages, schema, migrations, grants or data; Pages not redeployed (still `94081d2f`).
+  Before: 385/385 Worker tests (Mac sleep prevented; disposable PostgreSQL as `ims_app`), typecheck and dry-run build
+  passed; signed-out baseline taken. After: `/health` Healthy (configuration, SMTP included, validated on every
+  request); `/api/auth/config` 200 with the same domains and 15-minute code lifetime; `/api/auth/me` and an unknown
+  `/api/*` path 401; `no-store` and `nosniff` headers; no CORS headers for a foreign origin; site 200. No e-mail was sent
+  during the release. **Production verification by the owner (2026-11-10):** the bilingual sign-in e-mail was tested
+  successfully on the live website on this version (`7ae6b96c-eaab-469e-b86c-9a01f92e77ef`).
+- Previous (Gmail SMTP, AD-58): Worker `ims-api` version `273dc51a-a930-4053-a3a0-d3b35296e255` (commit `65355e6`, 2026-11-10 14:33 UTC): e-mail
   through Gmail SMTP with Nodemailer (AD-58), `EMAIL_PROVIDER=smtp`, `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`. Order
   used: the secrets `SMTP_USER` and `SMTP_APP_PASSWORD` were put first, while the previous code was live (it ignores them;
   that created version `b5d7f08d-52f3-45b1-83f1-68d2297943b4`, "Secret Change"), then this version was deployed, so SMTP
@@ -138,7 +150,9 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 ### Rollback
 - **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback b5d7f08d-52f3-45b1-83f1-68d2297943b4` (in `backend-workers/`; the code before
+- **Worker code:** `npx wrangler rollback 273dc51a-a930-4053-a3a0-d3b35296e255` (in `backend-workers/`; before the HTML
+  sign-in e-mail: Gmail SMTP with the plain-text e-mail, verified by the owner), or
+  `b5d7f08d-52f3-45b1-83f1-68d2297943b4` (the code before
   Gmail SMTP, with the SMTP secrets present but unused: e-mail fails with 503 again, as before), or
   `61ea9041-5fcd-41a9-a6a1-24033784a2a3` (the same code); then `6900a9e2-178e-4fb7-875a-2e49d75393e6` (before the audit
   log descriptions: it still enforces AD-56; the site then describes entries from their table and operation only), then `92b6c658-f4b8-4ce7-840e-af99c0a4ab64` (before the Admin role rules: **it does not enforce
