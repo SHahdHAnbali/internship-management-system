@@ -39,6 +39,11 @@ export interface Bindings {
   SMTP_USER?: string;
   /** Secret. The SMTP password; for Gmail an App Password (spaces are ignored). */
   SMTP_APP_PASSWORD?: string;
+  /**
+   * Event e-mails of PDF §7 (AD-59, AD-61): `enabled` turns them on; `disabled`, empty or absent keeps them off (the
+   * default, also in wrangler.jsonc, until the owner approves a release strategy). Sign-in e-mails do not depend on it.
+   */
+  EVENT_EMAILS?: string;
   /** Private R2 bucket for application attachments (CVs, university letters). */
   FILES?: R2Bucket;
   /** Workers Rate Limiting binding for the trainee sign-in endpoints (limit and period are set in wrangler.jsonc). */
@@ -57,6 +62,8 @@ export interface Settings {
   emailProvider: 'log' | 'smtp' | 'none';
   /** Set when emailProvider is `smtp`. */
   smtp: SmtpSettings | null;
+  /** Whether event e-mails are sent (EVENT_EMAILS=enabled). Off by default. */
+  eventEmails: boolean;
 }
 
 export interface SmtpSettings {
@@ -96,6 +103,10 @@ export function loadSettings(env: Bindings): Settings {
     );
   }
   const smtp = emailProvider === 'smtp' ? smtpSettings(env) : null;
+  const eventEmailsSetting = env.EVENT_EMAILS?.trim().toLowerCase() ?? '';
+  if (eventEmailsSetting !== '' && eventEmailsSetting !== 'disabled' && eventEmailsSetting !== 'enabled') {
+    throw new ConfigurationError(`EVENT_EMAILS must be 'enabled' or 'disabled'.`);
+  }
 
   // Session policy (AD-44): 7 days idle, 30 days absolute.
   const sessionIdleTimeoutMinutes = positiveInteger(
@@ -132,6 +143,7 @@ export function loadSettings(env: Bindings): Settings {
     // Writing sign-in codes to the log would let anyone with log access sign in as a trainee: development only.
     emailProvider: smtp ? 'smtp' : emailProvider === 'log' && isDevelopment ? 'log' : 'none',
     smtp,
+    eventEmails: eventEmailsSetting === 'enabled',
   };
 }
 

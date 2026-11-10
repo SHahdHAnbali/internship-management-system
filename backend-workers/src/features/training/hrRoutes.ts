@@ -20,6 +20,7 @@ import { parseGuid, uuidV7 } from '../../domain/uuid';
 import { bindJson, type RequestSchema } from '../../http/body';
 import { json, statusProblem } from '../../http/problems';
 import { routeId, type Route } from '../../http/routes';
+import { applicationDecisionEmails, mentorRequestDecisionEmails, sendEventEmails } from '../notifications/eventEmails';
 import { notifyEmployee } from '../notifications/notify';
 import { readableAttachment } from './access';
 import { fileLink } from './files';
@@ -171,12 +172,15 @@ export const hrRoutes: Route[] = [
     async handle(c) {
       const a = await application(c, routeId(c));
       assertCanDecide(a.status);
-      return json(
-        await changeApplication(c, a.id, a.status, "status = 'Accepted', decided_at = $3, decided_by_id = $4", [
-          c.var.deps.now(),
-          c.var.user!.id,
-        ]),
+      const accepted = await changeApplication(
+        c,
+        a.id,
+        a.status,
+        "status = 'Accepted', decided_at = $3, decided_by_id = $4",
+        [c.var.deps.now(), c.var.user!.id],
       );
+      await sendEventEmails(c, (q) => applicationDecisionEmails(q, a.id)); // PDF §7, after the commit (best effort)
+      return json(accepted);
     },
   },
   {
@@ -190,15 +194,16 @@ export const hrRoutes: Route[] = [
       const reason = required(body.value.reason, 'Rejection reason', REJECTION_REASON_MAX_LENGTH);
       const a = await application(c, routeId(c));
       assertCanDecide(a.status);
-      return json(
-        await changeApplication(
-          c,
-          a.id,
-          a.status,
-          "status = 'Rejected', decided_at = $3, decided_by_id = $4, rejection_reason = $5",
-          [c.var.deps.now(), c.var.user!.id, reason],
-        ),
+      const rejected = await changeApplication(
+        c,
+        a.id,
+        a.status,
+        "status = 'Rejected', decided_at = $3, decided_by_id = $4, rejection_reason = $5",
+        [c.var.deps.now(), c.var.user!.id, reason],
       );
+      // PDF §7 and AD-61: the rejection e-mail carries the stored reason; after the commit (best effort).
+      await sendEventEmails(c, (q) => applicationDecisionEmails(q, a.id));
+      return json(rejected);
     },
   },
   {
@@ -324,6 +329,8 @@ export const hrRoutes: Route[] = [
         // PDF §7: "assignment approved or rejected" goes to the employee who asked.
         await notifyEmployee(tx, request.employee_id, 'MentorRequestApproved', request.id, now);
       });
+      // PDF §7: e-mails to the employee and, with the start details, to the trainee; after the commit (best effort).
+      await sendEventEmails(c, (q) => mentorRequestDecisionEmails(q, request.id));
       return json({ ...toMentorRequest(await mentorRequest(c, request.id)), assignmentId });
     },
   },
@@ -345,6 +352,7 @@ export const hrRoutes: Route[] = [
         if (rowCount === 0) throw new ConcurrencyError();
         await notifyEmployee(tx, request.employee_id, 'MentorRequestRejected', request.id, now);
       });
+      await sendEventEmails(c, (q) => mentorRequestDecisionEmails(q, request.id)); // PDF §7, after the commit
       return json(toMentorRequest(await mentorRequest(c, request.id)));
     },
   },

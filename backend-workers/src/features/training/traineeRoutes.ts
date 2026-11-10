@@ -13,6 +13,7 @@ import {
 import { parseGuid, uuidV7 } from '../../domain/uuid';
 import { json, statusProblem } from '../../http/problems';
 import { routeId, type Route } from '../../http/routes';
+import { applicationReceivedEmails, sendEventEmails } from '../notifications/eventEmails';
 import { notifyHr } from '../notifications/notify';
 import { readableAttachment } from './access';
 import { fileLink, filesBucket, sha256Hex } from './files';
@@ -223,6 +224,8 @@ export const traineeRoutes: Route[] = [
         }
         await notifyHr(tx, 'ApplicationSubmitted', applicationId, now); // PDF §7: "new training application"
       });
+      // PDF §7 "application received (confirmation)", e-mail to the trainee, after the commit (best effort, if enabled).
+      await sendEventEmails(c, (q) => applicationReceivedEmails(q, applicationId));
 
       return json({ id: applicationId, status: 'Submitted' }, 201, {
         Location: `/api/trainee/applications/${applicationId}`,

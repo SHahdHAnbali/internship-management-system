@@ -10,6 +10,8 @@ export interface EmailSection {
   heading: string;
   /** Paragraphs before the highlighted code. */
   intro: string[];
+  /** Labelled values (a field name, a date, a reason). Values keep their line breaks and their own text direction. */
+  details?: { label: string; value: string }[];
   /** A short value shown large, such as a sign-in code. */
   code?: string;
   /** A sentence introducing the button, the button's label and its URL (also shown as text for copying). */
@@ -60,6 +62,11 @@ function section(content: EmailSection, lang: 'ar' | 'en'): string {
     `<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;font-weight:700;color:${COLORS.heading};text-align:${align};">${escapeHtml(content.heading)}</h1>`,
     ...content.intro.map((text) => paragraph(text, align)),
   ];
+  for (const { label, value } of content.details ?? []) {
+    parts.push(
+      `<p style="margin:0 0 12px;font-size:16px;line-height:1.7;color:${COLORS.text};text-align:${align};"><strong style="color:${COLORS.heading};">${escapeHtml(label)}</strong> <span dir="auto" style="white-space:pre-line;">${escapeHtml(value)}</span></p>`,
+    );
+  }
   if (content.code !== undefined) {
     // The code reads left to right in both languages.
     parts.push(
@@ -110,4 +117,22 @@ export function renderBilingualHtml(title: string, ar: EmailSection, en: EmailSe
     '</body>',
     '</html>',
   ].join('\n');
+}
+
+/** One language's part as plain text: the same content as its HTML section, in the same order. */
+function sectionText(content: EmailSection): string[] {
+  const lines = [content.heading, '', ...content.intro];
+  for (const { label, value } of content.details ?? []) lines.push(`${label} ${value}`);
+  if (content.code !== undefined) lines.push(content.code);
+  if (content.action) lines.push('', content.action.lead, content.action.url);
+  if (content.notes.length > 0) lines.push('', ...content.notes);
+  return lines;
+}
+
+/**
+ * The plain-text alternative of `renderBilingualHtml`: the Arabic part, a separator, then the English part, with the
+ * same sentences, values and link (AD-60).
+ */
+export function renderBilingualText(ar: EmailSection, en: EmailSection): string {
+  return [...sectionText(ar), '', '—', '', ...sectionText(en)].join('\n');
 }

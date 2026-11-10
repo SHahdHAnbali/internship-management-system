@@ -110,7 +110,8 @@ export interface TestApi {
   fetch(request: Request, bindings?: Partial<Bindings>): Promise<Response>;
 }
 
-export function createTestApi(overrides: Partial<Dependencies> = {}): TestApi {
+/** `bindings` override the test configuration for every request of this API (for example EVENT_EMAILS). */
+export function createTestApi(overrides: Partial<Dependencies> = {}, bindings: Partial<Bindings> = {}): TestApi {
   const clock = new TestClock();
   const emails = new CapturingEmailSender();
   const google = new TestGoogle();
@@ -125,9 +126,9 @@ export function createTestApi(overrides: Partial<Dependencies> = {}): TestApi {
     ...overrides,
   });
 
-  const fetch = async (request: Request, bindings: Partial<Bindings> = {}) => {
+  const fetch = async (request: Request, extra: Partial<Bindings> = {}) => {
     const ctx = createExecutionContext();
-    const response = await app.fetch(request, { ...env, ...bindings }, ctx);
+    const response = await app.fetch(request, { ...env, ...bindings, ...extra }, ctx);
     await waitOnExecutionContext(ctx);
     return response;
   };

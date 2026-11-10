@@ -24,6 +24,8 @@ export default defineConfig({
           // .dev.vars is read too: never let a developer's real SMTP credentials reach the tests.
           SMTP_USER: '',
           SMTP_APP_PASSWORD: '',
+          // Event e-mails stay off unless a test enables them for its own API (test/event-emails.test.ts).
+          EVENT_EMAILS: 'disabled',
         },
       },
     })),

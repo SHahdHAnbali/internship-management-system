@@ -30,7 +30,8 @@
     // Worker secrets (`wrangler secret put`), never vars; locally they are in .dev.vars, which overrides these.
     "EMAIL_PROVIDER": "smtp",
     "SMTP_HOST": "smtp.gmail.com",
-    "SMTP_PORT": "465"
+    "SMTP_PORT": "465",
+    "EVENT_EMAILS": "disabled"
   },
   // Private file storage for application CVs and university letters (owner decision 2026-10-29). Never public: files are
   // read only through the Worker, after an authorization check, with short-lived links. Locally Wrangler simulates it.

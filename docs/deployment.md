@@ -51,6 +51,15 @@ Deploying the site before the Worker exists breaks `/api` (the binding has nothi
 With `EMAIL_PROVIDER=smtp` in `wrangler.jsonc`, a missing or invalid `SMTP_USER` / `SMTP_APP_PASSWORD` stops every API
 request with a configuration error: put both SMTP secrets **before** deploying a version that has that setting (an older
 version ignores them).
+`EVENT_EMAILS` (Worker var in `wrangler.jsonc`, **`disabled`**) controls the event e-mails of PDF §7 (Phase 5: application
+received, accepted and rejected with its reason to the trainee; mentor request approved or rejected to the employee; the
+mentor assignment with its start date to the trainee). Only `enabled` turns them on; empty or absent is off; any other
+value stops the API with a configuration error. Phase 5 is implemented in the repository but **not enabled in
+production**. When enabled, each e-mail is sent once, after the business change has committed, in the background:
+best effort, with a log line per outcome (event kind and record id only). There is **no delivery record, no retry and
+no failed-e-mail page** (Phase 3, AD-60 items 5–10, deferred), so a failed or interrupted send is lost. The two HR
+e-mails stay off whatever the setting (NEW-24), and the trainee's assignment e-mail has no mentor details (NEW-30).
+Enabling it needs a separate owner decision. Sign-in e-mails do not depend on it.
 
 ### Check
 - `https://progineer-ims.pages.dev/health` → `Healthy` (Worker → Neon).
