@@ -596,7 +596,8 @@
     "applications": {
       "title": "My applications",
       "apply": "Apply for training",
-      "empty": "You have not applied for training yet."
+      "empty": "You have not applied for training yet.",
+      "rejectionReason": "Rejection reason"
     },
     "apply": {
       "title": "Apply for training",

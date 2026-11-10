@@ -6,7 +6,10 @@ import { openFileLink } from '../../lib/fileLinks';
 import type { MyApplication } from './models';
 import { traineeApi } from './traineeApi';
 
-/** The status board (PDF §4): where each of the trainee's own applications stands; no other trainee is visible. */
+/**
+ * The status board (PDF §4): where each of the trainee's own applications stands; no other trainee is visible. A rejected
+ * application shows the reason HR recorded (AD-61).
+ */
 export function TraineeHome() {
   const { t, language } = useI18n();
   const toast = useToast();
@@ -57,6 +60,15 @@ export function TraineeHome() {
                     <dd>{date(a.submittedAt)}</dd>
                   </div>
                 </dl>
+                {a.status === 'Rejected' && a.rejectionReason && (
+                  <dl className="rounded-control border border-border bg-surface-subtle p-3 text-small">
+                    <dt className="text-muted">{t('trainee.applications.rejectionReason')}</dt>
+                    {/* Plain text from HR, rendered as text (never as HTML); line breaks kept; direction from the text itself. */}
+                    <dd dir="auto" className="mt-1 whitespace-pre-line break-words text-heading">
+                      {a.rejectionReason}
+                    </dd>
+                  </dl>
+                )}
                 {a.attachments.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {a.attachments.map((file) => (

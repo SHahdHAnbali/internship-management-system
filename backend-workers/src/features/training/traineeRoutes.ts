@@ -32,6 +32,7 @@ interface ApplicationRow {
   mandatory_for_university: boolean;
   submitted_at: Date;
   decided_at: Date | null;
+  rejection_reason: string | null;
 }
 
 interface AttachmentListRow {
@@ -76,14 +77,15 @@ export const traineeRoutes: Route[] = [
     },
   },
   {
-    // The status board: the trainee's own applications only, never anyone else's (PDF §4).
+    // The status board: the trainee's own applications only, never anyone else's (PDF §4). The reason HR recorded is
+    // shown for a rejected application (AD-61, Q36), including rejections recorded before that decision (NEW-25).
     method: 'GET',
     path: '/api/trainee/applications',
     policy: 'Trainee',
     async handle(c) {
       const { rows } = await c.var.db.query<ApplicationRow>(
         `SELECT a.id, a.field_id, f.name AS field_name, a.status, a.available_from::text, a.available_to::text, a.hours,
-                a.mandatory_for_university, a.submitted_at, a.decided_at
+                a.mandatory_for_university, a.submitted_at, a.decided_at, a.rejection_reason
            FROM training_applications a JOIN fields f ON f.id = a.field_id
           WHERE a.trainee_id = $1 ORDER BY a.submitted_at DESC`,
         [c.var.user!.id],
@@ -103,6 +105,7 @@ export const traineeRoutes: Route[] = [
           mandatoryForUniversity: a.mandatory_for_university,
           submittedAt: a.submitted_at,
           decidedAt: a.decided_at,
+          rejectionReason: a.status === 'Rejected' ? a.rejection_reason : null,
           attachments: files.get(a.id) ?? [],
         })),
       );

@@ -33,5 +33,7 @@ export interface MyApplication {
   mandatoryForUniversity: boolean;
   submittedAt: string;
   decidedAt: string | null;
+  /** The reason HR recorded, only for a Rejected application (AD-61); otherwise null. */
+  rejectionReason: string | null;
   attachments: Attachment[];
 }

@@ -410,6 +410,94 @@ describe('applications', () => {
   });
 });
 
+describe('rejection reason on the trainee status board (AD-61, Q36, NEW-25)', () => {
+  type Board = { id: string; status: string; rejectionReason: string | null }[];
+  const HOSTILE = '<script>alert("x")</script> & \'السبب\'\nالفترة ممتلئة / The period is full';
+
+  it('shows the trainee their own rejection reason exactly as HR recorded it, and only on Rejected applications', async () => {
+    const { hr, field } = await cast();
+    const lina = await signInTrainee(api);
+    const apply = async () =>
+      (await body<{ id: string }>(await lina.client.post('/api/trainee/applications', applicationForm(field.id)))).id;
+    const submitted = await apply();
+    const underReview = await apply();
+    const accepted = await apply();
+    const rejected = await apply();
+    expect((await hr.client.post(`/api/hr/applications/${underReview}/review`)).status).toBe(200);
+    expect((await hr.client.post(`/api/hr/applications/${accepted}/accept`)).status).toBe(200);
+    expect((await hr.client.post(`/api/hr/applications/${rejected}/reject`, { reason: HOSTILE })).status).toBe(200);
+
+    const board = await body<Board>(await lina.client.get('/api/trainee/applications'));
+    const reasonOf = Object.fromEntries(board.map((a) => [a.id, [a.status, a.rejectionReason]]));
+    expect(reasonOf).toEqual({
+      [submitted]: ['Submitted', null],
+      [underReview]: ['UnderReview', null],
+      [accepted]: ['Accepted', null],
+      [rejected]: ['Rejected', HOSTILE], // returned as data, unchanged; the page renders it as text
+    });
+
+    // HR still sees the same reason on its own detail page (the existing workflow is unchanged).
+    expect(await body(await hr.client.get(`/api/hr/applications/${rejected}`))).toMatchObject({
+      status: 'Rejected',
+      rejectionReason: HOSTILE,
+    });
+  });
+
+  it('never shows one trainee the reason of another, and reading the board does not change or audit the applications', async () => {
+    const { hr, employee, field } = await cast();
+    const lina = await signInTrainee(api);
+    const omar = await signInTrainee(api);
+    const linaApplication = (
+      await body<{ id: string }>(await lina.client.post('/api/trainee/applications', applicationForm(field.id)))
+    ).id;
+    const reason = unique('Private reason for Lina');
+    expect((await hr.client.post(`/api/hr/applications/${linaApplication}/reject`, { reason })).status).toBe(200);
+    const omarApplication = (
+      await body<{ id: string }>(await omar.client.post('/api/trainee/applications', applicationForm(field.id)))
+    ).id;
+
+    // Audit rows of the two applications (other test files write to the shared database in parallel).
+    const auditCount = () =>
+      withDb((db) =>
+        db.query<{ n: number }>('SELECT count(*)::int AS n FROM audit_logs WHERE entity_id = ANY($1)', [
+          [linaApplication, omarApplication],
+        ]),
+      ).then((r) => r.rows[0]!.n);
+    const before = await auditCount();
+    const omarBoard = await omar.client.get('/api/trainee/applications');
+    const omarText = await omarBoard.text();
+    expect(omarText).not.toContain(reason);
+    expect((JSON.parse(omarText) as Board).map((a) => a.rejectionReason)).toEqual([null]);
+    expect(JSON.stringify(await body(await lina.client.get('/api/trainee/applications')))).toContain(reason);
+    expect(await auditCount()).toBe(before);
+
+    // The trainee endpoint is the trainee's own: other roles and signed-out visitors cannot read it.
+    expect((await hr.client.get('/api/trainee/applications')).status).toBe(403);
+    expect((await employee.client.get('/api/trainee/applications')).status).toBe(403);
+    expect((await api.client().get('/api/trainee/applications')).status).toBe(401);
+  });
+
+  it('the stored reason is shown unchanged, and a Rejected application cannot exist without a reason', async () => {
+    const { hr, field } = await cast();
+    const trainee = await signInTrainee(api);
+    const id = (
+      await body<{ id: string }>(await trainee.client.post('/api/trainee/applications', applicationForm(field.id)))
+    ).id;
+    expect((await hr.client.post(`/api/hr/applications/${id}/reject`, { reason: 'Stored reason' })).status).toBe(200);
+    const stored = await withDb((db) =>
+      db.query<{ rejection_reason: string }>('SELECT rejection_reason FROM training_applications WHERE id = $1', [id]),
+    );
+    const [shown] = await body<Board>(await trainee.client.get('/api/trainee/applications'));
+    expect(shown!.rejectionReason).toBe(stored.rows[0]!.rejection_reason);
+
+    // The database refuses a Rejected application without a reason (ck_training_applications_rejection_reason), so
+    // the board never has to show a rejection with no reason.
+    await expect(
+      withDb((db) => db.query('UPDATE training_applications SET rejection_reason = NULL WHERE id = $1', [id])),
+    ).rejects.toThrow(/ck_training_applications_rejection_reason/);
+  });
+});
+
 describe('contact log (PDF §4, §8)', () => {
   it('HR records calls and verbal agreements with date, method and summary; decisions do not depend on it', async () => {
     const { hr, field } = await cast();

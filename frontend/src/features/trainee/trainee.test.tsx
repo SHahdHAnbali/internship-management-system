@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { mockFetch, renderPage, renderRoutes } from '../../test/render';
+import enMessages from '../../../public/i18n/en.json?raw';
+import arMessages from '../../../public/i18n/ar.json?raw';
+import { mockFetch, renderPage, renderRoutes, testI18n } from '../../test/render';
 import { ApplyPage } from './ApplyPage';
 import { TraineeHome } from './TraineeHome';
 
@@ -169,6 +171,7 @@ describe('status board', () => {
             mandatoryForUniversity: true,
             submittedAt: '2026-10-29T10:00:00Z',
             decidedAt: null,
+            rejectionReason: null,
             attachments: [{ id: 'x1', kind: 'Cv', fileName: 'cv.pdf', sizeBytes: 4 }],
           },
         ],
@@ -191,5 +194,78 @@ describe('status board', () => {
       '/api/trainee/attachments/x1/link',
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+});
+
+describe('rejection reason on the status board (AD-61)', () => {
+  const HOSTILE =
+    '<img src=x onerror="alert(1)"><script>alert("x")</script> & \'السبب\'\nThe period is full';
+  const application = (
+    id: string,
+    field: string,
+    status: string,
+    rejectionReason: string | null,
+  ) => ({
+    id,
+    field: { id: `f-${id}`, name: field },
+    status,
+    availableFrom: '2027-02-01',
+    availableTo: '2027-04-30',
+    hours: 240,
+    mandatoryForUniversity: false,
+    submittedAt: '2026-10-29T10:00:00Z',
+    decidedAt: status === 'Rejected' || status === 'Accepted' ? '2026-11-01T10:00:00Z' : null,
+    rejectionReason,
+    attachments: [],
+  });
+  const board = [
+    application('r', 'Rejected field', 'Rejected', HOSTILE),
+    application('s', 'Submitted field', 'Submitted', null),
+    application('u', 'Under review field', 'UnderReview', null),
+    application('a', 'Accepted field', 'Accepted', null),
+  ];
+
+  it.each([
+    ['ar', arMessages, 'سبب الرفض', 'مرفوض'],
+    ['en', enMessages, 'Rejection reason', 'Rejected'],
+  ] as const)(
+    'in %s: shows the reason as plain text under a rejected application only',
+    async (language, raw, label, rejected) => {
+      mockFetch(() => [200, board]);
+      const { container } = renderRoutes([{ path: '/trainee', element: <TraineeHome /> }], {
+        url: '/trainee',
+        i18n: testI18n(JSON.parse(raw), language),
+      });
+
+      const card = (await screen.findByText('Rejected field')).closest('li')!;
+      expect(within(card).getByText(rejected)).toBeInTheDocument();
+      const term = within(card).getByText(label);
+      expect(term.tagName).toBe('DT');
+      const reason = term.nextElementSibling as HTMLElement;
+      expect(reason.tagName).toBe('DD');
+      expect(reason.textContent).toBe(HOSTILE); // exactly as recorded, line break included
+      expect(reason).toHaveClass('whitespace-pre-line');
+
+      // Rendered as text: no element was created from the reason.
+      expect(container.querySelector('script, img')).toBeNull();
+      expect(reason.children).toHaveLength(0);
+
+      for (const other of ['Submitted field', 'Under review field', 'Accepted field']) {
+        const otherCard = screen.getByText(other).closest('li')!;
+        expect(within(otherCard).queryByText(label)).not.toBeInTheDocument();
+      }
+      expect(screen.getAllByText(label)).toHaveLength(1);
+    },
+  );
+
+  it('never shows a reason for an application that is not Rejected, even if one were sent', async () => {
+    mockFetch(() => [
+      200,
+      [application('u', 'Under review field', 'UnderReview', 'Should not appear')],
+    ]);
+    renderRoutes([{ path: '/trainee', element: <TraineeHome /> }], { url: '/trainee' });
+    await screen.findByText('Under review field');
+    expect(screen.queryByText('Should not appear')).not.toBeInTheDocument();
+    expect(screen.queryByText('trainee.applications.rejectionReason')).not.toBeInTheDocument();
   });
 });
