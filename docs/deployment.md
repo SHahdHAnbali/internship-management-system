@@ -71,8 +71,9 @@ version ignores them).
   verified the full flow locally (e-mail received, code accepted, signed in). After: `/health` Healthy (the configuration,
   SMTP included, is validated on every request); signed-out checks identical to the pre-deployment baseline; read-only
   Neon snapshot unchanged (fingerprint of audit rows 1–110, triggers, audit functions, `ims_app` grants, record counts,
-  settings); the Worker connected as `ims_app`. **Production e-mail delivery: not yet verified** (no e-mail was sent
-  during the release; the owner's production sign-in test is pending).
+  settings); the Worker connected as `ims_app`. No e-mail was sent during the release itself. **Production e-mail
+  delivery verified by the owner on 2026-11-10** on this version (`273dc51a-a930-4053-a3a0-d3b35296e255`): a trainee
+  sign-in e-mail sent through Gmail SMTP was received, the code was accepted and the trainee signed in.
 - Previous (audit log descriptions, AD-57): Worker `ims-api` version `61ea9041-5fcd-41a9-a6a1-24033784a2a3` and Pages production deployment
   `94081d2f-cf15-41fb-a862-a5a5e7e3a176` (commit `cb2b215`, 2026-11-10 11:41 UTC; Worker first, then Pages): every audit
   log entry, historical and future, described in Arabic and English (ADL-01 to ADL-06), derived when the log is read from

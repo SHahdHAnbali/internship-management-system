@@ -8,7 +8,8 @@ report export: `main` @ `6903209`, Pages `c81d55dc` (Worker and database unchang
 filter): `main` @ `eaf01fe`, Worker `92b6c658`, Pages `528f0cb3` (database unchanged). Updated for Admin role governance
 (AD-56): `main` @ `316f6ac`, Worker `6900a9e2`, Pages `0551650d` (database unchanged). Updated for the audit log
 descriptions (AD-57): `main` @ `cb2b215`, Worker `61ea9041`, Pages `94081d2f` (database unchanged). Updated for Gmail SMTP (AD-58):
-`main` @ `65355e6`, Worker `273dc51a` (Pages and database unchanged). The earlier snapshot
+`main` @ `65355e6`, Worker `273dc51a` (Pages and database unchanged); trainee e-mail sign-in verified in production by the
+owner on 2026-11-10. The earlier snapshot
 (2026-10-27) is in Git history.
 
 **Status:** ✅ Complete · 🟡 Partial (part of the required behaviour is missing) · ❌ Not implemented · ⏸ Deferred by
@@ -19,17 +20,17 @@ the owner · 🔒 Blocked by an external dependency (built where possible). "Pro
 
 | Status | Count |
 |---|---|
-| ✅ Complete | 29 |
+| ✅ Complete | 30 |
 | 🟡 Partial | 8 |
-| ❌ Not implemented | 18 |
+| ❌ Not implemented | 19 |
 | ⏸ Deferred by the owner | 3 |
-| 🔒 Blocked by an external dependency | 3 |
+| 🔒 Blocked by an external dependency | 1 |
 | **Total** | **61** |
 
 The core of PDF §3 (apply → review and contact → accept/reject → available → mentor request → assignment → progress
 notes) is complete and in production. The final evaluation, certificates, the running-training actions, the hiring
-report, scheduled reminders and every e-mail are not, almost all because of open owner decisions or the e-mail
-provider.
+report, scheduled reminders and the event e-mails are not, almost all because of open owner decisions. Trainee e-mail
+sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 
 ## Authentication, roles, isolation
 
@@ -37,7 +38,7 @@ provider.
 |---|---|---|---|---|
 | R01 | Staff sign in with Google, company domains only; new accounts are Employees (p.1) | ✅ | Yes | AD-42, AD-45, AD-46 |
 | R02 | Higher roles granted by the Admin only (p.1) | ✅ | Yes | Role changes audited |
-| R03 | Trainees sign in by e-mail link or one-time code, 15 minutes (p.1, p.2, p.5) | 🔒 | Deployed, not yet verified | E-mail through Gmail SMTP (AD-58), deployed 2026-11-10 and verified locally by the owner; production delivery not yet verified |
+| R03 | Trainees sign in by e-mail link or one-time code, 15 minutes (p.1, p.2, p.5) | ✅ | Yes | E-mail through Gmail SMTP (AD-58); **verified in production by the owner on 2026-11-10** (e-mail received, code accepted, trainee signed in; Worker `273dc51a`). The e-mailed link uses the same records and expiry |
 | R04 | Trainees never see one another (p.1) | ✅ | Yes | Isolation tests |
 | R05 | Persistent server-side sessions, revocable (AD-44) | ✅ | Yes | Sign-in writes attributed to the verified user |
 
@@ -119,7 +120,7 @@ provider.
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R45 | In-app notifications | 🟡 | Yes | 4 of the in-app events (AD-50); Q14, lifecycle, scheduler |
-| R46 | E-mail events and bilingual templates | 🔒 | — | Provider now Gmail SMTP (AD-58, replaces SendGrid); only the sign-in e-mail exists; the event e-mails are not built (NEW-01 display name, NEW-07, Q42, Q36) |
+| R46 | E-mail events and bilingual templates | ❌ | — | The provider works (Gmail SMTP, AD-58; the sign-in e-mail is R03), but the event e-mails of PDF §7 are not built and the templates are not bilingual (the sign-in e-mail has a bilingual subject, an English body): NEW-01 display name, NEW-07, Q42, Q36 |
 | R47 | Timed reminders (7 days, late evaluation every 3 days, pending > 5 days) | ❌ | — | NEW-05, NEW-06, NEW-09, L1, N3; scheduler; e-mail |
 | R48 | Weekly summary to HR | ❌ | — | NEW-04; e-mail |
 | R50 | Notification "email status" field (p.4) | ❌ | — | Q42; e-mail |
