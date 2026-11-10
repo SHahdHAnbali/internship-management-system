@@ -42,10 +42,15 @@ cd backend-workers
 npx wrangler deploy
 npx wrangler secret put DATABASE_URL      # Neon pooled host, sslmode=verify-full, no channel_binding
 npx wrangler secret put SESSION_SECRET    # openssl rand -base64 48
+npx wrangler secret put SMTP_USER         # the Gmail address that sends (AD-58)
+npx wrangler secret put SMTP_APP_PASSWORD # its Gmail App Password; never in a file, log or chat
 # 2. Site (frontend/): the build with the functions and the binding
 cd ../frontend && npm run deploy
 ```
 Deploying the site before the Worker exists breaks `/api` (the binding has nothing to call).
+With `EMAIL_PROVIDER=smtp` in `wrangler.jsonc`, a missing or invalid `SMTP_USER` / `SMTP_APP_PASSWORD` stops every API
+request with a configuration error: put both SMTP secrets **before** deploying a version that has that setting (an older
+version ignores them).
 
 ### Check
 - `https://progineer-ims.pages.dev/health` → `Healthy` (Worker → Neon).
@@ -55,8 +60,20 @@ Deploying the site before the Worker exists breaks `/api` (the binding has nothi
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Current deployment (2026-11-10, audit log descriptions, AD-57)
-- Worker `ims-api` version `61ea9041-5fcd-41a9-a6a1-24033784a2a3` and Pages production deployment
+### Current deployment (2026-11-10, Gmail SMTP, AD-58)
+- Worker `ims-api` version `273dc51a-a930-4053-a3a0-d3b35296e255` (commit `65355e6`, 2026-11-10 14:33 UTC): e-mail
+  through Gmail SMTP with Nodemailer (AD-58), `EMAIL_PROVIDER=smtp`, `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`. Order
+  used: the secrets `SMTP_USER` and `SMTP_APP_PASSWORD` were put first, while the previous code was live (it ignores them;
+  that created version `b5d7f08d-52f3-45b1-83f1-68d2297943b4`, "Secret Change"), then this version was deployed, so SMTP
+  was never active without its credentials. `DATABASE_URL` and `SESSION_SECRET` unchanged; same bindings and other
+  variables; Pages not redeployed (no frontend change; still `94081d2f`). Before: 375/375 Worker tests (3 runs with Mac
+  sleep prevented; disposable local PostgreSQL as `ims_app`), typecheck, formatting and dry-run build passed; the owner
+  verified the full flow locally (e-mail received, code accepted, signed in). After: `/health` Healthy (the configuration,
+  SMTP included, is validated on every request); signed-out checks identical to the pre-deployment baseline; read-only
+  Neon snapshot unchanged (fingerprint of audit rows 1–110, triggers, audit functions, `ims_app` grants, record counts,
+  settings); the Worker connected as `ims_app`. **Production e-mail delivery: not yet verified** (no e-mail was sent
+  during the release; the owner's production sign-in test is pending).
+- Previous (audit log descriptions, AD-57): Worker `ims-api` version `61ea9041-5fcd-41a9-a6a1-24033784a2a3` and Pages production deployment
   `94081d2f-cf15-41fb-a862-a5a5e7e3a176` (commit `cb2b215`, 2026-11-10 11:41 UTC; Worker first, then Pages): every audit
   log entry, historical and future, described in Arabic and English (ADL-01 to ADL-06), derived when the log is read from
   allowlisted facts; raw stored values still never returned; Admin only. Same bindings, variables, secrets
@@ -120,9 +137,10 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 ### Rollback
 - **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback 6900a9e2-178e-4fb7-875a-2e49d75393e6` (in `backend-workers/`; the release
-  before the audit log descriptions: it still enforces AD-56; the new site then describes entries from their table and
-  operation only), then `92b6c658-f4b8-4ce7-840e-af99c0a4ab64` (before the Admin role rules: **it does not enforce
+- **Worker code:** `npx wrangler rollback b5d7f08d-52f3-45b1-83f1-68d2297943b4` (in `backend-workers/`; the code before
+  Gmail SMTP, with the SMTP secrets present but unused: e-mail fails with 503 again, as before), or
+  `61ea9041-5fcd-41a9-a6a1-24033784a2a3` (the same code); then `6900a9e2-178e-4fb7-875a-2e49d75393e6` (before the audit
+  log descriptions: it still enforces AD-56; the site then describes entries from their table and operation only), then `92b6c658-f4b8-4ce7-840e-af99c0a4ab64` (before the Admin role rules: **it does not enforce
   AD-56**, so the only Admin could lose access again), then
   `6c144b0b-bfb4-4f05-a880-a4b1c5eb491b` (before RN-1) or `aaa13c87-f4b6-45d2-b9ce-34dd74a89ba7` (before the security
   headers). All of them already connect as `ims_app`, and no secret has changed since, so none can bring back the owner

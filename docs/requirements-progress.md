@@ -7,7 +7,8 @@ report export: `main` @ `6903209`, Pages `c81d55dc` (Worker and database unchang
 `main` @ `8f005fa`, Worker `6c144b0b` (Pages and database unchanged). Updated for RN-1 (HR mentor profile employee
 filter): `main` @ `eaf01fe`, Worker `92b6c658`, Pages `528f0cb3` (database unchanged). Updated for Admin role governance
 (AD-56): `main` @ `316f6ac`, Worker `6900a9e2`, Pages `0551650d` (database unchanged). Updated for the audit log
-descriptions (AD-57): `main` @ `cb2b215`, Worker `61ea9041`, Pages `94081d2f` (database unchanged). The earlier snapshot
+descriptions (AD-57): `main` @ `cb2b215`, Worker `61ea9041`, Pages `94081d2f` (database unchanged). Updated for Gmail SMTP (AD-58):
+`main` @ `65355e6`, Worker `273dc51a` (Pages and database unchanged). The earlier snapshot
 (2026-10-27) is in Git history.
 
 **Status:** ✅ Complete · 🟡 Partial (part of the required behaviour is missing) · ❌ Not implemented · ⏸ Deferred by
@@ -36,7 +37,7 @@ provider.
 |---|---|---|---|---|
 | R01 | Staff sign in with Google, company domains only; new accounts are Employees (p.1) | ✅ | Yes | AD-42, AD-45, AD-46 |
 | R02 | Higher roles granted by the Admin only (p.1) | ✅ | Yes | Role changes audited |
-| R03 | Trainees sign in by e-mail link or one-time code, 15 minutes (p.1, p.2, p.5) | 🔒 | Built, not usable | E-mail not operational (AD-53); NEW-01, Q10 |
+| R03 | Trainees sign in by e-mail link or one-time code, 15 minutes (p.1, p.2, p.5) | 🔒 | Deployed, not yet verified | E-mail through Gmail SMTP (AD-58), deployed 2026-11-10 and verified locally by the owner; production delivery not yet verified |
 | R04 | Trainees never see one another (p.1) | ✅ | Yes | Isolation tests |
 | R05 | Persistent server-side sessions, revocable (AD-44) | ✅ | Yes | Sign-in writes attributed to the verified user |
 
@@ -118,7 +119,7 @@ provider.
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R45 | In-app notifications | 🟡 | Yes | 4 of the in-app events (AD-50); Q14, lifecycle, scheduler |
-| R46 | E-mail events and bilingual templates | 🔒 | — | SendGrid not operational (AD-53); NEW-01, NEW-07, Q42, Q36 |
+| R46 | E-mail events and bilingual templates | 🔒 | — | Provider now Gmail SMTP (AD-58, replaces SendGrid); only the sign-in e-mail exists; the event e-mails are not built (NEW-01 display name, NEW-07, Q42, Q36) |
 | R47 | Timed reminders (7 days, late evaluation every 3 days, pending > 5 days) | ❌ | — | NEW-05, NEW-06, NEW-09, L1, N3; scheduler; e-mail |
 | R48 | Weekly summary to HR | ❌ | — | NEW-04; e-mail |
 | R50 | Notification "email status" field (p.4) | ❌ | — | Q42; e-mail |
