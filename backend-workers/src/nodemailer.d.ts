@@ -10,8 +10,16 @@ declare module 'nodemailer' {
     response?: string;
   }
 
+  export interface MailMessage {
+    from: { name: string; address: string };
+    to: string;
+    subject: string;
+    text: string;
+    html: string;
+  }
+
   export interface Transporter {
-    sendMail(message: { from: string; to: string; subject: string; text: string }): Promise<SentMessageInfo>;
+    sendMail(message: MailMessage): Promise<SentMessageInfo>;
     verify(): Promise<true>;
     close(): void;
   }

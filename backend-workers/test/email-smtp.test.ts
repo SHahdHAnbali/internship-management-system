@@ -133,10 +133,23 @@ describe('SMTP transport options', () => {
 });
 
 describe('sending through SMTP (fake transport)', () => {
-  it('sends from the SMTP account to the recipient, then closes the connection', async () => {
+  it('sends from the SMTP account with the display name ProGineer, as text and HTML, then closes the connection', async () => {
     const transport = fakeTransport();
-    await smtpEmailSender(SMTP, transport.factory).send({ to: 'trainee@uni.example', subject: 'S', textBody: 'B' });
-    expect(transport.sent).toEqual([{ from: USER, to: 'trainee@uni.example', subject: 'S', text: 'B' }]);
+    await smtpEmailSender(SMTP, transport.factory).send({
+      to: 'trainee@uni.example',
+      subject: 'S',
+      textBody: 'B',
+      htmlBody: '<p>B</p>',
+    });
+    expect(transport.sent).toEqual([
+      {
+        from: { name: 'ProGineer', address: USER },
+        to: 'trainee@uni.example',
+        subject: 'S',
+        text: 'B',
+        html: '<p>B</p>',
+      },
+    ]);
     expect(transport.closed()).toBe(1);
   });
 
@@ -160,6 +173,7 @@ describe('sending through SMTP (fake transport)', () => {
       to: 'private.person@uni.example',
       subject: 'Code 123456',
       textBody: 'secret code 123456',
+      htmlBody: '<p>secret code 123456</p>',
     });
     await expect(sending).rejects.toBeInstanceOf(EmailSendError);
     expect(transport.closed()).toBe(1);
@@ -193,8 +207,10 @@ describe('trainee sign-in with SMTP (fake transport)', () => {
     const email = uniqueEmail();
     expect((await api.client().post('/api/auth/trainee/request', { email })).status).toBe(202);
     expect(transport.sent).toHaveLength(1);
-    expect(transport.sent[0]).toMatchObject({ from: USER, to: email });
-    expect((transport.sent[0] as { text: string }).text).toMatch(/\b\d{6}\b/);
+    expect(transport.sent[0]).toMatchObject({ from: { name: 'ProGineer', address: USER }, to: email });
+    const { text, html } = transport.sent[0] as { text: string; html: string };
+    const code = /\b(\d{6})\b/.exec(text)![1]!;
+    expect(html).toContain(`>${code}</p>`); // the same code in the HTML part
     const stored = await withDb((db) => db.query('SELECT 1 FROM trainee_sign_in_codes WHERE email = $1', [email]));
     expect(stored.rowCount).toBe(1);
   });

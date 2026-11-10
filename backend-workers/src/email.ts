@@ -4,18 +4,23 @@ import type { Settings, SmtpSettings } from './config';
 import { EmailNotConfiguredError, EmailSendError } from './domain/errors';
 
 /**
- * Sends e-mail. Providers: `log` (development only), `smtp` (for example Gmail with an App Password, through
- * Nodemailer), or none. SendGrid was selected for production (AD-53) but is not implemented.
+ * Sends e-mail. Providers: `log` (development only), `smtp` (Gmail with an App Password, through Nodemailer; AD-58),
+ * or none.
  */
 export interface EmailSender {
   send(message: EmailMessage): Promise<void>;
 }
 
+/** Every e-mail has a plain-text body and an equivalent HTML body, both with Arabic first, then English (AD-60). */
 export interface EmailMessage {
   to: string;
   subject: string;
   textBody: string;
+  htmlBody: string;
 }
+
+/** The display name of every IMS e-mail; the address is the configured SMTP account (AD-60, AD-58). */
+export const EMAIL_SENDER_NAME = 'ProGineer';
 
 /** Development only: writes e-mails to the Worker log instead of sending them (same text as the C# LogEmailSender). */
 export const logEmailSender: EmailSender = {
@@ -81,7 +86,8 @@ export function smtpTransportOptions(smtp: SmtpSettings): TransportOptions {
 }
 
 /**
- * Sends through an SMTP server, from the SMTP account's own address. A failure is logged by its error code only (never
+ * Sends through an SMTP server, from the SMTP account's own address with the display name ProGineer, as a
+ * multipart/alternative message (plain text and HTML). A failure is logged by its error code only (never
  * the server's text, the recipient or any credential) and becomes EmailSendError (HTTP 503).
  */
 export function smtpEmailSender(
@@ -92,7 +98,13 @@ export function smtpEmailSender(
     async send(message) {
       const transport = createTransport(smtpTransportOptions(smtp));
       try {
-        await transport.sendMail({ from: smtp.user, to: message.to, subject: message.subject, text: message.textBody });
+        await transport.sendMail({
+          from: { name: EMAIL_SENDER_NAME, address: smtp.user },
+          to: message.to,
+          subject: message.subject,
+          text: message.textBody,
+          html: message.htmlBody,
+        });
       } catch (error) {
         const code = (error as { code?: unknown } | null)?.code;
         const responseCode = (error as { responseCode?: unknown } | null)?.responseCode;

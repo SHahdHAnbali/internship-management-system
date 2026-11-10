@@ -6,6 +6,7 @@ import { trimDotnet } from '../../domain/text';
 import { assertUsable, expiryFor, isUsable, type TraineeSignInCode } from '../../domain/traineeSignInCode';
 import { uuidV7 } from '../../domain/uuid';
 import type { EmailMessage, EmailSender } from '../../email';
+import { renderBilingualHtml } from '../../emailTemplate';
 import { base64Url } from '../../auth/session';
 
 /**
@@ -148,22 +149,51 @@ async function complete(signInCode: TraineeSignInCode, context: TraineeSignInCon
   return { id: trainee.id, role: 'Trainee', email: trainee.email, name: null };
 }
 
-function buildMessage(settings: Settings, to: string, token: string, code: string): EmailMessage {
+export function buildMessage(settings: Settings, to: string, token: string, code: string): EmailMessage {
   const link = `${settings.trainee.signInLinkBaseUrl.replace(/\/+$/, '')}/sign-in/verify?token=${token}`;
   const minutes = settings.trainee.codeLifetimeMinutes;
-  // PDF §7: templates in Arabic and English. Same text as the C# API.
+  // PDF §7: templates in Arabic and English; AD-60: one message, Arabic first, HTML with an equivalent plain text.
+  // The plain text is the same as the C# API's; the HTML shows the same sentences.
+  const ar = {
+    codeLabel: 'رمز الدخول إلى نظام إدارة المتدربين:',
+    link: 'أو افتح هذا الرابط لتسجيل الدخول مباشرة:',
+    validity: `الرمز والرابط صالحان لمدة ${minutes} دقيقة ولمرة واحدة فقط. إذا لم تطلب ذلك فتجاهل هذه الرسالة.`,
+  };
+  const en = {
+    codeLabel: 'Your Trainee Management System sign-in code:',
+    link: 'Or open this link to sign in directly:',
+    validity: `The code and link are valid for ${minutes} minutes and can be used once. If you did not request this, ignore this e-mail.`,
+  };
   const body = [
-    `رمز الدخول إلى نظام إدارة المتدربين: ${code}`,
-    'أو افتح هذا الرابط لتسجيل الدخول مباشرة:',
+    `${ar.codeLabel} ${code}`,
+    ar.link,
     link,
-    `الرمز والرابط صالحان لمدة ${minutes} دقيقة ولمرة واحدة فقط. إذا لم تطلب ذلك فتجاهل هذه الرسالة.`,
+    ar.validity,
     '',
-    `Your Trainee Management System sign-in code: ${code}`,
-    'Or open this link to sign in directly:',
+    `${en.codeLabel} ${code}`,
+    en.link,
     link,
-    `The code and link are valid for ${minutes} minutes and can be used once. If you did not request this, ignore this e-mail.`,
+    en.validity,
   ].join('\n');
-  return { to, subject: `رمز الدخول / Sign-in code: ${code}`, textBody: body };
+  const subject = `رمز الدخول / Sign-in code: ${code}`;
+  const html = renderBilingualHtml(
+    subject,
+    {
+      heading: 'رمز الدخول',
+      intro: [ar.codeLabel],
+      code,
+      action: { lead: ar.link, label: 'تسجيل الدخول', url: link },
+      notes: [ar.validity],
+    },
+    {
+      heading: 'Sign-in code',
+      intro: [en.codeLabel],
+      code,
+      action: { lead: en.link, label: 'Sign in', url: link },
+      notes: [en.validity],
+    },
+  );
+  return { to, subject, textBody: body, htmlBody: html };
 }
 
 /** A uniformly random 6-digit code (RandomNumberGenerator.GetInt32(0, 10^6)), zero-padded. */
