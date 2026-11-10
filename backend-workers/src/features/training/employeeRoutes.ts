@@ -8,6 +8,7 @@ import { bindJson, type RequestSchema } from '../../http/body';
 import { json, statusProblem } from '../../http/problems';
 import { routeId, type Route } from '../../http/routes';
 import { EMPLOYEE_MAY_SEE_CV, IS_AVAILABLE } from './access';
+import { mentorRequestSubmittedEmails, sendEventEmails } from '../notifications/eventEmails';
 import { notifyHr } from '../notifications/notify';
 import { fileLink } from './files';
 
@@ -138,6 +139,8 @@ export const employeeRoutes: Route[] = [
         );
         await notifyHr(tx, 'MentorRequestSubmitted', id, now); // PDF §7: "employee requested to train a trainee"
       });
+      // PDF §7: the same event by e-mail to every HR user (NEW-24), after the commit (best effort, if enabled).
+      await sendEventEmails(c, (q) => mentorRequestSubmittedEmails(q, id));
       return json({ id, status: 'Pending', note, requestedAt: now }, 201);
     },
   },

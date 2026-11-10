@@ -8,18 +8,20 @@ import { EmailSendError } from '../src/domain/errors';
 import type { EmailMessage, EmailSender } from '../src/email';
 import { escapeHtml } from '../src/emailTemplate';
 import {
-  BLOCKED_EVENT_EMAILS,
+  applicationSubmittedEmails,
+  mentorRequestSubmittedEmails,
   renderEventEmail,
   sendEventEmails,
   type EventEmail,
   type EventEmailContent,
 } from '../src/features/notifications/eventEmails';
-import { body, createTestApi, signInStaff, signInTrainee, type TestApi, unique, withDb } from './helpers';
+import { body, createTestApi, setRole, signInStaff, signInTrainee, type TestApi, unique, withDb } from './helpers';
 import { submitApplication } from './seed';
 
 /**
- * Event e-mails of PDF §7 whose workflows exist (AD-59, AD-60, AD-61), sent best effort after the business commit, and
- * only with EVENT_EMAILS=enabled. Every transport here is a fake: no test reaches a mail server.
+ * Event e-mails of PDF §7 whose workflows exist (AD-59, AD-60, AD-61; HR recipients NEW-24; mentor details NEW-30), sent
+ * best effort after the business commit, and only with EVENT_EMAILS=enabled. Every transport here is a fake: no test
+ * reaches a mail server.
  */
 const ENABLED: Partial<Bindings> = { EVENT_EMAILS: 'enabled' };
 const SIGN_IN_SUBJECT = 'رمز الدخول / Sign-in code';
@@ -31,6 +33,11 @@ afterEach(() => vi.restoreAllMocks());
 const eventEmailsTo = (api: TestApi, to: string) =>
   api.emails.sent.filter((m) => m.to === to && !m.subject.startsWith(SIGN_IN_SUBJECT));
 const allEventEmails = (api: TestApi) => api.emails.sent.filter((m) => !m.subject.startsWith(SIGN_IN_SUBJECT));
+const NEW_APPLICATION = 'طلب تدريب جديد / New training application';
+const NEW_MENTOR_REQUEST = 'طلب تدريب متدرب / Request to train a trainee';
+/** The HR e-mails of one event: by subject and a text that identifies the record. */
+const hrEmailsAbout = (api: TestApi, subject: string, marker: string) =>
+  api.emails.sent.filter((m) => m.subject === subject && m.textBody.includes(marker));
 
 /** The HTML's text with tags removed and the escaped characters restored. */
 const htmlText = (html: string) =>
@@ -79,11 +86,11 @@ async function cast(api: TestApi) {
   return { admin, hr, employee, field };
 }
 
-describe('event e-mails enabled: the six events whose recipients are decided', () => {
+describe('event e-mails enabled: all eight events', () => {
   const api = createTestApi({}, ENABLED);
 
-  it('application received, then accepted: one e-mail each, to the trainee only, in both languages', async () => {
-    const { hr, field } = await cast(api);
+  it('application submitted: received to the trainee and one e-mail to each HR user; then accepted to the trainee', async () => {
+    const { admin, hr, employee, field } = await cast(api);
     const trainee = await signInTrainee(api);
     const applicationId = await submitApplication(trainee.client, field.id);
 
@@ -96,8 +103,17 @@ describe('event e-mails enabled: the six events whose recipients are decided', (
     expect(received[0]!.htmlBody).not.toContain('<script>');
     expect(received[0]!.textBody).toContain('http://localhost:4200/trainee');
 
-    // "New training application" to HR is blocked (NEW-24): nothing to HR.
-    expect(eventEmailsTo(api, hr.email)).toEqual([]);
+    // "New training application" to every HR user (NEW-24), one separate e-mail each, never to non-HR accounts.
+    const toHr = hrEmailsAbout(api, NEW_APPLICATION, `/hr/applications/${applicationId}`);
+    expect(toHr.filter((m) => m.to === hr.email)).toHaveLength(1);
+    expect(new Set(toHr.map((m) => m.to)).size).toBe(toHr.length); // no duplicate recipient
+    for (const m of toHr) expect(m.to).not.toMatch(/[,;\s]/); // one address per message, never a shared one
+    expectBilingual(toHr[0]!, 'طلب تدريب جديد', 'New training application');
+    expect(toHr[0]!.textBody).toContain('Applicant: Report Trainee');
+    for (const nonHr of [trainee.email]) expect(toHr.map((m) => m.to)).not.toContain(nonHr);
+
+    expect(toHr.map((m) => m.to)).not.toContain(admin.email);
+    expect(toHr.map((m) => m.to)).not.toContain(employee.email);
 
     expect((await hr.client.post(`/api/hr/applications/${applicationId}/accept`)).status).toBe(200);
     const accepted = eventEmailsTo(api, trainee.email);
@@ -126,7 +142,7 @@ describe('event e-mails enabled: the six events whose recipients are decided', (
     expect(stored.rows[0]!.rejection_reason).toBe(reason);
   });
 
-  it('mentor request approved: the employee is told, and the trainee gets the start date without mentor details', async () => {
+  it('mentor request: HR is told; approved: the employee is told, and the trainee gets exactly the NEW-30 details', async () => {
     const { hr, employee, field } = await cast(api);
     const trainee = await signInTrainee(api);
     const applicationId = await submitApplication(trainee.client, field.id, 'Lina Haddad');
@@ -137,7 +153,21 @@ describe('event e-mails enabled: the six events whose recipients are decided', (
     });
     expect(requested.status).toBe(201);
     const requestId = (await body<{ id: string }>(requested)).id;
-    expect(eventEmailsTo(api, hr.email)).toEqual([]); // "employee asked to train a trainee" to HR: blocked (NEW-24)
+    const mentorName = (
+      await withDb((db) =>
+        db.query<{ full_name: string }>('SELECT full_name FROM employees WHERE id = $1', [employee.user.id]),
+      )
+    ).rows[0]!.full_name;
+    // "An employee asked to train a trainee" to every HR user (NEW-24), never to the employee or the trainee.
+    const toHr = hrEmailsAbout(api, NEW_MENTOR_REQUEST, 'Trainee: Lina Haddad').filter((m) =>
+      m.textBody.includes(`Field: ${field.name}`),
+    );
+    expect(toHr.filter((m) => m.to === hr.email)).toHaveLength(1);
+    expect(new Set(toHr.map((m) => m.to)).size).toBe(toHr.length);
+    expect(toHr.map((m) => m.to)).not.toContain(employee.email);
+    expect(toHr.map((m) => m.to)).not.toContain(trainee.email);
+    expectBilingual(toHr[0]!, 'طلب تدريب متدرب', 'Request to train a trainee');
+    expect(toHr[0]!.textBody).toContain(`Employee: ${mentorName}`);
 
     const logged: string[] = [];
     vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => void logged.push(args.map(String).join(' ')));
@@ -174,6 +204,7 @@ describe('event e-mails enabled: the six events whose recipients are decided', (
     expectBilingual(toEmployee[0]!, 'تمت الموافقة على طلب التدريب', 'Training request approved');
     expect(toEmployee[0]!.textBody).toContain('Trainee: Lina Haddad');
     expect(toEmployee[0]!.textBody).toContain('http://localhost:4200/employee/trainees');
+    expect(toEmployee[0]!.textBody).not.toContain('Mentor'); // mentor details only in the trainee's assignment e-mail
 
     const toTrainee = eventEmailsTo(api, trainee.email).at(-1)!;
     expectBilingual(toTrainee, 'تم اعتماد ربطك بمدرّب', 'Your mentor assignment has been approved');
@@ -186,12 +217,39 @@ describe('event e-mails enabled: the six events whose recipients are decided', (
     // About the mentor assignment, not the application decision (which has its own e-mail).
     expect(toTrainee.subject).toBe('تم اعتماد ربطك بمدرّب / Your mentor assignment has been approved');
     expect(toTrainee.subject).not.toMatch(/application|طلب/i);
-    // NEW-30: no mentor details (name or contact) until the owner decides.
-    for (const mentor of [employee.email, employee.user.email]) expect(toTrainee.textBody).not.toContain(mentor);
+    // NEW-30, exactly: field, start date, the mentor's name and registered work e-mail; no end date, nothing else.
+    expect(toTrainee.textBody).toBe(
+      [
+        'تم اعتماد ربطك بمدرّب',
+        '',
+        'اعتمدت الموارد البشرية ربطك بمدرّب لتدريبك، وحدّدت تاريخ بدايته.',
+        `المجال: ${field.name}`,
+        'تاريخ البداية: 2031-02-01',
+        `المدرّب: ${mentorName}`,
+        `البريد الإلكتروني للمدرّب: ${employee.email}`,
+        '',
+        'لمتابعة طلبك:',
+        'http://localhost:4200/trainee',
+        '',
+        '—',
+        '',
+        'Your mentor assignment has been approved',
+        '',
+        'HR has approved your assignment to a mentor for your training and set its start date.',
+        `Field: ${field.name}`,
+        'Start date: 2031-02-01',
+        `Mentor: ${mentorName}`,
+        `Mentor’s e-mail: ${employee.email}`,
+        '',
+        'To follow your application:',
+        'http://localhost:4200/trainee',
+      ].join('\n'),
+    );
+    expect(toTrainee.htmlBody).toContain(escapeHtml(employee.email));
     expect(toTrainee.textBody).not.toContain('2031-04-30'); // only the start details
   });
 
-  it('mentor request rejected: the employee is told; the trainee and HR are not', async () => {
+  it('mentor request rejected: the employee is told; the trainee is not, and HR gets nothing more', async () => {
     const { hr, employee, field } = await cast(api);
     const trainee = await signInTrainee(api);
     const applicationId = await submitApplication(trainee.client, field.id);
@@ -202,12 +260,13 @@ describe('event e-mails enabled: the six events whose recipients are decided', (
       )
     ).id;
     const before = eventEmailsTo(api, trainee.email).length;
+    const hrBefore = eventEmailsTo(api, hr.email).length;
     expect((await hr.client.post(`/api/hr/mentor-requests/${requestId}/reject`)).status).toBe(200);
 
     const [rejected] = eventEmailsTo(api, employee.email);
     expectBilingual(rejected!, 'لم تتم الموافقة على طلب التدريب', 'Training request not approved');
     expect(eventEmailsTo(api, trainee.email)).toHaveLength(before);
-    expect(eventEmailsTo(api, hr.email)).toEqual([]);
+    expect(eventEmailsTo(api, hr.email)).toHaveLength(hrBefore); // HR's own decision is not e-mailed to HR
   });
 
   it('a repeated or unauthorised decision sends nothing more: no duplicate business event, no duplicate e-mail', async () => {
@@ -272,13 +331,13 @@ describe('a failed event e-mail never changes the business operation', () => {
   /** Captures sign-in codes (so trainees can sign in) and fails every other e-mail, like an SMTP outage. */
   class FailingEventSender implements EmailSender {
     readonly sent: EmailMessage[] = [];
-    attempts = 0;
+    readonly failed: EmailMessage[] = [];
     async send(message: EmailMessage) {
       if (message.subject.startsWith(SIGN_IN_SUBJECT)) {
         this.sent.push(message);
         return;
       }
-      this.attempts++;
+      this.failed.push(message);
       throw new EmailSendError();
     }
     lastSignInFor(to: string) {
@@ -300,12 +359,16 @@ describe('a failed event e-mail never changes the business operation', () => {
 
     const { hr, field } = await cast(api);
     const trainee = await signInTrainee(api);
-    const applicationId = await submitApplication(trainee.client, field.id); // its "received" e-mail fails too
+    const applicationId = await submitApplication(trainee.client, field.id); // its e-mails (trainee, HR) fail too
     const reason = unique('Private reason');
     const response = await hr.client.post(`/api/hr/applications/${applicationId}/reject`, { reason });
     expect(response.status).toBe(200);
     expect(await body(response)).toMatchObject({ id: applicationId, status: 'Rejected', rejectionReason: reason });
-    expect(failing.attempts).toBe(2);
+    expect(failing.failed.filter((m) => m.to === trainee.email).map((m) => m.subject)).toEqual([
+      'تم استلام طلب التدريب / Training application received',
+      'لم يتم قبول طلب التدريب / Training application not accepted',
+    ]);
+    expect(failing.failed.some((m) => m.to === hr.email && m.subject === NEW_APPLICATION)).toBe(true);
     expect(loggedInfo.filter((line) => line.includes('Event e-mail sent'))).toEqual([]);
 
     const stored = await withDb((db) =>
@@ -315,7 +378,7 @@ describe('a failed event e-mail never changes the business operation', () => {
     const logs = logged.join('\n');
     expect(logs).toContain('"kind":"ApplicationRejected"');
     expect(logs).toContain(applicationId);
-    for (const secret of [trainee.email, reason, field.name]) expect(logs).not.toContain(secret);
+    for (const secret of [trainee.email, hr.email, reason, field.name]) expect(logs).not.toContain(secret);
   });
 });
 
@@ -340,16 +403,21 @@ describe('sendEventEmails (the only delivery point; Phase 3 replaces it)', () =>
     return { c, done: () => Promise.all(waits) };
   }
 
-  it('never sends the HR events blocked by NEW-24, never loads anything when disabled, and survives a loading error', async () => {
-    expect(BLOCKED_EVENT_EMAILS).toEqual({ ApplicationSubmitted: 'NEW-24', MentorRequestSubmitted: 'NEW-24' });
+  it('sends one separate message per recipient, never loads anything when disabled, and survives a loading error', async () => {
     const sent: EmailMessage[] = [];
     const enabled = fakeContext(sent);
+    const content: EventEmailContent = {
+      kind: 'MentorRequestSubmitted',
+      field: 'F',
+      traineeName: 'T',
+      employeeName: 'E',
+    };
     await sendEventEmails(enabled.c, async () => [
-      event({ kind: 'ApplicationSubmitted', applicationId: crypto.randomUUID(), field: 'F', applicantName: 'A' }),
-      event({ kind: 'MentorRequestSubmitted', field: 'F', traineeName: 'T', employeeName: 'E' }),
+      { ...event(content), recipient: { type: 'Employee', id: 'h1', email: 'hr1@company.example' } },
+      { ...event(content), recipient: { type: 'Employee', id: 'h2', email: 'hr2@company.example' } },
     ]);
     await enabled.done();
-    expect(sent).toEqual([]);
+    expect(sent.map((m) => m.to)).toEqual(['hr1@company.example', 'hr2@company.example']);
 
     const load = vi.fn(async () => [] as EventEmail[]);
     await sendEventEmails(fakeContext(sent, false).c, load);
@@ -364,7 +432,7 @@ describe('sendEventEmails (the only delivery point; Phase 3 replaces it)', () =>
   });
 });
 
-describe('templates of all eight events (including the two blocked HR events)', () => {
+describe('templates of all eight events', () => {
   const SITE = 'https://ims.example/';
   const cases: [EventEmailContent, string, string, string][] = [
     [
@@ -410,7 +478,13 @@ describe('templates of all eight events (including the two blocked HR events)', 
       'https://ims.example/employee/available',
     ],
     [
-      { kind: 'AssignmentApproved', field: HOSTILE, startDate: '2031-02-01' },
+      {
+        kind: 'AssignmentApproved',
+        field: HOSTILE,
+        startDate: '2031-02-01',
+        mentorName: HOSTILE,
+        mentorEmail: 'mentor@company.example',
+      },
       'تم اعتماد ربطك بمدرّب',
       'Your mentor assignment has been approved',
       'https://ims.example/trainee',
@@ -442,5 +516,83 @@ describe('templates of all eight events (including the two blocked HR events)', 
     expect(message.textBody).not.toContain('Trainee:');
     expect(message.textBody).not.toContain('المتدرب:');
     expect(message.textBody).toContain('Field: Backend');
+  });
+});
+
+describe('HR recipients (NEW-24): every user whose current role is HR, at their registered address', () => {
+  const api = createTestApi({}, ENABLED);
+
+  /** The loader's recipients and the HR users, read in one snapshot (other test files change roles in parallel). */
+  async function recipientsAndHr(load: (q: Pick<import('pg').Client, 'query'>) => Promise<EventEmail[]>) {
+    return withDb(async (db) => {
+      await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
+      try {
+        const events = await load(db);
+        const hr = await db.query<{ id: string; email: string }>(
+          "SELECT id, email FROM employees WHERE role = 'HR' ORDER BY id",
+        );
+        return { events, hr: hr.rows };
+      } finally {
+        await db.query('ROLLBACK');
+      }
+    });
+  }
+
+  it('follows the current role: a former HR user is dropped, a new HR user is added; others never receive it', async () => {
+    const { admin, hr, employee, field } = await cast(api);
+    const hr2 = await signInStaff(api, 'HR');
+    const trainee = await signInTrainee(api);
+    const applicationId = await submitApplication(trainee.client, field.id);
+    await hr.client.post(`/api/hr/applications/${applicationId}/accept`);
+    const requestId = (
+      await body<{ id: string }>(
+        await employee.client.post('/api/employee/mentor-requests', { applicationId, note: 'Request' }),
+      )
+    ).id;
+
+    await setRole(hr2.email, 'Employee'); // no longer HR
+    await setRole(admin.email, 'HR'); // now HR
+
+    for (const load of [
+      (q: Parameters<typeof applicationSubmittedEmails>[0]) => applicationSubmittedEmails(q, applicationId),
+      (q: Parameters<typeof mentorRequestSubmittedEmails>[0]) => mentorRequestSubmittedEmails(q, requestId),
+    ]) {
+      const { events, hr: hrUsers } = await recipientsAndHr(load);
+      expect(events.map((e) => [e.recipient.id, e.recipient.email])).toEqual(hrUsers.map((u) => [u.id, u.email]));
+      const to = events.map((e) => e.recipient.email);
+      expect(to).toContain(hr.email);
+      expect(to).toContain(admin.email);
+      expect(to).not.toContain(hr2.email);
+      expect(to).not.toContain(employee.email);
+      expect(to).not.toContain(trainee.email);
+      expect(new Set(to).size).toBe(to.length);
+    }
+  });
+
+  it('logs each HR e-mail by kind and record only, never the HR addresses', async () => {
+    const { hr, employee, field } = await cast(api);
+    const trainee = await signInTrainee(api);
+    const applicationId = await submitApplication(trainee.client, field.id);
+    await hr.client.post(`/api/hr/applications/${applicationId}/accept`);
+    const logged: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => void logged.push(args.map(String).join(' ')));
+    const requestId = (
+      await body<{ id: string }>(
+        await employee.client.post('/api/employee/mentor-requests', { applicationId, note: 'Request' }),
+      )
+    ).id;
+    const lines = logged.filter((line) => line.includes('Event e-mail sent'));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(JSON.parse(line)).toEqual({
+        level: 'info',
+        message: 'Event e-mail sent (log line only, no delivery record)',
+        kind: 'MentorRequestSubmitted',
+        entityId: requestId,
+      });
+    }
+    for (const secret of [hr.email, employee.email, trainee.email, field.name]) {
+      expect(logged.join('\n')).not.toContain(secret);
+    }
   });
 });

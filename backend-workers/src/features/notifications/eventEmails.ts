@@ -6,11 +6,12 @@ import { renderBilingualHtml, renderBilingualText, type EmailSection } from '../
 
 /**
  * Event e-mails of PDF §7 whose workflows exist (AD-59, AD-61): only the e-mail channel the table gives each event,
- * Arabic first then English, HTML with the same plain text (AD-60), sender ProGineer.
+ * Arabic first then English, HTML with the same plain text (AD-60), sender ProGineer. HR e-mails go separately to every
+ * user whose current role is HR (NEW-24); the trainee's assignment e-mail names the mentor (NEW-30).
  *
  * Delivery is **best effort only**: the e-mail is sent after the business transaction has committed, in the background
  * (`waitUntil`), so a failure never changes or rolls back the business operation. There is **no delivery record, no
- * retry and no failure monitoring** (Phase 3, AD-60 items 4–10, deferred by the owner). Event e-mails are off unless
+ * retry and no failure monitoring** (Phase 3, AD-60 items 5–10, deferred by the owner). Event e-mails are off unless
  * `EVENT_EMAILS=enabled` (default `disabled`, also in wrangler.jsonc).
  *
  * Phase 3 boundary: `sendEventEmails` is the only place that delivers. Phase 3 replaces it with an enqueue inside the
@@ -24,7 +25,13 @@ export type EventEmailContent =
   | { kind: 'MentorRequestSubmitted'; field: string; traineeName: string | null; employeeName: string | null }
   | { kind: 'MentorRequestApproved'; field: string; traineeName: string | null }
   | { kind: 'MentorRequestRejected'; field: string; traineeName: string | null }
-  | { kind: 'AssignmentApproved'; field: string; startDate: string };
+  | {
+      kind: 'AssignmentApproved';
+      field: string;
+      startDate: string;
+      mentorName: string;
+      mentorEmail: string;
+    };
 
 export type EventEmailKind = EventEmailContent['kind'];
 
@@ -34,15 +41,6 @@ export interface EventEmail {
   entityId: string;
   recipient: { type: 'Trainee' | 'Employee'; id: string; email: string };
 }
-
-/**
- * Events with a template but not sent yet, and why. "HR" as an e-mail recipient is open (NEW-24: each HR member or a
- * shared address), so these two are never delivered until it is answered.
- */
-export const BLOCKED_EVENT_EMAILS: Partial<Record<EventEmailKind, string>> = {
-  ApplicationSubmitted: 'NEW-24',
-  MentorRequestSubmitted: 'NEW-24',
-};
 
 type Section = Omit<EmailSection, 'notes'> & { notes?: string[] };
 interface Template {
@@ -190,7 +188,7 @@ function template(content: EventEmailContent, site: string): Template {
       };
     case 'AssignmentApproved':
       // PDF §7 «اعتماد الربط (تفاصيل البداية والمدرب)»: HR approved the trainee–mentor assignment (not the application,
-      // which has its own e-mail) with its start date. The mentor's details wait for NEW-30.
+      // which has its own e-mail). NEW-30: field, start date, the mentor's name and registered work e-mail, nothing more.
       return {
         ar: {
           heading: 'تم اعتماد ربطك بمدرّب',
@@ -198,6 +196,8 @@ function template(content: EventEmailContent, site: string): Template {
           details: [
             { label: 'المجال:', value: content.field },
             { label: 'تاريخ البداية:', value: content.startDate },
+            { label: 'المدرّب:', value: content.mentorName },
+            { label: 'البريد الإلكتروني للمدرّب:', value: content.mentorEmail },
           ],
           action: myApplications.ar,
         },
@@ -207,6 +207,8 @@ function template(content: EventEmailContent, site: string): Template {
           details: [
             { label: 'Field:', value: content.field },
             { label: 'Start date:', value: content.startDate },
+            { label: 'Mentor:', value: content.mentorName },
+            { label: 'Mentor’s e-mail:', value: content.mentorEmail },
           ],
           action: myApplications.en,
         },
@@ -278,6 +280,57 @@ export async function applicationDecisionEmails(q: Queryable, applicationId: str
   });
 }
 
+/** Every user whose current role is HR, at their registered e-mail address: one separate e-mail each (NEW-24). */
+async function hrRecipients(q: Queryable): Promise<EventEmail['recipient'][]> {
+  const { rows } = await q.query<{ id: string; email: string }>(
+    "SELECT id, email FROM employees WHERE role = 'HR' ORDER BY id",
+  );
+  return rows.map((r) => ({ type: 'Employee', id: r.id, email: r.email }));
+}
+
+/** "New training application" to HR (PDF §7 «طلب تدريب جديد»), one e-mail per HR user. */
+export async function applicationSubmittedEmails(q: Queryable, applicationId: string): Promise<EventEmail[]> {
+  const { rows } = await q.query<{ applicant_name: string | null; field: string }>(
+    `SELECT t.full_name AS applicant_name, f.name AS field
+       FROM training_applications a JOIN trainees t ON t.id = a.trainee_id JOIN fields f ON f.id = a.field_id
+      WHERE a.id = $1`,
+    [applicationId],
+  );
+  const r = rows[0];
+  if (!r) return [];
+  return (await hrRecipients(q)).map((recipient) => ({
+    content: { kind: 'ApplicationSubmitted', applicationId, field: r.field, applicantName: r.applicant_name },
+    entityId: applicationId,
+    recipient,
+  }));
+}
+
+/** "An employee asked to train a trainee" to HR (PDF §7 «موظف طلب تدريب متدرب»), one e-mail per HR user. */
+export async function mentorRequestSubmittedEmails(q: Queryable, requestId: string): Promise<EventEmail[]> {
+  const { rows } = await q.query<{ employee_name: string; trainee_name: string | null; field: string }>(
+    `SELECT e.full_name AS employee_name, t.full_name AS trainee_name, f.name AS field
+       FROM mentor_requests r
+       JOIN employees e ON e.id = r.employee_id
+       JOIN training_applications a ON a.id = r.application_id
+       JOIN trainees t ON t.id = a.trainee_id
+       JOIN fields f ON f.id = a.field_id
+      WHERE r.id = $1`,
+    [requestId],
+  );
+  const r = rows[0];
+  if (!r) return [];
+  return (await hrRecipients(q)).map((recipient) => ({
+    content: {
+      kind: 'MentorRequestSubmitted',
+      field: r.field,
+      traineeName: r.trainee_name,
+      employeeName: r.employee_name,
+    },
+    entityId: requestId,
+    recipient,
+  }));
+}
+
 /**
  * HR's decision on a mentor request: "approved or rejected" to the employee who asked (PDF §7 «اعتماد الربط أو رفضه»),
  * and on approval "assignment approved" with the start details to the trainee (PDF §7 «اعتماد الربط (تفاصيل البداية
@@ -288,13 +341,15 @@ export async function mentorRequestDecisionEmails(q: Queryable, requestId: strin
     status: string;
     employee_id: string;
     employee_email: string;
+    employee_name: string;
     trainee_id: string;
     trainee_email: string;
     trainee_name: string | null;
     field: string;
     start_date: string | null;
   }>(
-    `SELECT r.status, e.id AS employee_id, e.email AS employee_email, t.id AS trainee_id, t.email AS trainee_email,
+    `SELECT r.status, e.id AS employee_id, e.email AS employee_email, e.full_name AS employee_name,
+            t.id AS trainee_id, t.email AS trainee_email,
             t.full_name AS trainee_name, f.name AS field,
             (SELECT s.start_date::text FROM assignments s WHERE s.mentor_request_id = r.id) AS start_date
        FROM mentor_requests r
@@ -326,7 +381,14 @@ export async function mentorRequestDecisionEmails(q: Queryable, requestId: strin
   ];
   if (r.start_date) {
     events.push({
-      content: { kind: 'AssignmentApproved', field: r.field, startDate: r.start_date },
+      // The assigned mentor is the employee whose request was approved (the assignment's employee).
+      content: {
+        kind: 'AssignmentApproved',
+        field: r.field,
+        startDate: r.start_date,
+        mentorName: r.employee_name,
+        mentorEmail: r.employee_email,
+      },
       entityId: requestId,
       recipient: { type: 'Trainee', id: r.trainee_id, email: r.trainee_email },
     });
@@ -347,7 +409,7 @@ export async function sendEventEmails(
   if (!c.var.settings.eventEmails) return;
   let prepared: { event: EventEmail; message: EmailMessage }[];
   try {
-    const events = (await load(c.var.db)).filter((event) => !BLOCKED_EVENT_EMAILS[event.content.kind]);
+    const events = await load(c.var.db);
     prepared = events.map((event) => ({
       event,
       message: renderEventEmail(event, c.var.settings.trainee.signInLinkBaseUrl),
