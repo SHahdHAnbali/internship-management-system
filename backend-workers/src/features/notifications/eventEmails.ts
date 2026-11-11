@@ -12,7 +12,7 @@ import { renderBilingualHtml, renderBilingualText, type EmailSection } from '../
  * Delivery is **best effort only**: the e-mail is sent after the business transaction has committed, in the background
  * (`waitUntil`), so a failure never changes or rolls back the business operation. There is **no delivery record, no
  * retry and no failure monitoring** (Phase 3, AD-60 items 5–10, deferred by the owner). Event e-mails are off unless
- * `EVENT_EMAILS=enabled` (default `disabled`, also in wrangler.jsonc).
+ * `EVENT_EMAILS=enabled` (off by default in code; enabled for production in wrangler.jsonc since 2026-11-11; off in tests).
  *
  * Phase 3 boundary: `sendEventEmails` is the only place that delivers. Phase 3 replaces it with an enqueue inside the
  * business transaction (the loaders below take any `Queryable`, a transaction included).

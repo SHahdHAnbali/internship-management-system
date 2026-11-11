@@ -31,7 +31,11 @@
     "EMAIL_PROVIDER": "smtp",
     "SMTP_HOST": "smtp.gmail.com",
     "SMTP_PORT": "465",
-    "EVENT_EMAILS": "disabled"
+    // Event e-mails of PDF §7 (Phase 5), enabled in production by the owner (2026-11-11): best effort after each business
+    // change, no delivery record or retry (Phase 3 deferred). Tests keep them off (vitest.config.ts). `disabled` turns
+    // them off again. Note: `wrangler dev` reads this too, so local runs send real event e-mails unless .dev.vars says
+    // EVENT_EMAILS=disabled.
+    "EVENT_EMAILS": "enabled"
   },
   // Private file storage for application CVs and university letters (owner decision 2026-10-29). Never public: files are
   // read only through the Worker, after an authorization check, with short-lived links. Locally Wrangler simulates it.

@@ -41,7 +41,8 @@ export interface Bindings {
   SMTP_APP_PASSWORD?: string;
   /**
    * Event e-mails of PDF §7 (AD-59, AD-61): `enabled` turns them on; `disabled`, empty or absent keeps them off (the
-   * default, also in wrangler.jsonc, until the owner approves a release strategy). Sign-in e-mails do not depend on it.
+   * code default; wrangler.jsonc sets `enabled` for production since 2026-11-11, and the tests set `disabled`). Sign-in
+   * e-mails do not depend on it.
    */
   EVENT_EMAILS?: string;
   /** Private R2 bucket for application attachments (CVs, university letters). */

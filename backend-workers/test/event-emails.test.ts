@@ -290,9 +290,9 @@ describe('event e-mails enabled: all eight events', () => {
   });
 });
 
-describe('event e-mails disabled (the default, also in wrangler.jsonc)', () => {
+describe('event e-mails disabled (the code default and the test configuration)', () => {
   it('the same workflows send no event e-mail at all', async () => {
-    const api = createTestApi(); // test configuration without EVENT_EMAILS, like wrangler.jsonc's "disabled"
+    const api = createTestApi(); // the test configuration: EVENT_EMAILS=disabled (vitest.config.ts)
     const { hr, employee, field } = await cast(api);
     const trainee = await signInTrainee(api);
     const accepted = await submitApplication(trainee.client, field.id);
@@ -311,7 +311,7 @@ describe('event e-mails disabled (the default, also in wrangler.jsonc)', () => {
     expect(allEventEmails(api)).toEqual([]);
   });
 
-  it('is off unless EVENT_EMAILS is exactly enabled; wrangler.jsonc says disabled; anything else stops the API', () => {
+  it('is off unless EVENT_EMAILS is exactly enabled; production (wrangler.jsonc) enables it, tests do not', () => {
     const base: Bindings = {
       ENVIRONMENT: 'development',
       DATABASE_URL: 'postgres://u:p@localhost:5432/db?sslmode=disable',
@@ -322,7 +322,7 @@ describe('event e-mails disabled (the default, also in wrangler.jsonc)', () => {
     expect(loadSettings({ ...base, EVENT_EMAILS: 'disabled' }).eventEmails).toBe(false);
     expect(loadSettings({ ...base, EVENT_EMAILS: 'enabled' }).eventEmails).toBe(true);
     expect(() => loadSettings({ ...base, EVENT_EMAILS: 'yes' })).toThrow(/EVENT_EMAILS/);
-    expect(wranglerConfig).toMatch(/"EVENT_EMAILS":\s*"disabled"/);
+    expect(wranglerConfig).toMatch(/"EVENT_EMAILS":\s*"enabled"/); // production, owner decision 2026-11-11
     expect(loadSettings(env as unknown as Bindings).eventEmails).toBe(false); // the test configuration
   });
 });
