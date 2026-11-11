@@ -21,8 +21,8 @@ the owner · 🔒 Blocked by an external dependency (built where possible). "Pro
 | Status | Count |
 |---|---|
 | ✅ Complete | 30 |
-| 🟡 Partial | 9 |
-| ❌ Not implemented | 18 |
+| 🟡 Partial | 10 |
+| ❌ Not implemented | 17 |
 | ⏸ Deferred by the owner | 3 |
 | 🔒 Blocked by an external dependency | 1 |
 | **Total** | **61** |
@@ -71,7 +71,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | R18 | Accept, or reject with a reason; rejected kept (p.2) | ✅ | Yes | The trainee sees the reason on the status page (AD-61, Q36; deployed 2026-11-10; production visual verification pending a legitimate rejected application); not in an e-mail yet (R46) |
 | R19 | Mentor requests: approve with dates, or reject (the trainee returns to the list) (p.2) | ✅ | Yes | Other pending requests (Q38) |
 | R20 | Direct assignment (p.2) | ❌ | — | Q38, L5 |
-| R21 | Running training: extend, end early, transfer, withdraw, with a reason (p.2) | ❌ | — | Rules decided 2026-11-11 (AD-63, NEW-32). Phase 1 (complete, end early, withdraw) implemented locally, **not deployed**; status stays ❌ until released. Not built: extension (NEW-35), return to Active (NEW-34), transfer (L5). The final evaluation follows the ending (D1) |
+| R21 | Running training: extend, end early, transfer, withdraw, with a reason (p.2) | 🟡 | Yes | In production since 2026-11-12 (Worker `ca7ec2a0`, Pages `7272d5d9`; AD-63, NEW-32): HR ends a training as Completed, Ended early (reason) or Withdrawn (reason) with the actual end date; manually tested by the owner locally, no real Production action yet. Missing: extension (NEW-35), return to Active (NEW-34), transfer (L5). The final evaluation and certificate follow the ending (D1), not built |
 | R22 | Trainings list, current and previous (read-only, supports p.2) | ✅ | Yes | |
 
 ## Employee

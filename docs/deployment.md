@@ -71,8 +71,27 @@ below). Sign-in e-mails do not depend on it.
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Current deployment (2026-11-11, event e-mails enabled, Phase 5)
-- Worker `ims-api` version `55570602-cd8b-4c88-b937-a8d8c99fd7f8` (commit `098279f`, 2026-11-11 13:54 UTC): the eight
+### Current deployment (2026-11-12, training lifecycle Phase 1, AD-63)
+- Worker `ims-api` version `ca7ec2a0-6fd6-4e69-b346-80fdce376e19` and Pages production deployment
+  `7272d5d9-3ade-4802-9150-b04f3a9ca230` (commit `958578d`; Worker first, then Pages): HR ends an Active training from HR ›
+  Trainings as **Completed** (actual end date on or after the planned end date), **Ended early** (before it, reason
+  required) or **Withdrawn** (reason required), on an actual end date chosen by HR between the start date and today's
+  Asia/Hebron date, which replaces the planned end date (AD-63, NEW-32); HR-only `POST /api/hr/assignments/:id/complete`
+  and `…/withdraw`; reasons visible to HR only; no e-mail. Database: the column-level UPDATE on
+  `assignments (status, end_date, end_reason)` for `ims_app` was applied on Neon on 2026-11-11 (see
+  [least-privilege.md](least-privilege.md)) and verified present before the release; no migration, no other grant. No
+  change to `wrangler.jsonc` (`EVENT_EMAILS` still `enabled`), bindings, variables, secrets (the four names present, not
+  re-entered), packages or `frontend/wrangler.toml`. Before: 425/425 Worker tests (Mac sleep prevented; disposable
+  PostgreSQL as `ims_app`), Worker typecheck and dry-run build, 324/324 frontend tests, frontend build and lint (no
+  findings) passed; the owner manually tested all three actions in the local frontend (local Docker database);
+  signed-out baseline taken. After: `/health` Healthy; `/api/auth/config` 200 (same domains, 15-minute code);
+  `/api/auth/me`, `/api/hr/assignments`, `/api/trainee/applications`, the two new endpoints and an unknown `/api/*` path
+  401 signed out; `no-store` and `nosniff`; no CORS headers for a foreign origin; site `/`, `/hr/trainings`, `/trainee`,
+  `/sign-in`, `/admin` 200 with CSP, X-Frame-Options, nosniff and HSTS; both translation files serve the new labels; the
+  served Trainings page chunk is byte-identical to the local build; the deployed version's variables show
+  `EVENT_EMAILS ("enabled")`. **No Production training data changed** (one Active assignment, no assignment update and
+  no new audit row since the pre-release baseline). **A real lifecycle action in Production has not been performed yet.**
+- Previous (event e-mails enabled, Phase 5, 2026-11-11): Worker `ims-api` version `55570602-cd8b-4c88-b937-a8d8c99fd7f8` (commit `098279f`, 2026-11-11 13:54 UTC): the eight
   event e-mails of PDF §7 for the existing workflows (AD-59, AD-60 items 1–4, AD-61; NEW-24: new application and new
   mentor request to every current HR user; NEW-30: the trainee's assignment e-mail with the field, start date, and the
   mentor's name and work e-mail), **enabled** by `EVENT_EMAILS=enabled` in `wrangler.jsonc` (commit `098279f`, after the
@@ -187,9 +206,11 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 | C3 | One rate-limit counter shared by trainee sign-in and application submit | **Open**: owner decision (optional) |
 
 ### Rollback
-- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; earlier: `0551650d…`) → *Rollback*, or redeploy that commit.
+- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; earlier: `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback 3f953830-4316-42bd-990f-61adad908937` (in `backend-workers/`; before the event
+- **Worker code:** `npx wrangler rollback 55570602-cd8b-4c88-b937-a8d8c99fd7f8` (in `backend-workers/`; before the lifecycle
+  actions: event e-mails on, trainings read-only; the `assignments` column grant stays, unused), or
+  `3f953830-4316-42bd-990f-61adad908937` (before the event
   e-mails: no event e-mail is sent, everything else unchanged), or
   `7ae6b96c-eaab-469e-b86c-9a01f92e77ef` (before the
   rejection reason: the trainee board then returns no reason and the new page shows none), or
