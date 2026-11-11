@@ -21,8 +21,8 @@ the owner · 🔒 Blocked by an external dependency (built where possible). "Pro
 | Status | Count |
 |---|---|
 | ✅ Complete | 30 |
-| 🟡 Partial | 8 |
-| ❌ Not implemented | 19 |
+| 🟡 Partial | 9 |
+| ❌ Not implemented | 18 |
 | ⏸ Deferred by the owner | 3 |
 | 🔒 Blocked by an external dependency | 1 |
 | **Total** | **61** |
@@ -120,7 +120,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R45 | In-app notifications | 🟡 | Yes | 4 of the in-app events (AD-50); Q14, lifecycle, scheduler |
-| R46 | E-mail events and bilingual templates | ❌ | — | The provider works (Gmail SMTP, AD-58; the sign-in e-mail is R03), but the event e-mails of PDF §7 are not built. Only the sign-in e-mail uses the bilingual format (HTML and plain text, Arabic first, sender ProGineer; deployed 2026-11-10, Worker `7ae6b96c`, verified in production by the owner on 2026-11-10). Decided 2026-11-10 but not built for the event e-mails: channels (AD-59), sender name and HTML + text (AD-60, built for the sign-in e-mail only), retries and the Admin failed-e-mail page (AD-60), rejection reason (AD-61), schedules (AD-62); open NEW-19 to NEW-31 |
+| R46 | E-mail events and bilingual templates | 🟡 | Yes | The eight event e-mails of the existing workflows are in production since 2026-11-11 (Worker `55570602`, commit `098279f`; manually tested by the owner locally): new application and mentor request to every HR user (NEW-24); received, accepted, rejected with its reason, and the mentor assignment with the mentor's name and work e-mail (NEW-30) to the trainee; mentor request approved or rejected to the employee. Bilingual HTML and plain text, Arabic first, sender ProGineer (AD-60). Missing: the reminders, weekly summary, training-ended, late-evaluation and certificate e-mails (their features are not built), and delivery tracking, retries and the failed-e-mail page (Phase 3, 4); open NEW-19 to NEW-23, NEW-24 for the pending reminder only, NEW-26 to NEW-29, NEW-31 (NEW-25 and NEW-30 answered) |
 | R47 | Timed reminders (7 days, late evaluation every 3 days, pending > 5 days) | ❌ | — | NEW-05, NEW-06, NEW-09, L1, N3; scheduler; e-mail |
 | R48 | Weekly summary to HR | ❌ | — | NEW-04; e-mail |
 | R50 | Notification "email status" field (p.4) | ❌ | — | Needs the event e-mails (D-50); Q42 answered 2026-11-10 (AD-59) |

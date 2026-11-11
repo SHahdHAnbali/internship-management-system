@@ -51,15 +51,17 @@ Deploying the site before the Worker exists breaks `/api` (the binding has nothi
 With `EMAIL_PROVIDER=smtp` in `wrangler.jsonc`, a missing or invalid `SMTP_USER` / `SMTP_APP_PASSWORD` stops every API
 request with a configuration error: put both SMTP secrets **before** deploying a version that has that setting (an older
 version ignores them).
-`EVENT_EMAILS` (Worker var in `wrangler.jsonc`, **`disabled`**) controls the event e-mails of PDF §7 (Phase 5: application
+`EVENT_EMAILS` (Worker var in `wrangler.jsonc`, **`enabled`** since 2026-11-11, commit `098279f`) controls the event e-mails of PDF §7 (Phase 5: application
 received, accepted and rejected with its reason to the trainee; new application and new mentor request to every user whose
 current role is HR, one separate e-mail each (NEW-24); mentor request approved or rejected to the employee; the mentor
 assignment to the trainee with the field, start date, and the mentor's name and work e-mail (NEW-30)). Only `enabled` turns them on; empty or absent is off; any other
-value stops the API with a configuration error. Phase 5 is implemented in the repository but **not enabled in
-production**. When enabled, each e-mail is sent once, after the business change has committed, in the background:
+value stops the API with a configuration error. **Enabled in production since 2026-11-11** (owner decision; Worker `55570602`). The
+tests keep it off (`vitest.config.ts`). `wrangler dev` reads `wrangler.jsonc` too, so a local run sends real event e-mails
+unless `.dev.vars` sets `EVENT_EMAILS=disabled`. Each e-mail is sent once, after the business change has committed, in the background:
 best effort, with a log line per outcome (event kind and record id only). There is **no delivery record, no retry and
-no failed-e-mail page** (Phase 3, AD-60 items 5–10, deferred), so a failed or interrupted send is lost. Enabling it
-needs a separate owner decision and an assessment of these temporary limits. Sign-in e-mails do not depend on it.
+no failed-e-mail page** (Phase 3, AD-60 items 5–10, deferred), so a failed or interrupted send is lost; the owner
+accepted these temporary limits when enabling it. To turn event e-mails off, set `disabled` and deploy (or roll back,
+below). Sign-in e-mails do not depend on it.
 
 ### Check
 - `https://progineer-ims.pages.dev/health` → `Healthy` (Worker → Neon).
@@ -69,8 +71,23 @@ needs a separate owner decision and an assessment of these temporary limits. Sig
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Current deployment (2026-11-10, trainee rejection reason, AD-61 Phase 2)
-- Worker `ims-api` version `3f953830-4316-42bd-990f-61adad908937` and Pages production deployment
+### Current deployment (2026-11-11, event e-mails enabled, Phase 5)
+- Worker `ims-api` version `55570602-cd8b-4c88-b937-a8d8c99fd7f8` (commit `098279f`, 2026-11-11 13:54 UTC): the eight
+  event e-mails of PDF §7 for the existing workflows (AD-59, AD-60 items 1–4, AD-61; NEW-24: new application and new
+  mentor request to every current HR user; NEW-30: the trainee's assignment e-mail with the field, start date, and the
+  mentor's name and work e-mail), **enabled** by `EVENT_EMAILS=enabled` in `wrangler.jsonc` (commit `098279f`, after the
+  Phase 5 code in `05d01bc` and `1f47258`). Best effort after each business commit, no delivery record, retry or
+  failed-e-mail page (Phase 3 and 4 deferred). Worker only: no change to secrets (`DATABASE_URL`, `SESSION_SECRET`,
+  `SMTP_USER`, `SMTP_APP_PASSWORD` present, not re-entered), bindings, other variables, schema, migrations, grants or
+  data; Pages not redeployed (no frontend change; still `ff7586bf`). **The owner manually tested all eight event e-mails
+  locally** (local Worker and Docker database, real Gmail delivery to owner-controlled addresses) before the release.
+  Before: 408/408 Worker tests (Mac sleep prevented; disposable PostgreSQL as `ims_app`), typecheck and dry-run build
+  passed; signed-out baseline taken. After: the deployed version's variables show `EVENT_EMAILS ("enabled")`;
+  `/health` Healthy; `/api/auth/config` 200 (same domains, 15-minute code); `/api/auth/me`, `/api/trainee/applications`,
+  `/api/hr/applications`, `/api/employee/mentor-requests` and an unknown `/api/*` path 401 signed out; `no-store` and
+  `nosniff`; no CORS headers for a foreign origin; site `/`, `/trainee`, `/sign-in`, `/hr` 200 with its CSP. No
+  application, request or e-mail was created or sent for testing in production.
+- Previous (trainee rejection reason, AD-61 Phase 2): Worker `ims-api` version `3f953830-4316-42bd-990f-61adad908937` and Pages production deployment
   `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72` (commit `a8955c6`, 2026-11-10 21:23 UTC; Worker first, then Pages): the trainee's
   status board shows the reason HR recorded for each of their own rejected applications, including earlier rejections
   (AD-61, Q36, NEW-25), as plain text with `dir="auto"`; other statuses never carry a reason. The existing
@@ -172,7 +189,9 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 ### Rollback
 - **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; earlier: `0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback 7ae6b96c-eaab-469e-b86c-9a01f92e77ef` (in `backend-workers/`; before the
+- **Worker code:** `npx wrangler rollback 3f953830-4316-42bd-990f-61adad908937` (in `backend-workers/`; before the event
+  e-mails: no event e-mail is sent, everything else unchanged), or
+  `7ae6b96c-eaab-469e-b86c-9a01f92e77ef` (before the
   rejection reason: the trainee board then returns no reason and the new page shows none), or
   `273dc51a-a930-4053-a3a0-d3b35296e255` (before the HTML
   sign-in e-mail: Gmail SMTP with the plain-text e-mail, verified by the owner), or
