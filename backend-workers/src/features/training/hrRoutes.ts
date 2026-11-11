@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import type { AppEnv } from '../../context';
 import { ConcurrencyError, DomainError, NotFoundError } from '../../domain/errors';
+import { updateOrConflict } from '../../db';
 import { required } from '../../domain/guard';
 import {
   APPLICATION_STATUSES,
@@ -9,6 +10,10 @@ import {
   assertCanDecide,
   assertCanReview,
   assertPending,
+  ASSIGNMENT_END_REASON_MAX_LENGTH,
+  calendarDate,
+  endAssignment,
+  type AssignmentEndingKind,
   MENTOR_REQUEST_STATUSES,
   parseDate,
   period,
@@ -50,6 +55,15 @@ const approveRequest: RequestSchema = {
   properties: [
     { name: 'StartDate', kind: 'string', required: true, maxLength: 10 },
     { name: 'EndDate', kind: 'string', required: true, maxLength: 10 },
+  ],
+};
+
+// AD-63 Phase 1: HR ends a training with its actual end date and, where required, a reason.
+const endAssignmentRequest: RequestSchema = {
+  typeName: 'Ims.Application.Hr.EndAssignmentRequest',
+  properties: [
+    { name: 'EndDate', kind: 'string', required: true, maxLength: 10 },
+    { name: 'Reason', kind: 'string', required: false, maxLength: ASSIGNMENT_END_REASON_MAX_LENGTH },
   ],
 };
 
@@ -357,47 +371,28 @@ export const hrRoutes: Route[] = [
     },
   },
   {
-    // PDF §4 "running training" (read-only here): every assignment with its trainee, mentor, field, dates and status as
-    // recorded. Changing an assignment (extend, end early, transfer, withdraw) is not built.
+    // PDF §4 "running training": every assignment with its trainee, mentor, field, dates, status and, once ended, the
+    // reason HR recorded (shown to HR only, AD-63). Ending is below; extend, transfer and reopen are not built.
     method: 'GET',
     path: '/api/hr/assignments',
     policy: 'HR',
     async handle(c) {
-      const { rows } = await c.var.db.query<{
-        id: string;
-        application_id: string;
-        status: string;
-        start_date: string;
-        end_date: string;
-        trainee_id: string;
-        trainee_name: string | null;
-        trainee_email: string;
-        employee_id: string;
-        employee_name: string;
-        employee_email: string;
-        field_name: string;
-      }>(
-        `SELECT s.id, s.application_id, s.status, s.start_date::text, s.end_date::text,
-                t.id AS trainee_id, t.full_name AS trainee_name, t.email AS trainee_email,
-                e.id AS employee_id, e.full_name AS employee_name, e.email AS employee_email, f.name AS field_name
-           FROM assignments s JOIN employees e ON e.id = s.employee_id
-           JOIN training_applications a ON a.id = s.application_id JOIN trainees t ON t.id = a.trainee_id
-           JOIN fields f ON f.id = a.field_id
-          ORDER BY s.start_date DESC, s.created_at DESC`,
-      );
-      return json(
-        rows.map((r) => ({
-          id: r.id,
-          applicationId: r.application_id,
-          status: r.status,
-          startDate: r.start_date,
-          endDate: r.end_date,
-          trainee: { id: r.trainee_id, fullName: r.trainee_name, email: r.trainee_email },
-          employee: { id: r.employee_id, fullName: r.employee_name, email: r.employee_email },
-          fieldName: r.field_name,
-        })),
-      );
+      return json(await hrAssignments(c));
     },
+  },
+  {
+    // AD-63: a successful completion; the actual end date decides Completed (on or after the planned end) or EndedEarly.
+    method: 'POST',
+    path: '/api/hr/assignments/:id/complete',
+    policy: 'HR',
+    handle: (c) => endHrAssignment(c, 'completion'),
+  },
+  {
+    // AD-63: the trainee's withdrawal, recorded by HR with its date and reason.
+    method: 'POST',
+    path: '/api/hr/assignments/:id/withdraw',
+    policy: 'HR',
+    handle: (c) => endHrAssignment(c, 'withdrawal'),
   },
   {
     // The choice of trainee for the "trainee history" report (PDF §6): owner decision 2026-11-02, only trainees with at
@@ -611,4 +606,83 @@ async function mentorRequest(c: Context<AppEnv>, id: string) {
   const { rows } = await c.var.db.query<MentorRequestRow>(`${MENTOR_REQUEST_SELECT} WHERE r.id = $1`, [id]);
   if (!rows[0]) throw NotFoundError.for('MentorRequest', id);
   return rows[0];
+}
+
+interface HrAssignmentRow {
+  id: string;
+  application_id: string;
+  status: string;
+  start_date: string;
+  end_date: string;
+  end_reason: string | null;
+  trainee_id: string;
+  trainee_name: string | null;
+  trainee_email: string;
+  employee_id: string;
+  employee_name: string;
+  employee_email: string;
+  field_name: string;
+}
+
+/** HR's view of the assignments (all, or one), newest first. */
+async function hrAssignments(c: Context<AppEnv>, id: string | null = null) {
+  const { rows } = await c.var.db.query<HrAssignmentRow>(
+    `SELECT s.id, s.application_id, s.status, s.start_date::text, s.end_date::text, s.end_reason,
+            t.id AS trainee_id, t.full_name AS trainee_name, t.email AS trainee_email,
+            e.id AS employee_id, e.full_name AS employee_name, e.email AS employee_email, f.name AS field_name
+       FROM assignments s JOIN employees e ON e.id = s.employee_id
+       JOIN training_applications a ON a.id = s.application_id JOIN trainees t ON t.id = a.trainee_id
+       JOIN fields f ON f.id = a.field_id
+      WHERE ($1::uuid IS NULL OR s.id = $1)
+      ORDER BY s.start_date DESC, s.created_at DESC`,
+    [id],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    applicationId: r.application_id,
+    status: r.status,
+    startDate: r.start_date,
+    endDate: r.end_date,
+    endReason: r.end_reason,
+    trainee: { id: r.trainee_id, fullName: r.trainee_name, email: r.trainee_email },
+    employee: { id: r.employee_id, fullName: r.employee_name, email: r.employee_email },
+    fieldName: r.field_name,
+  }));
+}
+
+/**
+ * Ends an Active assignment (AD-63 Phase 1): the rules are checked against the row as read, and the update applies only
+ * if nobody changed it meanwhile (xmin, else 409). The actual end date replaces the planned one (L3); the audit trigger
+ * keeps the old values with HR as the actor. No e-mail: the lifecycle sends none in this phase.
+ */
+async function endHrAssignment(c: Context<AppEnv>, kind: AssignmentEndingKind) {
+  const body = await bindJson<{ endDate: string; reason: string | null }>(
+    c.req.raw,
+    endAssignmentRequest,
+    c.var.traceId,
+  );
+  if (!body.ok) return body.response;
+  const id = routeId(c);
+  const { rows } = await c.var.db.query<{ status: string; start_date: string; end_date: string; version: string }>(
+    'SELECT status, start_date::text, end_date::text, xmin::text AS version FROM assignments WHERE id = $1',
+    [id],
+  );
+  const current = rows[0];
+  if (!current) throw NotFoundError.for('Assignment', id);
+
+  const ending = endAssignment(
+    kind,
+    body.value,
+    { status: current.status, startDate: current.start_date, plannedEndDate: current.end_date },
+    calendarDate(c.var.deps.now()),
+  );
+  await c.var.db.transaction(c.var.actor, (tx) =>
+    updateOrConflict(
+      tx,
+      `UPDATE assignments SET status = $2, end_date = $3, end_reason = $4
+        WHERE id = $1 AND status = 'Active' AND xmin = $5::xid`,
+      [id, ending.status, ending.endDate, ending.reason, current.version],
+    ),
+  );
+  return json((await hrAssignments(c, id))[0]);
 }

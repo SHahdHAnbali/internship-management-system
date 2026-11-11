@@ -36,6 +36,11 @@ export const hrApi = {
       endDate,
     }),
   assignments: () => apiRequest<HrAssignment[]>('GET', '/hr/assignments'),
+  /** AD-63: a successful completion; the server records Completed or EndedEarly from the date. */
+  completeAssignment: (id: string, endDate: string, reason: string | null) =>
+    apiRequest<HrAssignment>('POST', `/hr/assignments/${id}/complete`, { endDate, reason }),
+  withdrawAssignment: (id: string, endDate: string, reason: string) =>
+    apiRequest<HrAssignment>('POST', `/hr/assignments/${id}/withdraw`, { endDate, reason }),
   trainees: () => apiRequest<HrTrainee[]>('GET', '/hr/trainees'),
   /** One trainee's history; the optional filters narrow its trainings only (period overlap, field). */
   traineeHistory: (

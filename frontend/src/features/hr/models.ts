@@ -49,7 +49,10 @@ export interface HrAssignment {
   applicationId: string;
   status: AssignmentStatus;
   startDate: string;
+  /** The planned end date while Active; the actual end date once ended (AD-63, L3). */
   endDate: string;
+  /** The reason HR recorded when ending it early or recording a withdrawal (AD-63); HR only. */
+  endReason: string | null;
   trainee: { id: string; fullName: string | null; email: string };
   employee: { id: string; fullName: string; email: string };
   fieldName: string;

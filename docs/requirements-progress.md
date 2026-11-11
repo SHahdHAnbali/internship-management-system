@@ -71,7 +71,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | R18 | Accept, or reject with a reason; rejected kept (p.2) | ✅ | Yes | The trainee sees the reason on the status page (AD-61, Q36; deployed 2026-11-10; production visual verification pending a legitimate rejected application); not in an e-mail yet (R46) |
 | R19 | Mentor requests: approve with dates, or reject (the trainee returns to the list) (p.2) | ✅ | Yes | Other pending requests (Q38) |
 | R20 | Direct assignment (p.2) | ❌ | — | Q38, L5 |
-| R21 | Running training: extend, end early, transfer, withdraw, with a reason (p.2) | ❌ | — | L2–L5, L8, L9 |
+| R21 | Running training: extend, end early, transfer, withdraw, with a reason (p.2) | ❌ | — | Rules decided 2026-11-11 (AD-63, NEW-32). Phase 1 (complete, end early, withdraw) implemented locally, **not deployed**; status stays ❌ until released. Not built: extension (NEW-35), return to Active (NEW-34), transfer (L5). The final evaluation follows the ending (D1) |
 | R22 | Trainings list, current and previous (read-only, supports p.2) | ✅ | Yes | |
 
 ## Employee

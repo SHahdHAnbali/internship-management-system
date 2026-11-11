@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import arMessages from '../../../public/i18n/ar.json?raw';
 import enMessages from '../../../public/i18n/en.json?raw';
@@ -202,13 +202,14 @@ describe('HR mentor requests', () => {
   });
 });
 
-describe('HR trainings (read-only)', () => {
+describe('HR trainings', () => {
   const assignment = (id: string, status: string, trainee: string) => ({
     id,
     applicationId: `app-${id}`,
     status,
     startDate: '2027-02-01',
     endDate: '2027-04-30',
+    endReason: null as string | null,
     trainee: { id: `t-${id}`, fullName: trainee, email: `${id}@trainee.example` },
     employee: { id: 'e1', fullName: 'Mentor One', email: 'mentor@company.example' },
     fieldName: 'QA',
@@ -235,11 +236,15 @@ describe('HR trainings (read-only)', () => {
     expect(within(previous).getByText('training.assignmentStatus.Completed')).toBeInTheDocument();
     expect(within(previous).getByText('training.assignmentStatus.Transferred')).toBeInTheDocument();
 
-    // Read-only: one GET and no actions.
+    // One GET; the only action is "End training" on the current (Active) training, none on previous ones.
     expect(fetchMock.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${url}`)).toEqual([
       'GET /api/hr/assignments',
     ]);
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(within(current).getAllByRole('button')).toHaveLength(1);
+    expect(
+      within(current).getByRole('button', { name: 'hr.trainings.endFor' }),
+    ).toBeInTheDocument();
+    expect(within(previous).queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('says when there are no trainings, and shows a load error without details', async () => {
@@ -263,6 +268,204 @@ describe('HR trainings (read-only)', () => {
     renderPage(<TrainingsPage />, { i18n: testI18n(JSON.parse(raw), language) });
     expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
     expect(screen.getByText(active)).toBeInTheDocument();
+  });
+});
+
+describe('HR ends a training (AD-63 Phase 1)', () => {
+  const active = (startDate: string, endDate: string) => ({
+    id: 's1',
+    applicationId: 'app-s1',
+    status: 'Active',
+    startDate,
+    endDate,
+    endReason: null as string | null,
+    trainee: { id: 't1', fullName: 'Lina Haddad', email: 'lina@trainee.example' },
+    employee: { id: 'e1', fullName: 'Mentor One', email: 'mentor@company.example' },
+    fieldName: 'QA',
+  });
+
+  /** Answers the list with `row`, and every POST with `post`. */
+  function api(row: ReturnType<typeof active>, post: () => [number, unknown?]) {
+    return mockFetch((method) => (method === 'POST' ? post() : [200, [row]]));
+  }
+  const posts = (fetchMock: ReturnType<typeof mockFetch>) =>
+    fetchMock.mock.calls
+      .filter(([, init]) => init?.method === 'POST')
+      .map(([url, init]) => [url, JSON.parse(String(init!.body))]);
+
+  async function openDialog() {
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'hr.trainings.endFor' }));
+    return { user, dialog: await screen.findByRole('dialog') };
+  }
+  const setDate = (dialog: HTMLElement, value: string) =>
+    fireEvent.change(within(dialog).getByLabelText('hr.trainings.actualEndDate'), {
+      target: { value },
+    });
+
+  it('normal completion: on or after the planned end date, no reason, reviewed then confirmed once', async () => {
+    const fetchMock = api(active('2020-01-01', '2020-03-31'), () => [200, {}]);
+    renderPage(<TrainingsPage />);
+    const { user, dialog } = await openDialog();
+
+    await user.click(within(dialog).getByLabelText('hr.trainings.kind.completion'));
+    setDate(dialog, '2020-03-31');
+    expect(within(dialog).getByRole('status')).toHaveTextContent('hr.trainings.willBe');
+    expect(within(dialog).queryByLabelText('hr.trainings.reason')).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+
+    expect(within(dialog).getByText('training.assignmentStatus.Completed')).toBeInTheDocument();
+    await user.dblClick(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+    await waitFor(() => expect(screen.getByText('hr.trainings.ended')).toBeInTheDocument());
+    expect(posts(fetchMock)).toEqual([
+      ['/api/hr/assignments/s1/complete', { endDate: '2020-03-31', reason: null }],
+    ]);
+  });
+
+  it('early completion: before the planned end date it becomes Ended early and needs a reason', async () => {
+    const fetchMock = api(active('2020-01-01', '2999-12-31'), () => [200, {}]);
+    renderPage(<TrainingsPage />);
+    const { user, dialog } = await openDialog();
+
+    await user.click(within(dialog).getByLabelText('hr.trainings.kind.completion'));
+    setDate(dialog, '2024-05-01');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    const reason = within(dialog).getByLabelText('hr.trainings.reason');
+    expect(reason).toHaveAttribute('aria-invalid', 'true');
+    const alert = within(dialog).getByRole('alert');
+    expect(alert).toHaveTextContent('hr.trainings.errors.reason');
+    expect(reason.getAttribute('aria-describedby')).toBe(alert.id);
+
+    await user.type(reason, '  Finished the project early  ');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    expect(within(dialog).getByText('training.assignmentStatus.EndedEarly')).toBeInTheDocument();
+    expect(within(dialog).getByText('Finished the project early')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+    await waitFor(() =>
+      expect(posts(fetchMock)).toEqual([
+        [
+          '/api/hr/assignments/s1/complete',
+          { endDate: '2024-05-01', reason: 'Finished the project early' },
+        ],
+      ]),
+    );
+  });
+
+  it('withdrawal: a reason is required; Back returns to the form without sending anything', async () => {
+    const fetchMock = api(active('2020-01-01', '2999-12-31'), () => [200, {}]);
+    renderPage(<TrainingsPage />);
+    const { user, dialog } = await openDialog();
+
+    await user.click(within(dialog).getByLabelText('hr.trainings.kind.withdrawal'));
+    setDate(dialog, '2020-01-01');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('hr.trainings.errors.reason');
+    await user.type(within(dialog).getByLabelText('hr.trainings.reason'), 'Moved away');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    expect(within(dialog).getByText('training.assignmentStatus.Withdrawn')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.back' }));
+    expect(posts(fetchMock)).toEqual([]);
+
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+    await waitFor(() =>
+      expect(posts(fetchMock)).toEqual([
+        ['/api/hr/assignments/s1/withdraw', { endDate: '2020-01-01', reason: 'Moved away' }],
+      ]),
+    );
+  });
+
+  it('checks the outcome and the date before review: required, not before the start, not in the future', async () => {
+    const fetchMock = api(active('2020-01-01', '2999-12-31'), () => [200, {}]);
+    renderPage(<TrainingsPage />);
+    const { user, dialog } = await openDialog();
+    const date = within(dialog).getByLabelText('hr.trainings.actualEndDate');
+    expect(date).toHaveAttribute('min', '2020-01-01');
+    expect(date.getAttribute('max')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    expect(within(dialog).getByText('hr.trainings.errors.kind')).toBeInTheDocument();
+    expect(within(dialog).getByText('hr.trainings.errors.date')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByLabelText('hr.trainings.kind.withdrawal'));
+    for (const [value, error] of [
+      ['2019-12-31', 'hr.trainings.errors.dateBeforeStart'],
+      ['2999-01-01', 'hr.trainings.errors.dateInFuture'],
+    ] as const) {
+      setDate(dialog, value);
+      await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+      expect(within(dialog).getByText(error)).toBeInTheDocument();
+      expect(date).toHaveAttribute('aria-invalid', 'true');
+    }
+    expect(posts(fetchMock)).toEqual([]);
+  });
+
+  it('a concurrent change (409) closes the dialog, says so and reloads; a server date error is shown in the form', async () => {
+    const conflict = api(active('2020-01-01', '2020-03-31'), () => [409, { status: 409 }]);
+    const { unmount } = renderPage(<TrainingsPage />);
+    let { user, dialog } = await openDialog();
+    await user.click(within(dialog).getByLabelText('hr.trainings.kind.completion'));
+    setDate(dialog, '2020-04-01');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+    expect(await screen.findByText('training.errors.conflict')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        conflict.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === 'GET'),
+      ).toHaveLength(2),
+    );
+    unmount();
+
+    api(active('2020-01-01', '2020-03-31'), () => [
+      400,
+      { status: 400, code: 'assignment.end_in_future' },
+    ]);
+    renderPage(<TrainingsPage />);
+    ({ user, dialog } = await openDialog());
+    await user.click(within(dialog).getByLabelText('hr.trainings.kind.completion'));
+    setDate(dialog, '2020-04-01');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+    expect(await within(dialog).findByText('hr.trainings.errors.dateInFuture')).toBeInTheDocument();
+  });
+
+  it('shows the recorded reason of previous trainings (HR page), as plain text', async () => {
+    mockFetch(() => [
+      200,
+      [
+        {
+          ...active('2020-01-01', '2020-02-01'),
+          status: 'Withdrawn',
+          endReason: '<b>Left</b>\nfor work',
+        },
+      ],
+    ]);
+    renderPage(<TrainingsPage />);
+    const previous = await screen.findByRole('region', { name: 'hr.trainings.previous' });
+    const cell = within(previous).getByText(/<b>Left<\/b>/);
+    expect(cell.textContent).toBe('<b>Left</b>\nfor work');
+    expect(cell).toHaveAttribute('dir', 'auto');
+    expect(previous.querySelector('b')).toBeNull();
+  });
+
+  it.each([
+    ['ar', arMessages, 'إنهاء تدريب Lina Haddad', 'إكمال ناجح', 'تاريخ الانتهاء الفعلي'],
+    [
+      'en',
+      enMessages,
+      'End the training of Lina Haddad',
+      'Successful completion',
+      'Actual end date',
+    ],
+  ] as const)('reads in %s', async (language, raw, endButton, completion, dateLabel) => {
+    mockFetch(() => [200, [active('2020-01-01', '2999-12-31')]]);
+    renderPage(<TrainingsPage />, { i18n: testI18n(JSON.parse(raw), language) });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: endButton }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText(completion)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(dateLabel)).toBeInTheDocument();
   });
 });
 

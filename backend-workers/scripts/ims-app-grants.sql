@@ -42,11 +42,16 @@ GRANT INSERT ON
     training_applications, user_sessions
 TO ims_app;
 
--- Updates (no UPDATE on assignments, contact logs, progress notes, attachments or audit_logs: the Worker has none).
+-- Updates (no UPDATE on contact logs, progress notes, attachments or audit_logs: the Worker has none).
 GRANT UPDATE ON
     certificate_templates, employees, evaluation_criteria, fields, mentor_requests, notification_settings,
     notifications, trainee_sign_in_codes, trainees, training_applications, user_sessions
 TO ims_app;
+
+-- Training lifecycle, Phase 1 (AD-63, owner approval 2026-11-11): HR ends a training by setting its status, actual end
+-- date and reason. Column-level only: the application, employee, mentor request, start date and creation time of an
+-- assignment can never be changed by the Worker.
+GRANT UPDATE (status, end_date, end_reason) ON assignments TO ims_app;
 
 -- Only the schema owner sets up audit protection on a table.
 REVOKE EXECUTE ON FUNCTION ims_protect_table(regclass) FROM PUBLIC;

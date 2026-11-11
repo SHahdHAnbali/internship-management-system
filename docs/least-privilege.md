@@ -20,6 +20,7 @@ in it; safe to run again):
 | SELECT (16) | `application_attachments`, `assignments`, `audit_logs`, `certificate_templates`, `contact_logs`, `employees`, `evaluation_criteria`, `fields`, `mentor_requests`, `notification_settings`, `notifications`, `progress_notes`, `trainee_sign_in_codes`, `trainees`, `training_applications`, `user_sessions` |
 | INSERT (15) | the same, except `notification_settings` (`audit_logs` only through the audit trigger, see below) |
 | UPDATE (11) | `certificate_templates`, `employees`, `evaluation_criteria`, `fields`, `mentor_requests`, `notification_settings`, `notifications`, `trainee_sign_in_codes`, `trainees`, `training_applications`, `user_sessions` |
+| UPDATE, column-level | `assignments (status, end_date, end_reason)` only, for the training lifecycle (AD-63 Phase 1). Applied on Neon by the owner's authorization on 2026-11-11 as `neondb_owner`, in one transaction, verified: those three columns only, no table-wide UPDATE, no other column, still no DELETE or TRUNCATE; no row changed |
 | never | DELETE, TRUNCATE, TRIGGER, REFERENCES on any table; anything on `roles` and `__EFMigrationsHistory` (foreign-key checks run as the table owner) |
 
 The list comes from every SQL statement in `backend-workers/src`. No sequence grant is needed: `audit_logs.id` is an

@@ -1037,7 +1037,7 @@ describe('Admin: accepted trainees (PDF §2)', () => {
   });
 });
 
-describe('HR: running trainings (read-only)', () => {
+describe('HR: running trainings (the list)', () => {
   type HrAssignment = {
     id: string;
     applicationId: string;
@@ -1065,7 +1065,7 @@ describe('HR: running trainings (read-only)', () => {
     const colleague = await signInStaff(api, 'Employee');
     const current = await assign(hr.client, employee.client, field.id, 'Current Trainee');
     const previous = await assign(hr.client, colleague.client, field.id, 'Previous Trainee');
-    // Set directly: the lifecycle actions are not built; the list only reports what is stored.
+    // Set directly (a fixture): the list only reports what is stored. Ending through the API: test/lifecycle.test.ts.
     await withDb((db) =>
       db.query("UPDATE assignments SET status = 'Completed' WHERE id = $1", [previous.assignmentId]),
     );
@@ -1083,6 +1083,7 @@ describe('HR: running trainings (read-only)', () => {
       status: 'Active',
       startDate: '2027-03-01',
       endDate: '2027-05-31',
+      endReason: null,
       trainee: { id: current.trainee.user.id, fullName: 'Current Trainee', email: current.trainee.email },
       employee: { id: employee.user.id, fullName: expect.any(String), email: employee.email },
       fieldName: field.name,
@@ -1097,7 +1098,7 @@ describe('HR: running trainings (read-only)', () => {
     ).toEqual(before.rows);
   });
 
-  it('is for HR only, and offers no changes', async () => {
+  it('is for HR only; the list itself takes no POST', async () => {
     const { admin, hr, employee } = await cast();
     const trainee = await signInTrainee(api);
     for (const client of [admin.client, employee.client, trainee.client]) {

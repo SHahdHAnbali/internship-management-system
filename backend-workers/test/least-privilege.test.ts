@@ -142,6 +142,25 @@ describe('ims_app: exactly the privileges the Worker needs', () => {
     for (const privilege of ['DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']) expect(granted(privilege)).toEqual([]);
   });
 
+  it('may update only the status, end date and end reason of an assignment (AD-63 Phase 1), nothing else', async () => {
+    const columns = await withDb((db) =>
+      db.query<{ column: string; granted: boolean }>(
+        `SELECT a.attname AS column, has_column_privilege('ims_app', 'public.assignments', a.attname, 'UPDATE') AS granted
+           FROM pg_attribute a WHERE a.attrelid = 'public.assignments'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+          ORDER BY a.attname`,
+      ),
+    );
+    expect(columns.rows.filter((c) => c.granted).map((c) => c.column)).toEqual(['end_date', 'end_reason', 'status']);
+    expect(columns.rows.filter((c) => !c.granted).map((c) => c.column)).toEqual([
+      'application_id',
+      'created_at',
+      'employee_id',
+      'id',
+      'mentor_request_id',
+      'start_date',
+    ]);
+  });
+
   it('cannot create anything: no schema CREATE, no TEMP (also not through PUBLIC), no protect function', async () => {
     const checks = await withDb((db) =>
       db.query(
@@ -168,6 +187,8 @@ describe('ims_app: refused (negative tests, disposable test database only)', () 
   const tamper = '01a10000-0000-7000-8000-000000000000';
   it.each([
     ['UPDATE audit_logs', "UPDATE audit_logs SET actor_type = 'System' WHERE id = 1"],
+    ["UPDATE an assignment's employee", 'UPDATE assignments SET employee_id = employee_id'],
+    ["UPDATE an assignment's start date", 'UPDATE assignments SET start_date = start_date'],
     ['DELETE FROM audit_logs', 'DELETE FROM audit_logs WHERE id = 1'],
     ['TRUNCATE audit_logs', 'TRUNCATE audit_logs'],
     ['DISABLE an audit trigger', 'ALTER TABLE fields DISABLE TRIGGER audit_row_change'],

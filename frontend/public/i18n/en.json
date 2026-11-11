@@ -717,7 +717,35 @@
       "noPrevious": "No previous trainings.",
       "trainee": "Trainee",
       "mentor": "Mentor",
-      "status": "Status"
+      "status": "Status",
+      "actions": "Actions",
+      "end": "End training",
+      "endFor": "End the training of {{name}}",
+      "endTitle": "End the training of {{name}}",
+      "endKind": "How did the training end?",
+      "kind": {
+        "completion": "Successful completion",
+        "withdrawal": "Trainee withdrawal"
+      },
+      "actualEndDate": "Actual end date",
+      "plannedEndDate": "Planned end date",
+      "dateHint": "From the start date ({{start}}) to today. Planned end date: {{planned}}.",
+      "willBe": "It will be recorded as: {{status}}",
+      "reason": "Reason",
+      "review": "Review",
+      "reviewIntro": "Check the details before confirming:",
+      "recordedAs": "Recorded as",
+      "endNote": "The actual end date replaces the planned end date. The change is kept in the audit log.",
+      "back": "Back",
+      "confirm": "Confirm",
+      "ended": "The training was ended.",
+      "errors": {
+        "kind": "Choose how the training ended.",
+        "date": "Choose the actual end date.",
+        "dateBeforeStart": "The actual end date cannot be before the training start date.",
+        "dateInFuture": "The actual end date cannot be in the future.",
+        "reason": "Enter the reason."
+      }
     },
     "reports": {
       "title": "Reports",
