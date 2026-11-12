@@ -71,8 +71,35 @@ below). Sign-in e-mails do not depend on it.
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Current deployment (2026-11-12, Google sign-in for existing trainees and homepage cleanup, AD-42 amended)
-- Worker `ims-api` version `79096a04-2919-45c4-9d25-43f7a10d299b` and Pages production deployment
+### Current deployment (2026-11-12, training extension, AD-63 L2 / NEW-35)
+- Worker `ims-api` version `422b35e8-1406-449c-8fb4-f22886e17f58` and Pages production deployment
+  `54722aca-948c-4ec6-9c91-36983dfa0e31` (commit `a0a9977`; database first, then Worker, then Pages). HR extends an
+  Active training from HR › Trainings to a planned end date strictly later than the current one (also after it has
+  passed), any number of times, each with a mandatory reason (AD-63 L2, NEW-35); HR-only
+  `POST /api/hr/assignments/:id/extend`; the history row and the new end date are written in one transaction with a
+  version check (409 on a concurrent change); every extension is kept in the insert-only `assignment_extensions` and
+  shown to HR only (the extension history in HR › Trainings); no e-mail or notification. **Database (Neon `ims_db`, as
+  `neondb_owner`):** preflight (read-only): the migration history equal to the repository except `AssignmentExtensions`,
+  and the schema (columns, triggers, constraints, indexes, function definitions, `ims_app` grants; 426 entries)
+  identical to the migrated local database. **Backup (AD-54):** `pg_dump -Fc` taken read-only before any change and
+  verified by restoring it into a disposable PostgreSQL 18.6 container (no errors; every table's row count, and
+  checksums of the assignments and of the 155 audit rows, equal to production); kept outside the repository.
+  **Migration** `20261112161441_AssignmentExtensions` applied alone, in one transaction (5-second lock timeout): the
+  table, its checks (later date, non-blank reason), foreign keys (`RESTRICT`), indexes and the audit, no-delete and
+  no-truncate triggers. **Grant:** `SELECT, INSERT ON assignment_extensions TO ims_app` only, in one transaction (see
+  [least-privilege.md](least-privilege.md)). After: every pre-existing table, trigger, function and grant unchanged; the
+  only data change was the migration-history row (8 → 9); the one assignment and the audit rows unchanged (checksums);
+  `assignment_extensions` empty. No change to `wrangler.jsonc` (`EVENT_EMAILS` still `enabled`, staff domains
+  unchanged), bindings or secrets (the four names present, not re-entered). Before: 78/78 .NET tests, 439/439 Worker
+  tests, Worker typecheck and dry-run build, 334/334 frontend tests, frontend build and lint (no findings) passed; the
+  owner manually tested the extension in the local frontend (local Docker database). After (signed out, read-only):
+  `/health` Healthy; `/api/auth/config` 200 with both staff domains and the 15-minute code; `/api/auth/me`,
+  `/api/hr/assignments` and the new extend endpoint 401; site `/hr` and `/hr/trainings` 200 with CSP, X-Frame-Options,
+  nosniff, HSTS, Referrer-Policy and Permissions-Policy; both translation files serve the new labels; the served
+  Trainings page chunk contains the Extend and history controls and the HR API module the extend call; the Worker
+  connected to Neon as `ims_app`. No training was created or extended during the verification; no extension has been
+  made in production yet.
+- Previous (Google sign-in for existing trainees and homepage cleanup, AD-42 amended, 2026-11-12): Worker `ims-api` version `79096a04-2919-45c4-9d25-43f7a10d299b` and Pages production deployment
   `eb43ce16-2927-49be-88c9-ad44bf337454` (commit `74eaf72`; Worker first, then Pages). **Auth (AD-42 amended
   2026-11-12):** B1 a verified Google account whose normalised e-mail is not in a staff domain and exactly matches an
   existing trainee signs in as that same trainee (nothing created, merged or changed; the e-mailed code still works);
@@ -228,9 +255,12 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 | C3 | One rate-limit counter shared by trainee sign-in and application submit | **Open**: owner decision (optional) |
 
 ### Rollback
-- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`7272d5d9-3ade-4802-9150-b04f3a9ca230`, commit `958578d`, before the Google trainee sign-in and the homepage cleanup; earlier: `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
+- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`eb43ce16-2927-49be-88c9-ad44bf337454`, commit `74eaf72`, before the training extension: no Extend action or extension history; earlier: `7272d5d9-3ade-4802-9150-b04f3a9ca230`, commit `958578d`, before the Google trainee sign-in and the homepage cleanup; `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback ca7ec2a0-6fd6-4e69-b346-80fdce376e19` (in `backend-workers/`; before the Google
+- **Worker code:** `npx wrangler rollback 79096a04-2919-45c4-9d25-43f7a10d299b` (in `backend-workers/`; before the
+  training extension: the extend endpoint is gone and HR › Trainings returns no history; roll back the site with it; the
+  `assignment_extensions` table, its rows and its grant stay, unused), or
+  `ca7ec2a0-6fd6-4e69-b346-80fdce376e19` (before the Google
   trainee sign-in: a trainee's Google account is role-less again), or
   `55570602-cd8b-4c88-b937-a8d8c99fd7f8` (before the lifecycle
   actions: event e-mails on, trainings read-only; the `assignments` column grant stays, unused), or
@@ -258,7 +288,9 @@ None of these touches the data.
 - **Automated daily backups (PDF §9): deferred** by the owner until the remaining development is complete.
 - Until then, take a manual logical backup (`pg_dump -Fc`, as the owner, read-only) before any risky production change,
   verify it by restoring it into a disposable local PostgreSQL, and keep it outside the repository. One was taken and
-  verified on 2026-11-04 before the `ims_app` rollout.
+  verified on 2026-11-04 before the `ims_app` rollout; another on 2026-11-12 before the `AssignmentExtensions`
+  migration (restored into a disposable container: every row count and the assignment and audit checksums equal to
+  production).
 - Rolling back the Worker or Pages never touches the database (above).
 
 ### Google sign-in
