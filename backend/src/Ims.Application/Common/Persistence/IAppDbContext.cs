@@ -49,6 +49,8 @@ public interface IAppDbContext
 
     DbSet<ProgressNote> ProgressNotes { get; }
 
+    DbSet<AssignmentExtension> AssignmentExtensions { get; }
+
     DbSet<Notification> Notifications { get; }
 
     /// <summary>Read-only: rows are written by database triggers.</summary>

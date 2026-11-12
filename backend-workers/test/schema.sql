@@ -545,3 +545,30 @@ VALUES ('20261031200703_InAppNotifications', '10.0.13');
 
 COMMIT;
 
+START TRANSACTION;
+CREATE TABLE assignment_extensions (
+    id uuid NOT NULL,
+    assignment_id uuid NOT NULL,
+    previous_end_date date NOT NULL,
+    new_end_date date NOT NULL,
+    reason character varying(2000) NOT NULL,
+    extended_by_id uuid NOT NULL,
+    extended_at timestamp with time zone NOT NULL,
+    CONSTRAINT pk_assignment_extensions PRIMARY KEY (id),
+    CONSTRAINT ck_assignment_extensions_later CHECK (new_end_date > previous_end_date),
+    CONSTRAINT ck_assignment_extensions_reason CHECK (btrim(reason) <> ''),
+    CONSTRAINT fk_assignment_extensions_assignments_assignment_id FOREIGN KEY (assignment_id) REFERENCES assignments (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_assignment_extensions_employees_extended_by_id FOREIGN KEY (extended_by_id) REFERENCES employees (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX ix_assignment_extensions_assignment_id ON assignment_extensions (assignment_id);
+
+CREATE INDEX ix_assignment_extensions_extended_by_id ON assignment_extensions (extended_by_id);
+
+SELECT ims_protect_table('assignment_extensions');
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261112161441_AssignmentExtensions', '10.0.13');
+
+COMMIT;
+

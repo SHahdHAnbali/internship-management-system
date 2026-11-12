@@ -42,6 +42,7 @@ async function refused(sql: string): Promise<{ code: string; message: string }> 
 
 const TABLES = [
   'application_attachments',
+  'assignment_extensions',
   'assignments',
   'audit_logs',
   'certificate_templates',

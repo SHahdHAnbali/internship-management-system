@@ -39,6 +39,9 @@ export const hrApi = {
   /** AD-63: a successful completion; the server records Completed or EndedEarly from the date. */
   completeAssignment: (id: string, endDate: string, reason: string | null) =>
     apiRequest<HrAssignment>('POST', `/hr/assignments/${id}/complete`, { endDate, reason }),
+  /** AD-63 L2, NEW-35: a later planned end date with a reason. */
+  extendAssignment: (id: string, endDate: string, reason: string) =>
+    apiRequest<HrAssignment>('POST', `/hr/assignments/${id}/extend`, { endDate, reason }),
   withdrawAssignment: (id: string, endDate: string, reason: string) =>
     apiRequest<HrAssignment>('POST', `/hr/assignments/${id}/withdraw`, { endDate, reason }),
   trainees: () => apiRequest<HrTrainee[]>('GET', '/hr/trainees'),

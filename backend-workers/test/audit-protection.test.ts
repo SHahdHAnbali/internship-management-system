@@ -8,6 +8,7 @@ import { withDb } from './helpers';
  */
 const BUSINESS_TABLES = [
   'application_attachments',
+  'assignment_extensions',
   'assignments',
   'certificate_templates',
   'contact_logs',

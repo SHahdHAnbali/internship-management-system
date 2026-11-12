@@ -43,6 +43,15 @@ export interface ContactLogEntry {
 
 export type AssignmentStatus = 'Active' | 'Completed' | 'EndedEarly' | 'Transferred' | 'Withdrawn';
 
+/** One extension of a training: the planned end date before and after, the reason, who and when. */
+export interface HrAssignmentExtension {
+  previousEndDate: string;
+  newEndDate: string;
+  reason: string;
+  extendedAt: string;
+  extendedBy: string;
+}
+
 /** An assignment as recorded (AD-49 statuses). */
 export interface HrAssignment {
   id: string;
@@ -53,6 +62,8 @@ export interface HrAssignment {
   endDate: string;
   /** The reason HR recorded when ending it early or recording a withdrawal (AD-63); HR only. */
   endReason: string | null;
+  /** Every extension, oldest first (AD-63 L2, NEW-35); HR only. */
+  extensions: HrAssignmentExtension[];
   trainee: { id: string; fullName: string | null; email: string };
   employee: { id: string; fullName: string; email: string };
   fieldName: string;

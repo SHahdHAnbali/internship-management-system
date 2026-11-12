@@ -11,8 +11,10 @@ import {
   assertCanReview,
   assertPending,
   ASSIGNMENT_END_REASON_MAX_LENGTH,
+  ASSIGNMENT_EXTENSION_REASON_MAX_LENGTH,
   calendarDate,
   endAssignment,
+  extendAssignment,
   type AssignmentEndingKind,
   MENTOR_REQUEST_STATUSES,
   parseDate,
@@ -64,6 +66,15 @@ const endAssignmentRequest: RequestSchema = {
   properties: [
     { name: 'EndDate', kind: 'string', required: true, maxLength: 10 },
     { name: 'Reason', kind: 'string', required: false, maxLength: ASSIGNMENT_END_REASON_MAX_LENGTH },
+  ],
+};
+
+// AD-63 L2, NEW-35: HR extends a training to a later planned end date, with a reason.
+const extendAssignmentRequest: RequestSchema = {
+  typeName: 'Ims.Application.Hr.ExtendAssignmentRequest',
+  properties: [
+    { name: 'EndDate', kind: 'string', required: true, maxLength: 10 },
+    { name: 'Reason', kind: 'string', required: true, maxLength: ASSIGNMENT_EXTENSION_REASON_MAX_LENGTH },
   ],
 };
 
@@ -395,6 +406,47 @@ export const hrRoutes: Route[] = [
     handle: (c) => endHrAssignment(c, 'withdrawal'),
   },
   {
+    // AD-63 L2, NEW-35: extend an Active training to a later planned end date, with a mandatory reason; every extension
+    // is kept (assignment_extensions, insert-only).
+    method: 'POST',
+    path: '/api/hr/assignments/:id/extend',
+    policy: 'HR',
+    async handle(c) {
+      const body = await bindJson<{ endDate: string; reason: string }>(
+        c.req.raw,
+        extendAssignmentRequest,
+        c.var.traceId,
+      );
+      if (!body.ok) return body.response;
+      const id = routeId(c);
+      const { rows } = await c.var.db.query<{ status: string; end_date: string; version: string }>(
+        'SELECT status, end_date::text, xmin::text AS version FROM assignments WHERE id = $1',
+        [id],
+      );
+      const current = rows[0];
+      if (!current) throw NotFoundError.for('Assignment', id);
+
+      const extension = extendAssignment(body.value, { status: current.status, plannedEndDate: current.end_date });
+      const now = c.var.deps.now();
+      // One transaction: the history row first, then the end date only if nobody changed the assignment meanwhile
+      // (xmin, else 409), so a conflict also discards the history row. Audited with the HR user as the actor.
+      await c.var.db.transaction(c.var.actor, async (tx) => {
+        await tx.query(
+          `INSERT INTO assignment_extensions
+             (id, assignment_id, previous_end_date, new_end_date, reason, extended_by_id, extended_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [uuidV7(now), id, current.end_date, extension.newEndDate, extension.reason, c.var.user!.id, now],
+        );
+        await updateOrConflict(
+          tx,
+          `UPDATE assignments SET end_date = $2 WHERE id = $1 AND status = 'Active' AND xmin = $3::xid`,
+          [id, extension.newEndDate, current.version],
+        );
+      });
+      return json((await hrAssignments(c, id))[0]);
+    },
+  },
+  {
     // The choice of trainee for the "trainee history" report (PDF §6): owner decision 2026-11-02, only trainees with at
     // least one Accepted application (AD-47), each once. Read-only.
     method: 'GET',
@@ -615,6 +667,13 @@ interface HrAssignmentRow {
   start_date: string;
   end_date: string;
   end_reason: string | null;
+  extensions: {
+    previousEndDate: string;
+    newEndDate: string;
+    reason: string;
+    extendedAt: string;
+    extendedBy: string;
+  }[];
   trainee_id: string;
   trainee_name: string | null;
   trainee_email: string;
@@ -628,6 +687,12 @@ interface HrAssignmentRow {
 async function hrAssignments(c: Context<AppEnv>, id: string | null = null) {
   const { rows } = await c.var.db.query<HrAssignmentRow>(
     `SELECT s.id, s.application_id, s.status, s.start_date::text, s.end_date::text, s.end_reason,
+            coalesce((SELECT json_agg(json_build_object('previousEndDate', x.previous_end_date::text,
+                                                        'newEndDate', x.new_end_date::text, 'reason', x.reason,
+                                                        'extendedAt', x.extended_at, 'extendedBy', h.full_name)
+                                      ORDER BY x.extended_at, x.id)
+                        FROM assignment_extensions x JOIN employees h ON h.id = x.extended_by_id
+                       WHERE x.assignment_id = s.id), '[]') AS extensions,
             t.id AS trainee_id, t.full_name AS trainee_name, t.email AS trainee_email,
             e.id AS employee_id, e.full_name AS employee_name, e.email AS employee_email, f.name AS field_name
        FROM assignments s JOIN employees e ON e.id = s.employee_id
@@ -644,6 +709,7 @@ async function hrAssignments(c: Context<AppEnv>, id: string | null = null) {
     startDate: r.start_date,
     endDate: r.end_date,
     endReason: r.end_reason,
+    extensions: r.extensions,
     trainee: { id: r.trainee_id, fullName: r.trainee_name, email: r.trainee_email },
     employee: { id: r.employee_id, fullName: r.employee_name, email: r.employee_email },
     fieldName: r.field_name,

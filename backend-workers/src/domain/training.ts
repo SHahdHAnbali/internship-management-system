@@ -150,3 +150,29 @@ export function assertPending(status: MentorRequestStatus): void {
     throw new DomainError('mentor_request.invalid_status', 'The request has already been decided.');
   }
 }
+
+export const ASSIGNMENT_EXTENSION_REASON_MAX_LENGTH = 2000;
+
+/**
+ * AD-63 L2, NEW-35 (owner decisions 2026-11-12): HR extends an Active training to a new planned end date strictly later
+ * than the current one (also when the current one has already passed), with a mandatory reason; any number of times.
+ * Mirrors Assignment.Extend in Ims.Domain (same codes).
+ */
+export function extendAssignment(
+  input: { endDate: string | null | undefined; reason: string | null | undefined },
+  assignment: { status: string; plannedEndDate: string },
+): { newEndDate: string; reason: string } {
+  if (assignment.status !== 'Active') {
+    throw new DomainError('assignment.invalid_status', 'Only an active training can be extended.');
+  }
+  const newEndDate = parseDate(input.endDate);
+  if (!newEndDate) throw new DomainError('validation.required', 'The new end date is required.');
+  if (newEndDate <= assignment.plannedEndDate) {
+    throw new DomainError(
+      'assignment.extension_not_later',
+      'The new end date must be later than the current end date.',
+    );
+  }
+  const reason = required(input.reason, 'Extension reason', ASSIGNMENT_EXTENSION_REASON_MAX_LENGTH);
+  return { newEndDate, reason };
+}

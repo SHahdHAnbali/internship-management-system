@@ -507,6 +507,61 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ims.Domain.Mentoring.AssignmentExtension", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AssignmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assignment_id");
+
+                    b.Property<DateTimeOffset>("ExtendedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("extended_at");
+
+                    b.Property<Guid>("ExtendedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("extended_by_id");
+
+                    b.Property<DateOnly>("NewEndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("new_end_date");
+
+                    b.Property<DateOnly>("PreviousEndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("previous_end_date");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("reason");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_assignment_extensions");
+
+                    b.HasIndex("AssignmentId")
+                        .HasDatabaseName("ix_assignment_extensions_assignment_id");
+
+                    b.HasIndex("ExtendedById")
+                        .HasDatabaseName("ix_assignment_extensions_extended_by_id");
+
+                    b.ToTable("assignment_extensions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_assignment_extensions_later", "new_end_date > previous_end_date");
+
+                            t.HasCheckConstraint("ck_assignment_extensions_reason", "btrim(reason) <> ''");
+                        });
+                });
+
             modelBuilder.Entity("Ims.Domain.Mentoring.MentorRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1050,6 +1105,23 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .HasForeignKey("MentorRequestId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_assignments_mentor_requests_mentor_request_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Mentoring.AssignmentExtension", b =>
+                {
+                    b.HasOne("Ims.Domain.Mentoring.Assignment", null)
+                        .WithMany()
+                        .HasForeignKey("AssignmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_assignment_extensions_assignments_assignment_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("ExtendedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_assignment_extensions_employees_extended_by_id");
                 });
 
             modelBuilder.Entity("Ims.Domain.Mentoring.MentorRequest", b =>

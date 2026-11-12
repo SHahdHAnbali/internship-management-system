@@ -310,7 +310,8 @@
         "trainees": "Trainees",
         "training_applications": "Training applications",
         "user_sessions": "Sign-in sessions",
-        "other": "Other data"
+        "other": "Other data",
+        "assignment_extensions": "Training extensions"
       },
       "unknownUser": "Unknown user",
       "traineeWithoutName": "Trainee (name not entered yet)",
@@ -466,7 +467,11 @@
           "created": "A record was created in another part of the system",
           "updated": "A record was changed in another part of the system"
         },
-        "unknown": "A change to the system's data was recorded"
+        "unknown": "A change to the system's data was recorded",
+        "assignment_extensions": {
+          "created": "A training was extended",
+          "updated": "A training extension was updated"
+        }
       }
     }
   },
@@ -743,8 +748,22 @@
         "date": "Choose the actual end date.",
         "dateBeforeStart": "The actual end date cannot be before the training start date.",
         "dateInFuture": "The actual end date cannot be in the future.",
-        "reason": "Enter the reason."
-      }
+        "reason": "Enter the reason.",
+        "notLater": "The new end date must be later than the current planned end date."
+      },
+      "extend": "Extend",
+      "extendFor": "Extend the training of {{name}}",
+      "extendTitle": "Extend the training of {{name}}",
+      "currentEndDate": "Current planned end date",
+      "newEndDate": "New planned end date",
+      "extensionReason": "Extension reason",
+      "extendNote": "The new planned end date replaces the current one. Every extension and its reason are kept.",
+      "extended": "The training was extended.",
+      "history": "Extensions ({{count}})",
+      "historyFor": "Extension history of {{name}}",
+      "historyTitle": "Extensions of {{name}}",
+      "extendedBy": "By {{name}} on {{date}}",
+      "close": "Close"
     },
     "reports": {
       "title": "Reports",

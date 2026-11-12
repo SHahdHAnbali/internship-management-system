@@ -5,8 +5,8 @@ namespace Ims.Domain.Mentoring;
 /// <summary>
 /// The approved link between an accepted application and the employee who mentors it (PDF §3, §8: application,
 /// employee, start date, end date, status, end or transfer reason). Created by HR's approval of a mentor request.
-/// Statuses (owner decision 2026-10-29): Active, Completed, EndedEarly, Transferred, Withdrawn; only Active is reached
-/// so far, the others belong to the running-training features (PDF §4) that are not built yet. Never deleted.
+/// Statuses (owner decision 2026-10-29): Active, Completed, EndedEarly, Transferred, Withdrawn. The Workers API ends a
+/// training (AD-63 Phase 1) and extends it (<see cref="Extend"/>, NEW-35). Never deleted.
 /// </summary>
 public sealed class Assignment : Entity
 {
@@ -57,6 +57,30 @@ public sealed class Assignment : Entity
             Status = AssignmentStatus.Active,
             CreatedAt = Guard.Utc(now),
         };
+    }
+
+    /// <summary>
+    /// Extends an Active training (AD-63 L2, NEW-35): the new planned end date must be strictly later than the current
+    /// one (also when the current one has already passed), the reason is mandatory, and there is no limit on the number
+    /// of extensions. Returns the extension record to save with this change.
+    /// </summary>
+    public AssignmentExtension Extend(DateOnly newEndDate, string reason, Guid hrId, DateTimeOffset now)
+    {
+        if (Status != AssignmentStatus.Active)
+        {
+            throw new DomainException("assignment.invalid_status", "Only an active training can be extended.");
+        }
+
+        if (newEndDate <= EndDate)
+        {
+            throw new DomainException(
+                "assignment.extension_not_later",
+                "The new end date must be later than the current end date.");
+        }
+
+        var extension = AssignmentExtension.Record(Id, EndDate, newEndDate, reason, hrId, now);
+        EndDate = newEndDate;
+        return extension;
     }
 }
 

@@ -72,6 +72,7 @@ export interface NotificationSettings {
 /** The tables the audit log records (every table with the audit trigger). */
 export const AUDITED_TABLES = [
   'application_attachments',
+  'assignment_extensions',
   'assignments',
   'certificate_templates',
   'contact_logs',

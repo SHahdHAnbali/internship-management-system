@@ -16,6 +16,7 @@
 /** Every table with the audit trigger (`ims_protect_table`). */
 export const AUDITED_TABLES = [
   'application_attachments',
+  'assignment_extensions',
   'assignments',
   'certificate_templates',
   'contact_logs',

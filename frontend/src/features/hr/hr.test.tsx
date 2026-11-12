@@ -210,6 +210,7 @@ describe('HR trainings', () => {
     startDate: '2027-02-01',
     endDate: '2027-04-30',
     endReason: null as string | null,
+    extensions: [] as never[],
     trainee: { id: `t-${id}`, fullName: trainee, email: `${id}@trainee.example` },
     employee: { id: 'e1', fullName: 'Mentor One', email: 'mentor@company.example' },
     fieldName: 'QA',
@@ -240,9 +241,12 @@ describe('HR trainings', () => {
     expect(fetchMock.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${url}`)).toEqual([
       'GET /api/hr/assignments',
     ]);
-    expect(within(current).getAllByRole('button')).toHaveLength(1);
+    expect(within(current).getAllByRole('button')).toHaveLength(2);
     expect(
       within(current).getByRole('button', { name: 'hr.trainings.endFor' }),
+    ).toBeInTheDocument();
+    expect(
+      within(current).getByRole('button', { name: 'hr.trainings.extendFor' }),
     ).toBeInTheDocument();
     expect(within(previous).queryByRole('button')).not.toBeInTheDocument();
   });
@@ -279,6 +283,7 @@ describe('HR ends a training (AD-63 Phase 1)', () => {
     startDate,
     endDate,
     endReason: null as string | null,
+    extensions: [] as never[],
     trainee: { id: 't1', fullName: 'Lina Haddad', email: 'lina@trainee.example' },
     employee: { id: 'e1', fullName: 'Mentor One', email: 'mentor@company.example' },
     fieldName: 'QA',
@@ -466,6 +471,165 @@ describe('HR ends a training (AD-63 Phase 1)', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByLabelText(completion)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(dateLabel)).toBeInTheDocument();
+  });
+});
+
+describe('HR extends a training (AD-63 L2, NEW-35)', () => {
+  const extension = (previousEndDate: string, newEndDate: string, reason: string) => ({
+    previousEndDate,
+    newEndDate,
+    reason,
+    extendedAt: '2026-11-05T10:00:00Z',
+    extendedBy: 'HR One',
+  });
+  const training = (status: string, extensions: ReturnType<typeof extension>[] = []) => ({
+    id: 's1',
+    applicationId: 'app-s1',
+    status,
+    startDate: '2026-09-01',
+    endDate: '2026-11-30',
+    endReason: null as string | null,
+    extensions,
+    trainee: { id: 't1', fullName: 'Lina Haddad', email: 'lina@trainee.example' },
+    employee: { id: 'e1', fullName: 'Mentor One', email: 'mentor@company.example' },
+    fieldName: 'QA',
+  });
+  const posts = (fetchMock: ReturnType<typeof mockFetch>) =>
+    fetchMock.mock.calls
+      .filter(([, init]) => init?.method === 'POST')
+      .map(([url, init]) => [url, JSON.parse(String(init!.body))]);
+
+  async function openExtend() {
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'hr.trainings.extendFor' }));
+    return { user, dialog: await screen.findByRole('dialog') };
+  }
+  const setDate = (dialog: HTMLElement, value: string) =>
+    fireEvent.change(within(dialog).getByLabelText('hr.trainings.newEndDate'), {
+      target: { value },
+    });
+
+  it('extends to a later date with a reason: shows the current date, reviews, confirms once', async () => {
+    const fetchMock = mockFetch((method) =>
+      method === 'POST' ? [200, {}] : [200, [training('Active')]],
+    );
+    renderPage(<TrainingsPage />);
+    const { user, dialog } = await openExtend();
+
+    const date = within(dialog).getByLabelText('hr.trainings.newEndDate');
+    expect(date).toHaveAttribute('min', '2026-12-01'); // strictly later than the current end date
+    setDate(dialog, '2027-01-31');
+    await user.type(
+      within(dialog).getByLabelText('hr.trainings.extensionReason'),
+      '  Project not finished  ',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    expect(within(dialog).getByText('Project not finished')).toBeInTheDocument();
+    await user.dblClick(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+
+    await waitFor(() => expect(screen.getByText('hr.trainings.extended')).toBeInTheDocument());
+    expect(posts(fetchMock)).toEqual([
+      ['/api/hr/assignments/s1/extend', { endDate: '2027-01-31', reason: 'Project not finished' }],
+    ]); // one submission only
+  });
+
+  it('requires a later date and a reason before review; the server refusal is shown in the form', async () => {
+    const fetchMock = mockFetch((method) =>
+      method === 'POST'
+        ? [400, { status: 400, code: 'assignment.extension_not_later' }]
+        : [200, [training('Active')]],
+    );
+    renderPage(<TrainingsPage />);
+    const { user, dialog } = await openExtend();
+
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    expect(within(dialog).getByText('hr.trainings.errors.date')).toBeInTheDocument();
+    expect(within(dialog).getByText('hr.trainings.errors.reason')).toBeInTheDocument();
+    setDate(dialog, '2026-11-30'); // the same date: not later
+    await user.type(within(dialog).getByLabelText('hr.trainings.extensionReason'), 'More work');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    expect(within(dialog).getByText('hr.trainings.errors.notLater')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('hr.trainings.newEndDate')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(posts(fetchMock)).toEqual([]);
+
+    setDate(dialog, '2026-12-15');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+    expect(await within(dialog).findByText('hr.trainings.errors.notLater')).toBeInTheDocument();
+  });
+
+  it('a concurrent change (409) closes the dialog, says so and reloads', async () => {
+    const fetchMock = mockFetch((method) =>
+      method === 'POST' ? [409, { status: 409 }] : [200, [training('Active')]],
+    );
+    renderPage(<TrainingsPage />);
+    const { user, dialog } = await openExtend();
+    setDate(dialog, '2027-01-31');
+    await user.type(within(dialog).getByLabelText('hr.trainings.extensionReason'), 'More work');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+    expect(await screen.findByText('training.errors.conflict')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === 'GET'),
+      ).toHaveLength(2),
+    );
+  });
+
+  it('lists every extension with its reason as plain text, also for a previous training; no Extend there', async () => {
+    mockFetch(() => [
+      200,
+      [
+        training('Completed', [
+          extension('2026-10-31', '2026-11-15', 'First <b>reason</b>'),
+          extension('2026-11-15', '2026-11-30', 'Second reason'),
+        ]),
+      ],
+    ]);
+    renderPage(<TrainingsPage />);
+    const previous = await screen.findByRole('region', { name: 'hr.trainings.previous' });
+    expect(
+      within(previous).queryByRole('button', { name: 'hr.trainings.extendFor' }),
+    ).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(within(previous).getByRole('button', { name: 'hr.trainings.historyFor' }));
+    const dialog = await screen.findByRole('dialog');
+    const items = within(dialog).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(within(items[0]!).getByText('First <b>reason</b>')).toHaveAttribute('dir', 'auto');
+    expect(dialog.querySelector('b')).toBeNull();
+    expect(within(items[1]!).getByText('Second reason')).toBeInTheDocument();
+  });
+
+  it('a training without the extensions field (an older API) still renders, without a history button', async () => {
+    const { extensions: _omitted, ...withoutField } = training('Completed');
+    mockFetch(() => [200, [withoutField]]);
+    renderPage(<TrainingsPage />);
+    const previous = await screen.findByRole('region', { name: 'hr.trainings.previous' });
+    expect(within(previous).getByText('Lina Haddad')).toBeInTheDocument();
+    expect(within(previous).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['ar', arMessages, 'تمديد تدريب Lina Haddad', 'تاريخ الانتهاء المخطط الجديد', 'سبب التمديد'],
+    [
+      'en',
+      enMessages,
+      'Extend the training of Lina Haddad',
+      'New planned end date',
+      'Extension reason',
+    ],
+  ] as const)('reads in %s', async (language, raw, button, dateLabel, reasonLabel) => {
+    mockFetch(() => [200, [training('Active')]]);
+    renderPage(<TrainingsPage />, { i18n: testI18n(JSON.parse(raw), language) });
+    await userEvent.setup().click(await screen.findByRole('button', { name: button }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText(dateLabel)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(reasonLabel)).toBeInTheDocument();
   });
 });
 

@@ -46,6 +46,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<ProgressNote> ProgressNotes => Set<ProgressNote>();
 
+    public DbSet<AssignmentExtension> AssignmentExtensions => Set<AssignmentExtension>();
+
     public DbSet<Notification> Notifications => Set<Notification>();
 
     public IQueryable<AuditLogEntry> AuditLogs => Set<AuditLogEntry>().AsNoTracking();

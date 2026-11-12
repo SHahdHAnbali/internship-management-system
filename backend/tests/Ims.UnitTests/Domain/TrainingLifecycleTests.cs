@@ -120,4 +120,35 @@ public sealed class TrainingLifecycleTests
         Assert.Throws<DomainException>(() => ContactLog.Record(Guid.CreateVersion7(), Hr, new DateOnly(2026, 10, 29), ContactMethod.Email, " ", Now));
         Assert.Throws<DomainException>(() => ContactLog.Record(Guid.CreateVersion7(), Hr, new DateOnly(2026, 10, 29), (ContactMethod)9, "x", Now));
     }
+
+    [Fact]
+    public void Extend_active_training_later_date_records_previous_and_new_end_date()
+    {
+        var assignment = MentorRequest.Create(Employee, Guid.CreateVersion7(), "Work", Now)
+            .Approve(Hr, new DateOnly(2027, 1, 3), new DateOnly(2027, 3, 31), Now);
+
+        var first = assignment.Extend(new DateOnly(2027, 4, 30), " Project not finished ", Hr, Now.AddDays(1));
+        var second = assignment.Extend(new DateOnly(2027, 5, 15), "Still testing", Hr, Now.AddDays(2));
+
+        Assert.Equal(new DateOnly(2027, 5, 15), assignment.EndDate);
+        Assert.Equal((new DateOnly(2027, 3, 31), new DateOnly(2027, 4, 30)), (first.PreviousEndDate, first.NewEndDate));
+        Assert.Equal((new DateOnly(2027, 4, 30), new DateOnly(2027, 5, 15)), (second.PreviousEndDate, second.NewEndDate));
+        Assert.Equal("Project not finished", first.Reason);
+        Assert.Equal(assignment.Id, second.AssignmentId);
+        Assert.Equal(Hr, second.ExtendedById);
+        Assert.Equal(AssignmentStatus.Active, assignment.Status);
+    }
+
+    [Fact]
+    public void Extend_same_or_earlier_date_or_missing_reason_throws_and_changes_nothing()
+    {
+        var assignment = MentorRequest.Create(Employee, Guid.CreateVersion7(), "Work", Now)
+            .Approve(Hr, new DateOnly(2027, 1, 3), new DateOnly(2027, 3, 31), Now);
+
+        Assert.Equal("assignment.extension_not_later",
+            Assert.Throws<DomainException>(() => assignment.Extend(new DateOnly(2027, 3, 31), "x", Hr, Now)).Code);
+        Assert.Throws<DomainException>(() => assignment.Extend(new DateOnly(2027, 3, 1), "x", Hr, Now));
+        Assert.Throws<DomainException>(() => assignment.Extend(new DateOnly(2027, 4, 30), "  ", Hr, Now));
+        Assert.Equal(new DateOnly(2027, 3, 31), assignment.EndDate);
+    }
 }

@@ -30,14 +30,14 @@ REVOKE CREATE ON SCHEMA public FROM ims_app;
 
 -- Reads (the Worker never reads `roles` or `__EFMigrationsHistory`).
 GRANT SELECT ON
-    application_attachments, assignments, audit_logs, certificate_templates, contact_logs, employees,
+    application_attachments, assignment_extensions, assignments, audit_logs, certificate_templates, contact_logs, employees,
     evaluation_criteria, fields, mentor_requests, notification_settings, notifications, progress_notes,
     trainee_sign_in_codes, trainees, training_applications, user_sessions
 TO ims_app;
 
 -- Inserts (`audit_logs` only through the audit trigger, see above).
 GRANT INSERT ON
-    application_attachments, assignments, audit_logs, certificate_templates, contact_logs, employees,
+    application_attachments, assignment_extensions, assignments, audit_logs, certificate_templates, contact_logs, employees,
     evaluation_criteria, fields, mentor_requests, notifications, progress_notes, trainee_sign_in_codes, trainees,
     training_applications, user_sessions
 TO ims_app;
@@ -52,6 +52,8 @@ TO ims_app;
 -- date and reason. Column-level only: the application, employee, mentor request, start date and creation time of an
 -- assignment can never be changed by the Worker.
 GRANT UPDATE (status, end_date, end_reason) ON assignments TO ims_app;
+-- Training extension (AD-63 L2, NEW-35): `assignment_extensions` is insert-only for the Worker (SELECT and INSERT above,
+-- no UPDATE): every extension and its reason stay as recorded; the extension moves `assignments.end_date` (granted above).
 
 -- Only the schema owner sets up audit protection on a table.
 REVOKE EXECUTE ON FUNCTION ims_protect_table(regclass) FROM PUBLIC;

@@ -1084,6 +1084,7 @@ describe('HR: running trainings (the list)', () => {
       startDate: '2027-03-01',
       endDate: '2027-05-31',
       endReason: null,
+      extensions: [],
       trainee: { id: current.trainee.user.id, fullName: 'Current Trainee', email: current.trainee.email },
       employee: { id: employee.user.id, fullName: expect.any(String), email: employee.email },
       fieldName: field.name,
