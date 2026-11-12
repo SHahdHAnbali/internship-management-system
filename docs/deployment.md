@@ -71,8 +71,30 @@ below). Sign-in e-mails do not depend on it.
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Current deployment (2026-11-12, training lifecycle Phase 1, AD-63)
-- Worker `ims-api` version `ca7ec2a0-6fd6-4e69-b346-80fdce376e19` and Pages production deployment
+### Current deployment (2026-11-12, Google sign-in for existing trainees and homepage cleanup, AD-42 amended)
+- Worker `ims-api` version `79096a04-2919-45c4-9d25-43f7a10d299b` and Pages production deployment
+  `eb43ce16-2927-49be-88c9-ad44bf337454` (commit `74eaf72`; Worker first, then Pages). **Auth (AD-42 amended
+  2026-11-12):** B1 a verified Google account whose normalised e-mail is not in a staff domain and exactly matches an
+  existing trainee signs in as that same trainee (nothing created, merged or changed; the e-mailed code still works);
+  B2 the staff domains `stu.najah.edu` and `progineer.net` (AD-45) keep the staff flow and take precedence; B3 any other
+  Google account stays role-less and `/account` explains that a first-time trainee registers with the e-mailed code,
+  with a "Sign in with e-mail" button (Arabic and English). **Homepage:** the disabled "Apply" button and the "not
+  available" message are removed. No change to the e-mail-code sign-in, the token verifier, `wrangler.jsonc`
+  (`EVENT_EMAILS` still `enabled`, staff domains unchanged), bindings, secrets (the four names present, not re-entered),
+  schema, grants or data. Before: 432/432 Worker tests (one run first failed only the known intermittent "two HR
+  decisions at the same moment" race, 400 instead of 409, unchanged code; the full rerun passed), Worker typecheck and
+  dry-run build, 327/327 frontend tests, frontend build and lint (no findings) passed; the owner manually tested all
+  five scenarios locally (existing trainee with Google, the same trainee with the e-mailed code, unknown external
+  account guidance, staff sign-in, homepage). After (signed out, read-only): `/health` Healthy; `/api/auth/config` 200
+  with both staff domains and the Google client; `/api/auth/me`, `/api/trainee/applications`, `/api/hr/assignments`
+  and an unknown `/api/*` path 401; an invalid Google token refused (401, nothing created); `no-store` and `nosniff`;
+  no CORS headers for a foreign origin; site `/`, `/sign-in`, `/account`, `/trainee`, `/hr`, `/admin` 200 with CSP,
+  X-Frame-Options, nosniff and HSTS; the served homepage code and both translation files no longer contain the Apply
+  button or the "not available" message; the served `/account` chunk is byte-identical to the local build and both
+  languages serve the new guidance; the deployed version's variables show `EVENT_EMAILS ("enabled")` and
+  `GOOGLE_HOSTED_DOMAIN ("stu.najah.edu,progineer.net")`. No Production data or schema changed. **Live Google sign-in by
+  a trainee in production is pending the owner's verification.**
+- Previous (training lifecycle Phase 1, AD-63, 2026-11-12): Worker `ims-api` version `ca7ec2a0-6fd6-4e69-b346-80fdce376e19` and Pages production deployment
   `7272d5d9-3ade-4802-9150-b04f3a9ca230` (commit `958578d`; Worker first, then Pages): HR ends an Active training from HR ›
   Trainings as **Completed** (actual end date on or after the planned end date), **Ended early** (before it, reason
   required) or **Withdrawn** (reason required), on an actual end date chosen by HR between the start date and today's
@@ -206,9 +228,11 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 | C3 | One rate-limit counter shared by trainee sign-in and application submit | **Open**: owner decision (optional) |
 
 ### Rollback
-- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; earlier: `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
+- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`7272d5d9-3ade-4802-9150-b04f3a9ca230`, commit `958578d`, before the Google trainee sign-in and the homepage cleanup; earlier: `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback 55570602-cd8b-4c88-b937-a8d8c99fd7f8` (in `backend-workers/`; before the lifecycle
+- **Worker code:** `npx wrangler rollback ca7ec2a0-6fd6-4e69-b346-80fdce376e19` (in `backend-workers/`; before the Google
+  trainee sign-in: a trainee's Google account is role-less again), or
+  `55570602-cd8b-4c88-b937-a8d8c99fd7f8` (before the lifecycle
   actions: event e-mails on, trainings read-only; the `assignments` column grant stays, unused), or
   `3f953830-4316-42bd-990f-61adad908937` (before the event
   e-mails: no event e-mail is sent, everything else unchanged), or

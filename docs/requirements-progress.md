@@ -38,7 +38,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 |---|---|---|---|---|
 | R01 | Staff sign in with Google, company domains only; new accounts are Employees (p.1) | ✅ | Yes | AD-42, AD-45, AD-46 |
 | R02 | Higher roles granted by the Admin only (p.1) | ✅ | Yes | Role changes audited |
-| R03 | Trainees sign in by e-mail link or one-time code, 15 minutes (p.1, p.2, p.5) | ✅ | Yes | E-mail through Gmail SMTP (AD-58); **verified in production by the owner on 2026-11-10** (e-mail received, code accepted, trainee signed in; Worker `273dc51a`). The e-mailed link uses the same records and expiry |
+| R03 | Trainees sign in by e-mail link or one-time code, 15 minutes (p.1, p.2, p.5) | ✅ | Yes | E-mail through Gmail SMTP (AD-58); **verified in production by the owner on 2026-11-10** (e-mail received, code accepted, trainee signed in; Worker `273dc51a`). The e-mailed link uses the same records and expiry. An existing trainee may also sign in with Google using the same verified non-staff e-mail (AD-42 B1, in production since 2026-11-12; live Google sign-in by a trainee in production pending the owner's verification); registration is still by e-mail |
 | R04 | Trainees never see one another (p.1) | ✅ | Yes | Isolation tests |
 | R05 | Persistent server-side sessions, revocable (AD-44) | ✅ | Yes | Sign-in writes attributed to the verified user |
 

@@ -18,7 +18,7 @@ blocks it, not built) · **Partly done** · **Done**. Production means the Cloud
 |---|---|---|
 | Admin | §2, §4 Admin | **Built, in production**: fields, evaluation criteria and weights, users and roles, notification intervals, certificate template (AD-43), accepted trainees, reports (monthly, fields), audit log viewer (AD-51) |
 | Authentication: staff (Google, staff domains) | §2, §9 | **Built, in production** (AD-42, AD-44, AD-45, AD-46) |
-| Authentication: trainee (passwordless e-mail link/code, 15 min) | §2, §4 Trainee, §9 | **Built, in production**: verified by the owner on 2026-11-10 (e-mail through Gmail SMTP, AD-58) |
+| Authentication: trainee (passwordless e-mail link/code, 15 min) | §2, §4 Trainee, §9 | **Built, in production**: verified by the owner on 2026-11-10 (e-mail through Gmail SMTP, AD-58). Since 2026-11-12 an existing trainee may also sign in with Google using the same verified non-staff e-mail (AD-42 B1); registration stays e-mail only |
 | Trainee: applications | §3 steps 1–4, §4 Trainee | **Built, in production** (AD-47, AD-48) |
 | HR: applications, contact log, mentor requests | §3 steps 2–6, §4 HR | **Built, in production** (AD-47, AD-49); direct assignment and the running-training actions are not built |
 | Employee: mentoring and progress notes | §3 steps 4–5, §4 Employee | **Built, in production**; the final evaluation is not built |
@@ -46,7 +46,7 @@ blocks it, not built) · **Partly done** · **Done**. Production means the Cloud
 
 | ID | Feature (PDF) | Depends on | Why | Status |
 |---|---|---|---|---|
-| D-10 | Register and sign in with e-mail only, by link or code | Authentication: trainee; e-mail | — (was blocked by the e-mail provider until 2026-11-10) | **Done** (in production; the sign-in e-mail is sent through Gmail SMTP, AD-58; verified by the owner on 2026-11-10: e-mail received, code accepted, trainee signed in) |
+| D-10 | Register and sign in with e-mail only, by link or code | Authentication: trainee; e-mail | — (was blocked by the e-mail provider until 2026-11-10) | **Done** (in production; the sign-in e-mail is sent through Gmail SMTP, AD-58; verified by the owner on 2026-11-10: e-mail received, code accepted, trainee signed in). Registration stays e-mail only; since 2026-11-12 an existing trainee may also sign in with Google (AD-42 B1) |
 | D-11 | Application form (name, phone, university, major, study year, field, period, hours, mandatory flag) | — | Form rules are implementation choices pending confirmation (Q35) | **Done** (in production by 2026-10-29) |
 | D-12 | Upload CV and university letter | File storage | — | **Done** (in production; private R2, temporary links) |
 | D-13 | Status board: where my application is, without seeing other trainees | — | After acceptance the board shows nothing more (L10); the rejection e-mail is not built (event e-mails, D-50) | **Partly done** (in production): the application status, and for a rejected application the reason HR recorded (AD-61, Q36, NEW-25; deployed 2026-11-10, Worker `3f953830`, Pages `ff7586bf`; production visual verification pending a legitimate rejected application) |
