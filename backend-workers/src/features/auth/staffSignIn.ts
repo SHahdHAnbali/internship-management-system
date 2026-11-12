@@ -19,13 +19,16 @@ export type GoogleSignInFailure = 'NotConfigured' | 'InvalidToken' | 'EmailNotVe
 const INITIAL_ADMIN = { email: 'mohammad.abujoudeh@progineer.net', hostedDomain: 'progineer.net' } as const;
 
 /**
- * Google sign-in (owner decision AD-42, replacing the PDF's "company domain only"):
+ * Google sign-in (owner decision AD-42, replacing the PDF's "company domain only"; amended 2026-11-12, B1 to B3):
  * - A verified account whose Google-signed Workspace `hd` claim is one of the staff domains (GOOGLE_HOSTED_DOMAIN, e.g.
  *   `stu.najah.edu` and `progineer.net`), and whose e-mail is in that same domain, is company staff: the first sign-in
  *   creates the staff account with the Employee role; an existing account keeps its Employee/HR/Admin role. Higher
- *   roles are granted only by an Admin; the domain never grants one.
- * - Any other verified Google account signs in as an ordinary, non-staff user: no role, no database record, no
- *   permissions beyond reading their own session. It is never made Employee, HR, Admin or Trainee.
+ *   roles are granted only by an Admin; the domain never grants one. This takes precedence over any trainee match.
+ * - B1: a verified account whose e-mail is **not** in a staff domain and exactly matches (normalised) an existing
+ *   Trainee account signs in as that trainee: the same account, nothing created, merged or changed, no other role.
+ * - B3: any other verified Google account signs in as an ordinary, non-staff user: no role, no database record, no
+ *   permissions beyond reading their own session. It is never made Employee, HR, Admin or Trainee; a first-time
+ *   trainee registers with the e-mailed code.
  */
 export async function signInWithGoogle(
   idToken: string,
@@ -50,6 +53,12 @@ export async function signInWithGoogle(
   const isStaff =
     hostedDomain !== null && settings.google.hostedDomains.includes(hostedDomain) && email.endsWith(`@${hostedDomain}`);
   if (!isStaff) {
+    // B1: an existing trainee, matched by the verified e-mail, never for an address in a staff domain (even without a
+    // Workspace `hd` claim, e.g. a personal Google account registered with such an address).
+    if (!inStaffDomain(email, settings.google.hostedDomains)) {
+      const trainee = await findTrainee(db, email);
+      if (trainee) return { user: trainee };
+    }
     const name = isNullOrWhiteSpace(identity.name) ? null : trimDotnet(identity.name);
     return { user: { id: `google:${identity.subject}`, role: null, email, name } };
   }
@@ -91,4 +100,19 @@ async function findStaff(db: Database, email: string): Promise<SessionUser | nul
   );
   const row = rows[0];
   return row && isUserRole(row.role) ? { id: row.id, role: row.role, email: row.email, name: row.full_name } : null;
+}
+
+/** Whether the e-mail's domain is one of the staff domains (or a sub-domain of one). */
+function inStaffDomain(email: string, staffDomains: readonly string[]): boolean {
+  const domain = email.slice(email.lastIndexOf('@') + 1);
+  return staffDomains.some((staff) => domain === staff || domain.endsWith(`.${staff}`));
+}
+
+/** The existing trainee with this (normalised) e-mail, as the same session user the e-mailed code produces. */
+async function findTrainee(db: Database, email: string): Promise<SessionUser | null> {
+  const { rows } = await db.query<{ id: string; email: string }>('SELECT id, email FROM trainees WHERE email = $1', [
+    email,
+  ]);
+  const row = rows[0];
+  return row ? { id: row.id, role: 'Trainee', email: row.email, name: null } : null;
 }

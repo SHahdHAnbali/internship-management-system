@@ -5,7 +5,7 @@ import { useI18n } from '../../i18n/context';
 
 /**
  * Public homepage: introduces the internship program (requirements PDF §1, §4 "Trainee"). "Sign in" opens the
- * sign-in page; "Apply" stays disabled until the application form exists (docs/deferred-features.md D-11).
+ * sign-in page, from which a trainee reaches the application form.
  */
 const YEAR = new Date().getFullYear();
 
@@ -45,19 +45,6 @@ export function HomePage() {
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted">
             {t('home.description')}
           </p>
-          <div className="mt-10 flex flex-col items-center gap-3">
-            <button
-              type="button"
-              className="ims-btn-primary h-12 px-8 text-base"
-              aria-disabled="true"
-              aria-describedby="home-availability"
-            >
-              {t('home.apply')}
-            </button>
-            <p id="home-availability" className="text-small text-muted">
-              {t('home.notAvailable')}
-            </p>
-          </div>
         </section>
       </main>
 

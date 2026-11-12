@@ -481,9 +481,7 @@
     "titleAccent": "Internship",
     "titleEnd": " Program",
     "description": "Apply for an internship and choose your field from one portal, then follow your application step by step until your training ends and you receive your certificate.",
-    "apply": "Apply for an internship",
-    "signIn": "Sign in",
-    "notAvailable": "Applying for an internship is not available yet."
+    "signIn": "Sign in"
   },
   "auth": {
     "title": "Sign in",
@@ -531,8 +529,9 @@
     "hr": "HR area",
     "notAvailable": "This area's features are not available yet.",
     "account": "Your account",
-    "accountNoAccess": "You are signed in with Google. This account is not a company staff account, so no staff areas are available to it.",
-    "navLabel": "Area pages"
+    "accountNoAccess": "This Google account is not linked to a trainee or staff account. If you are applying for training for the first time, register with your e-mail address and a verification code. After that, you can also sign in with Google using the same e-mail address.",
+    "navLabel": "Area pages",
+    "accountUseEmail": "Sign in with e-mail"
   },
   "common": {
     "loading": "Loading"

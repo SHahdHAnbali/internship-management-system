@@ -26,16 +26,17 @@ describe('HomePage', () => {
     );
   });
 
-  it('links Sign in to the sign-in page and keeps Apply disabled until the application form exists', async () => {
+  it('links Sign in to the sign-in page, with no disabled Apply button or "not available" message', async () => {
     renderPage(<HomePage />);
     expect(await screen.findByRole('link', { name: 'home.signIn' })).toHaveAttribute(
       'href',
       '/sign-in',
     );
-    expect(screen.getByRole('button', { name: 'home.apply' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
+    expect(screen.queryByRole('button', { name: 'home.apply' })).not.toBeInTheDocument();
+    // The only buttons left are the language switch.
+    for (const button of screen.queryAllByRole('button')) expect(button).toHaveAttribute('lang');
+    expect(screen.queryByText('home.apply')).not.toBeInTheDocument();
+    expect(screen.queryByText('home.notAvailable')).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual([
       '/',
       '/sign-in',
