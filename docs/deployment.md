@@ -71,8 +71,40 @@ below). Sign-in e-mails do not depend on it.
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Current deployment (2026-11-12, training extension, AD-63 L2 / NEW-35)
-- Worker `ims-api` version `422b35e8-1406-449c-8fb4-f22886e17f58` and Pages production deployment
+### Current deployment (2026-11-13, responsible HR and mentor-request routing, AD-64)
+- Worker `ims-api` version `e7913829-8be9-4172-bba3-89f0aa1755de` and Pages production deployment
+  `b8d97853-bea0-426a-a0d3-f67ab9ca6a2d` (commit `d0b193d`; database first, then Worker, then Pages). Each accepted
+  application has a responsible HR: the HR member who accepted it (`training_applications.decided_by_id`, never
+  changed) until an Admin appoints a replacement in Admin › Accepted trainees (`PUT
+  /api/admin/accepted-trainees/:id/responsible-hr`, Admin only, a user who holds the HR role now; every appointment
+  kept in the insert-only, audited `responsible_hr_changes`). "An employee asked to train a trainee" goes, by e-mail
+  and in-app, only to the application's current responsible HR while they hold the HR role; with none eligible, the
+  request is kept and nobody is notified. New applications still notify every HR user; who may view and decide
+  mentor requests is unchanged. **Database (Neon `ims_db`, as `neondb_owner`):** preflight (read-only): the migration
+  history equal to the repository except `ResponsibleHrChanges`; the schema (453 catalog entries) identical to the
+  migrated local database. **Backup (AD-54):** `pg_dump -Fc` taken read-only before any change and verified by
+  restoring it into a disposable PostgreSQL 18.6 container (no errors; 53 triggers; every business table's checksum
+  and every row count equal to production); kept outside the repository. **Migration**
+  `20261113100241_ResponsibleHrChanges` applied alone, in one transaction (5-second lock timeout), the SQL identical to
+  the reviewed script and with no destructive statement: the table, its sequence check, three foreign keys
+  (`RESTRICT`), indexes (unique application and sequence) and the audit, no-delete and no-truncate triggers.
+  **Grant:** `SELECT, INSERT ON responsible_hr_changes TO ims_app` only, in one transaction (see
+  [least-privilege.md](least-privilege.md)). After: every pre-existing table, trigger, function and grant unchanged;
+  the only data change was the migration-history row (9 → 10); the applications, mentor requests, assignments,
+  employees and notifications unchanged (checksums); `responsible_hr_changes` empty. Neon now runs PostgreSQL 18.7.
+  No change to `wrangler.jsonc` (`EVENT_EMAILS` still `enabled`, staff domains unchanged), bindings or secrets (the
+  four names present, not re-entered). Before: 80/80 .NET tests, 448/448 Worker tests, Worker typecheck and dry-run
+  build, 339/339 frontend tests, frontend build and lint passed; the owner manually tested the feature in the local
+  frontend (local Docker database). After (signed out, read-only): `/health` Healthy; `/api/auth/config` 200 with both
+  staff domains; `/api/admin/accepted-trainees`, `/api/hr/mentor-requests`, `/api/notifications`, the new
+  replacement endpoint and mentor-request creation 401; site `/`, `/admin`, `/admin/accepted-trainees`, `/hr`,
+  `/employee`, `/sign-in` 200 with CSP, X-Frame-Options, nosniff, HSTS, Referrer-Policy and Permissions-Policy; both
+  translation files serve the new labels; the served Accepted trainees chunk contains the responsible HR column,
+  dialog and replacement call; the deployed version's variables show `EVENT_EMAILS ("enabled")`; the Worker
+  connected to Neon as `ims_app`, and the responsible-HR query run as `ims_app` (read-only) resolved both existing
+  accepted applications to their original accepting HR, who still holds the HR role (none without an eligible
+  responsible HR). No application, mentor request, role change or replacement was made during the verification.
+- Previous (training extension, AD-63 L2 / NEW-35, 2026-11-12): Worker `ims-api` version `422b35e8-1406-449c-8fb4-f22886e17f58` and Pages production deployment
   `54722aca-948c-4ec6-9c91-36983dfa0e31` (commit `a0a9977`; database first, then Worker, then Pages). HR extends an
   Active training from HR › Trainings to a planned end date strictly later than the current one (also after it has
   passed), any number of times, each with a mandatory reason (AD-63 L2, NEW-35); HR-only
@@ -255,9 +287,13 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 | C3 | One rate-limit counter shared by trainee sign-in and application submit | **Open**: owner decision (optional) |
 
 ### Rollback
-- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`eb43ce16-2927-49be-88c9-ad44bf337454`, commit `74eaf72`, before the training extension: no Extend action or extension history; earlier: `7272d5d9-3ade-4802-9150-b04f3a9ca230`, commit `958578d`, before the Google trainee sign-in and the homepage cleanup; `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
+- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`54722aca-948c-4ec6-9c91-36983dfa0e31`, commit `a0a9977`, before the responsible HR: the Admin page then has no responsible HR column; roll back the Worker with it, and never leave this site version behind the older Worker; earlier: `eb43ce16-2927-49be-88c9-ad44bf337454`, commit `74eaf72`, before the training extension: no Extend action or extension history; `7272d5d9-3ade-4802-9150-b04f3a9ca230`, commit `958578d`, before the Google trainee sign-in and the homepage cleanup; `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback 79096a04-2919-45c4-9d25-43f7a10d299b` (in `backend-workers/`; before the
+- **Worker code:** `npx wrangler rollback 422b35e8-1406-449c-8fb4-f22886e17f58` (in `backend-workers/`; before the
+  responsible HR: mentor requests notify every HR user again; **roll back the site to `54722aca` with it**, because the
+  new Admin › Accepted trainees page needs the responsible HR from the API; the `responsible_hr_changes` table, its
+  rows and its grant stay, unused), or
+  `79096a04-2919-45c4-9d25-43f7a10d299b` (before the
   training extension: the extend endpoint is gone and HR › Trainings returns no history; roll back the site with it; the
   `assignment_extensions` table, its rows and its grant stay, unused), or
   `ca7ec2a0-6fd6-4e69-b346-80fdce376e19` (before the Google
@@ -290,7 +326,8 @@ None of these touches the data.
   verify it by restoring it into a disposable local PostgreSQL, and keep it outside the repository. One was taken and
   verified on 2026-11-04 before the `ims_app` rollout; another on 2026-11-12 before the `AssignmentExtensions`
   migration (restored into a disposable container: every row count and the assignment and audit checksums equal to
-  production).
+  production); another on 2026-11-13 before the `ResponsibleHrChanges` migration (restored likewise: 53 triggers,
+  every business table's checksum and every row count equal to production).
 - Rolling back the Worker or Pages never touches the database (above).
 
 ### Google sign-in

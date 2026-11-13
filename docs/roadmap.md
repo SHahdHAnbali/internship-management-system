@@ -40,4 +40,4 @@ Requirement-by-requirement status: [requirements-progress.md](requirements-progr
 ## Deferred by the owner
 - Automated daily database backups: after the remaining development (AD-54; Neon restore window 6 hours)
 - Attendance or weekly hours tracking (Q6)
-- HR ownership of individual trainees (NEW-10); the responsible HR of each accepted application and the mentor-request routing are implemented locally, not deployed (AD-64)
+- HR ownership of individual trainees (NEW-10); the responsible HR of each accepted application and the mentor-request routing are **in production since 2026-11-13** (AD-64, Worker `e7913829`)
