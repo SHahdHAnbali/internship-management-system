@@ -103,7 +103,7 @@ below). Sign-in e-mails do not depend on it.
   `scheduled` handler, check in the dashboard whether the trigger must also be removed (`wrangler triggers deploy`
   with a configuration without `crons`).
 
-### One-time catch-up: the incoming-mentor e-mail of an already-executed transfer (AD-65; not run yet)
+### One-time catch-up: the incoming-mentor e-mail of an already-executed transfer (AD-65; run once on 2026-11-13)
 For a transfer executed **before** the incoming-mentor e-mail was deployed, `backend-workers/scripts/transfer-email-catch-up.ts`
 sends that one e-mail once, with the Worker's own template and Gmail sender, after the owner's authorization. It reads
 production in a READ ONLY transaction (rolled back), never writes to the database and never re-executes anything.
@@ -133,8 +133,26 @@ node node_modules/.cache/ims-ops/transfer-email-catch-up.mjs --transfer <transfe
 unset CATCH_UP_DATABASE
 ```
 
-### Current deployment (2026-11-13, scheduled trainee transfer, AD-65)
-- Worker `ims-api` version `beaf2d36-e98b-4978-9415-495d3e2d56bb` (with the Cron Trigger `5 3,21,22 * * *`) and Pages
+### Current deployment (2026-11-13, incoming-mentor transfer e-mail, AD-65)
+- Worker `ims-api` version `839ed022-ca2c-4a3d-9caf-41b1789a63a9` (commit `6404d4b`; Worker only, Pages unchanged at
+  `0ac20f21`; no migration, grant, variable, binding or secret change; the Cron Trigger `5 3,21,22 * * *` unchanged). When a
+  transfer is executed (at once for today, or by the scheduled job), its incoming mentor gets one bilingual e-mail
+  (`TrainingTransferredToYou`), best effort after the commit, sent only by the request or scheduled run that committed it;
+  none for Pending, Cancelled or Void decisions; no in-app notification; the eight existing event e-mails unchanged.
+  Before: 482/482 Worker tests, typecheck, dry-run build and Prettier passed (frontend and .NET unchanged); the
+  catch-up script's record and outcome handling was exercised on a disposable database with a synthetic transfer and an
+  unreachable SMTP address (UNKNOWN recorded, second run refused, wrong id or recipient refused, nothing written).
+  After (signed out, read-only): `/health` Healthy; `/api/auth/config` 200 with both staff domains; `/api/auth/me`,
+  `/api/hr/assignments` and the transfer endpoint 401; site `/`, `/hr/trainings`, `/employee/trainees` 200; Worker
+  `839ed022` at 100%. **Catch-up (owner authorization, 2026-11-13):** the only transfer executed before this release
+  (`01a1d6f1-86e9-7626-a40a-37cb0d1119e0`, executed by the scheduled job at 22:05 UTC) was rechecked read-only (Executed;
+  incoming assignment Active 2026-11-14 to 2027-02-01; its mentor holds the Employee role and is the decision's chosen
+  mentor; one employee with that masked address; no earlier record), dry-run with an SMTP login check, then sent **once**
+  at 22:22 UTC: Gmail answered 250, one recipient accepted, none rejected (status ACCEPTED; message id kept in the private
+  record `IMS-backups/ops/transfer-email-01a1d6f1-….json`, mode 600, outside the repository). Acceptance by Gmail is not
+  proof of inbox delivery, which was not independently verified. No business record was written (no audit row on
+  business tables since the scheduled run). Rollback: Worker `beaf2d36` (the transfer without the e-mail; site unchanged).
+- Previous (scheduled trainee transfer, AD-65, 2026-11-13): Worker `ims-api` version `beaf2d36-e98b-4978-9415-495d3e2d56bb` (with the Cron Trigger `5 3,21,22 * * *`) and Pages
   production deployment `0ac20f21-698f-49d9-8bf8-694924565a35` (commit `bffc706`; database first, then Worker, then
   Pages). The application's current responsible HR (AD-64) transfers an Active training to another user who holds the
   Employee role, with a mandatory reason: today (executed at once) or a later Asia/Hebron date (a Pending decision,
@@ -390,7 +408,9 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 ### Rollback
 - **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`b8d97853-bea0-426a-a0d3-f67ab9ca6a2d`, commit `d0b193d`, before the transfer: HR › Trainings has no Transfer action; roll back the Worker to `e7913829` with it; earlier: `54722aca-948c-4ec6-9c91-36983dfa0e31`, commit `a0a9977`, before the responsible HR: the Admin page then has no responsible HR column; roll back the Worker with it, and never leave this site version behind the older Worker; earlier: `eb43ce16-2927-49be-88c9-ad44bf337454`, commit `74eaf72`, before the training extension: no Extend action or extension history; `7272d5d9-3ade-4802-9150-b04f3a9ca230`, commit `958578d`, before the Google trainee sign-in and the homepage cleanup; `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback e7913829-8be9-4172-bba3-89f0aa1755de` (in `backend-workers/`; before the
+- **Worker code:** `npx wrangler rollback beaf2d36-e98b-4978-9415-495d3e2d56bb` (in `backend-workers/`; before the
+  incoming-mentor transfer e-mail: transfers work, no e-mail is sent; the site needs no rollback), or
+  `e7913829-8be9-4172-bba3-89f0aa1755de` (before the
   transfer: the transfer, cancel, mentors and earlier-notes endpoints are gone; **roll back the site to `b8d97853` with
   it**; the `assignment_transfers` and `transfer_decisions` tables, their rows and grants stay, unused; a Pending
   decision is then not executed, and executes on the next run once AD-65 is deployed again, with its own dates). The
