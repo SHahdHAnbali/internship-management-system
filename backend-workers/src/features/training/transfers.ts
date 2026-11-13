@@ -93,14 +93,14 @@ export interface PendingDecision {
  * Executes a Pending decision whose effective date has come, against the locked outgoing assignment: it becomes
  * Transferred (ends the day before the effective date, keeps the reason), the incoming assignment starts on the effective
  * date with the planned end date as it is now, the link records the actual time, and the decision becomes Executed.
- * Returns the incoming assignment's id.
+ * Returns the incoming assignment's id and the executed transfer's (the link's) id.
  */
 export async function applyTransfer(
   tx: Queryable,
   decision: PendingDecision,
   outgoing: LockedAssignment,
   now: Date,
-): Promise<string> {
+): Promise<{ incomingId: string; transferId: string }> {
   const execution = transferExecution(
     { incomingEmployeeId: decision.incoming_employee_id, effectiveDate: decision.effective_date },
     {
@@ -111,6 +111,7 @@ export async function applyTransfer(
     },
   );
   const incomingId = uuidV7(now);
+  const transferId = uuidV7(now);
   // Close the outgoing assignment first, so the application never has two Active ones (ux_assignments_application_id).
   await tx.query(
     `UPDATE assignments SET status = 'Transferred', end_date = $2, end_reason = $3 WHERE id = $1 AND status = 'Active'`,
@@ -132,13 +133,13 @@ export async function applyTransfer(
     `INSERT INTO assignment_transfers
        (id, decision_id, from_assignment_id, to_assignment_id, transferred_by_id, transferred_at)
      VALUES ($1, $2, $3, $4, $5, $6)`,
-    [uuidV7(now), decision.id, outgoing.id, incomingId, decision.decided_by_id, now],
+    [transferId, decision.id, outgoing.id, incomingId, decision.decided_by_id, now],
   );
   await tx.query(
     `UPDATE transfer_decisions SET status = 'Executed', resolved_at = $2 WHERE id = $1 AND status = 'Pending'`,
     [decision.id, now],
   );
-  return incomingId;
+  return { incomingId, transferId };
 }
 
 /** What one scheduled run did; `failed` decisions stay Pending and are retried by the next run. */
@@ -148,6 +149,16 @@ export interface TransferRunSummary {
   voided: number;
   skipped: number;
   failed: number;
+}
+
+/**
+ * A run's summary and the executed transfers (`assignment_transfers` ids) whose transaction **this run committed**: a
+ * decision executed by a concurrent run, or whose commit failed, is not listed, so each executed transfer is listed by
+ * exactly one run (the incoming mentor's e-mail is sent for these only).
+ */
+export interface TransferRunResult {
+  summary: TransferRunSummary;
+  executedTransferIds: string[];
 }
 
 /** A database that can run audited transactions (the Worker's `Database`; a test double in the tests). */
@@ -162,7 +173,7 @@ export interface TransactionalDatabase extends Queryable {
  * decision stays Pending and is retried by the next run. Idempotent: a decision already resolved (by a concurrent run, a
  * cancellation or a lifecycle change) is skipped, and the unique links prevent any duplicate.
  */
-export async function executeDueTransfers(db: TransactionalDatabase, now: Date): Promise<TransferRunSummary> {
+export async function executeDueTransfers(db: TransactionalDatabase, now: Date): Promise<TransferRunResult> {
   const today = calendarDate(now);
   const { rows: due } = await db.query<{ id: string; from_assignment_id: string }>(
     `SELECT id, from_assignment_id FROM transfer_decisions
@@ -171,12 +182,14 @@ export async function executeDueTransfers(db: TransactionalDatabase, now: Date):
     [today],
   );
   const summary: TransferRunSummary = { due: due.length, executed: 0, voided: 0, skipped: 0, failed: 0 };
+  const executedTransferIds: string[] = [];
   for (const decision of due) {
     try {
-      const outcome = await db.transaction(SCHEDULER_ACTOR, (tx) =>
+      const { outcome, transferId } = await db.transaction(SCHEDULER_ACTOR, (tx) =>
         executeDecision(tx, decision.id, decision.from_assignment_id, today, now),
       );
       summary[outcome] += 1;
+      if (transferId) executedTransferIds.push(transferId); // only after its transaction committed
     } catch (error) {
       summary.failed += 1;
       console.error(
@@ -190,7 +203,7 @@ export async function executeDueTransfers(db: TransactionalDatabase, now: Date):
       );
     }
   }
-  return summary;
+  return { summary, executedTransferIds };
 }
 
 async function executeDecision(
@@ -199,7 +212,8 @@ async function executeDecision(
   assignmentId: string,
   today: string,
   now: Date,
-): Promise<'executed' | 'voided' | 'skipped'> {
+): Promise<{ outcome: 'executed' | 'voided' | 'skipped'; transferId: string | null }> {
+  const skipped = { outcome: 'skipped' as const, transferId: null };
   const outgoing = await lockAssignment(tx, assignmentId);
   const { rows } = await tx.query<PendingDecision & { status: string }>(
     `SELECT id, status, incoming_employee_id, effective_date::text, reason, decided_by_id
@@ -207,7 +221,7 @@ async function executeDecision(
     [decisionId],
   );
   const decision = rows[0];
-  if (!outgoing || !decision || decision.status !== 'Pending' || decision.effective_date > today) return 'skipped';
+  if (!outgoing || !decision || decision.status !== 'Pending' || decision.effective_date > today) return skipped;
 
   const voidAs = async (code: TransferVoidCode) => {
     await tx.query(
@@ -215,17 +229,17 @@ async function executeDecision(
         WHERE id = $1 AND status = 'Pending'`,
       [decisionId, code, now],
     );
-    return 'voided' as const;
+    return { outcome: 'voided' as const, transferId: null };
   };
   if (outgoing.status !== 'Active') return voidAs('training_ended');
   if (!(await holdsEmployeeRole(tx, decision.incoming_employee_id))) return voidAs('mentor_not_employee');
   try {
-    await applyTransfer(tx, decision, outgoing, now);
+    const { transferId } = await applyTransfer(tx, decision, outgoing, now);
+    return { outcome: 'executed', transferId };
   } catch (error) {
     // The decision's own rules, checked again, no longer hold (not reachable through the API: the planned end date only
     // moves later, and an ended training is handled above). Permanent, so it is voided rather than retried forever.
     if (error instanceof DomainError) return voidAs('dates_invalid');
     throw error;
   }
-  return 'executed';
 }

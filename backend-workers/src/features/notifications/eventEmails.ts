@@ -1,14 +1,16 @@
 import type { Context } from 'hono';
 import type { AppEnv } from '../../context';
+import type { Settings } from '../../config';
 import type { Queryable } from '../../db';
-import type { EmailMessage } from '../../email';
+import type { EmailMessage, EmailSender } from '../../email';
 import { renderBilingualHtml, renderBilingualText, type EmailSection } from '../../emailTemplate';
 
 /**
  * Event e-mails of PDF §7 whose workflows exist (AD-59, AD-61): only the e-mail channel the table gives each event,
  * Arabic first then English, HTML with the same plain text (AD-60), sender ProGineer. HR e-mails go separately to every
  * user whose current role is HR (NEW-24), except the mentor-request e-mail, which goes only to the application's current
- * responsible HR (AD-64); the trainee's assignment e-mail names the mentor (NEW-30).
+ * responsible HR (AD-64); the trainee's assignment e-mail names the mentor (NEW-30). The incoming mentor of an executed
+ * transfer gets one e-mail (AD-65, owner decision 2026-11-13; an approved addition to the PDF §7 table, AD-59).
  *
  * Delivery is **best effort only**: the e-mail is sent after the business transaction has committed, in the background
  * (`waitUntil`), so a failure never changes or rolls back the business operation. There is **no delivery record, no
@@ -32,13 +34,21 @@ export type EventEmailContent =
       startDate: string;
       mentorName: string;
       mentorEmail: string;
+    }
+  | {
+      kind: 'TrainingTransferredToYou';
+      field: string;
+      traineeName: string | null;
+      mentorName: string;
+      effectiveDate: string;
+      plannedEndDate: string;
     };
 
 export type EventEmailKind = EventEmailContent['kind'];
 
 export interface EventEmail {
   content: EventEmailContent;
-  /** The business record (application or mentor request), for the log only. */
+  /** The business record (application, mentor request or executed transfer), for the log only. */
   entityId: string;
   recipient: { type: 'Trainee' | 'Employee'; id: string; email: string };
 }
@@ -212,6 +222,35 @@ function template(content: EventEmailContent, site: string): Template {
             { label: 'Mentor’s e-mail:', value: content.mentorEmail },
           ],
           action: myApplications.en,
+        },
+      };
+    case 'TrainingTransferredToYou':
+      // AD-65: the incoming mentor of an executed transfer. Only these facts: never the reason, the earlier mentor, the
+      // HR member or any note.
+      return {
+        ar: {
+          heading: 'تم نقل متدرب إليك',
+          intro: ['نقلت الموارد البشرية تدريب متدرب إليك، وأصبحت المشرف عليه اعتبارًا من تاريخ البداية.'],
+          details: [
+            ...optional('المتدرب:', content.traineeName),
+            { label: 'المشرف:', value: content.mentorName },
+            { label: 'المجال:', value: content.field },
+            { label: 'تاريخ البداية:', value: content.effectiveDate },
+            { label: 'تاريخ الانتهاء المخطط:', value: content.plannedEndDate },
+          ],
+          action: { lead: 'لعرض متدربيك:', label: 'متدربيني', url: `${site}/employee/trainees` },
+        },
+        en: {
+          heading: 'A trainee has been transferred to you',
+          intro: ["HR has transferred a trainee's training to you; you are their mentor from the start date."],
+          details: [
+            ...optional('Trainee:', content.traineeName),
+            { label: 'Mentor:', value: content.mentorName },
+            { label: 'Field:', value: content.field },
+            { label: 'Start date:', value: content.effectiveDate },
+            { label: 'Planned end date:', value: content.plannedEndDate },
+          ],
+          action: { lead: 'To view your trainees:', label: 'My trainees', url: `${site}/employee/trainees` },
         },
       };
   }
@@ -408,6 +447,59 @@ export async function mentorRequestDecisionEmails(q: Queryable, requestId: strin
 }
 
 /**
+ * AD-65: the incoming mentor's e-mail of each **executed** transfer (`assignment_transfers` ids), at their registered
+ * address, with the incoming assignment's dates as they are now. A transfer that is not executed (no link, or its
+ * decision not Executed) gives nothing, so Pending, Cancelled and Void decisions never produce an e-mail.
+ */
+export async function trainingTransferredEmails(q: Queryable, transferIds: string[]): Promise<EventEmail[]> {
+  if (transferIds.length === 0) return [];
+  const { rows } = await q.query<{
+    transfer_id: string;
+    employee_id: string;
+    employee_email: string;
+    employee_name: string;
+    trainee_name: string | null;
+    field: string;
+    start_date: string;
+    end_date: string;
+  }>(
+    `SELECT x.id AS transfer_id, e.id AS employee_id, e.email AS employee_email, e.full_name AS employee_name,
+            t.full_name AS trainee_name, f.name AS field, s.start_date::text, s.end_date::text
+       FROM assignment_transfers x
+       JOIN transfer_decisions d ON d.id = x.decision_id AND d.status = 'Executed'
+       JOIN assignments s ON s.id = x.to_assignment_id
+       JOIN employees e ON e.id = s.employee_id
+       JOIN training_applications a ON a.id = s.application_id
+       JOIN trainees t ON t.id = a.trainee_id
+       JOIN fields f ON f.id = a.field_id
+      WHERE x.id = ANY($1::uuid[])
+      ORDER BY x.transferred_at, x.id`,
+    [transferIds],
+  );
+  return rows.map((r) => ({
+    content: {
+      kind: 'TrainingTransferredToYou',
+      field: r.field,
+      traineeName: r.trainee_name,
+      mentorName: r.employee_name,
+      effectiveDate: r.start_date,
+      plannedEndDate: r.end_date,
+    },
+    entityId: r.transfer_id,
+    recipient: { type: 'Employee', id: r.employee_id, email: r.employee_email },
+  }));
+}
+
+/** What delivering event e-mails needs, with or without an HTTP request (the scheduled job has none). */
+export interface EventEmailDelivery {
+  settings: Pick<Settings, 'eventEmails' | 'trainee'>;
+  db: Queryable;
+  sender: () => EmailSender;
+  waitUntil: (promise: Promise<unknown>) => void;
+  traceId?: string;
+}
+
+/**
  * Sends the e-mails of an event that has **already committed**, best effort: never throws, never delays the response
  * (each send runs in `waitUntil`). Each outcome is logged by kind and record id only (no recipient, no content; the
  * SMTP sender logs its own error code): a success line too, so a send cut off by the runtime shows as a missing line.
@@ -417,24 +509,41 @@ export async function sendEventEmails(
   c: Context<AppEnv>,
   load: (q: Queryable) => Promise<EventEmail[]>,
 ): Promise<void> {
-  if (!c.var.settings.eventEmails) return;
+  await deliverEventEmails(
+    {
+      settings: c.var.settings,
+      db: c.var.db,
+      sender: () => c.var.deps.emailSender(c.var.settings),
+      waitUntil: (promise) => c.executionCtx.waitUntil(promise),
+      traceId: c.var.traceId,
+    },
+    load,
+  );
+}
+
+/** `sendEventEmails` without an HTTP request (the scheduled job, AD-65); the same behaviour and log lines. */
+export async function deliverEventEmails(
+  delivery: EventEmailDelivery,
+  load: (q: Queryable) => Promise<EventEmail[]>,
+): Promise<void> {
+  if (!delivery.settings.eventEmails) return;
   let prepared: { event: EventEmail; message: EmailMessage }[];
   try {
-    const events = await load(c.var.db);
+    const events = await load(delivery.db);
     prepared = events.map((event) => ({
       event,
-      message: renderEventEmail(event, c.var.settings.trainee.signInLinkBaseUrl),
+      message: renderEventEmail(event, delivery.settings.trainee.signInLinkBaseUrl),
     }));
   } catch {
     console.error(
-      JSON.stringify({ level: 'error', message: 'Event e-mails could not be prepared', traceId: c.var.traceId }),
+      JSON.stringify({ level: 'error', message: 'Event e-mails could not be prepared', traceId: delivery.traceId }),
     );
     return;
   }
 
-  const sender = c.var.deps.emailSender(c.var.settings);
+  const sender = delivery.sender();
   for (const { event, message } of prepared) {
-    c.executionCtx.waitUntil(
+    delivery.waitUntil(
       sender.send(message).then(
         () => {
           console.log(

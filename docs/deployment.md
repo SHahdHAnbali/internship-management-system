@@ -103,6 +103,36 @@ below). Sign-in e-mails do not depend on it.
   `scheduled` handler, check in the dashboard whether the trigger must also be removed (`wrangler triggers deploy`
   with a configuration without `crons`).
 
+### One-time catch-up: the incoming-mentor e-mail of an already-executed transfer (AD-65; not run yet)
+For a transfer executed **before** the incoming-mentor e-mail was deployed, `backend-workers/scripts/transfer-email-catch-up.ts`
+sends that one e-mail once, with the Worker's own template and Gmail sender, after the owner's authorization. It reads
+production in a READ ONLY transaction (rolled back), never writes to the database and never re-executes anything.
+It refuses unless `--transfer` is one exact `assignment_transfers.id` whose decision is Executed and `--expect` equals
+the masked address of that transfer's incoming mentor; it is a dry run unless `--send` is given (`--check-smtp` adds an
+SMTP login check that sends nothing); with `--send` it first creates the `--record` file exclusively (mode 600, status
+`SENDING`) and refuses if it already exists, so it never sends twice, also not after an interrupted run; there is no
+automatic retry. The outcome is the SMTP server's answer, never the record's existence: `ACCEPTED` (250 with the
+recipient accepted; exit 0), `FAILED` (an explicit refusal or a refused connection: nothing was handed over; exit 1) or
+`UNKNOWN` (timeout, dropped connection or an unexpected answer: it may have been accepted; exit 3; never resend without
+a manual check). A record left at `SENDING` is also unknown. Acceptance by Gmail is not proof of delivery to the inbox.
+Secrets: the database string from the environment (`CATCH_UP_DATABASE`, the read-only `ims_app` string from the
+user-secrets), SMTP from `.dev.vars`, normalized like the Worker secrets that were piped from it on 2026-11-10 (quotes
+removed, spaces removed from the App Password); its SMTP lines have not changed since, and no Worker secret has changed
+since (the last "Secret Change" version is from 2026-11-10), so it is the production sender. Nothing secret is printed or
+recorded: the record holds the transfer id, masked recipient, subject, field, dates, masked sender, outcome, SMTP code and
+message id.
+```bash
+cd backend-workers && nvm use
+node_modules/.bin/esbuild scripts/transfer-email-catch-up.ts --bundle --platform=node --format=esm \
+  --packages=external --outfile=node_modules/.cache/ims-ops/transfer-email-catch-up.mjs
+export CATCH_UP_DATABASE="$(cd ../backend && dotnet user-secrets list --project src/Ims.Api | sed -n 's/^ConnectionStrings:NeonApp = //p')"
+node node_modules/.cache/ims-ops/transfer-email-catch-up.mjs --transfer <transfer id> --expect <masked address> \
+  --site https://progineer-ims.pages.dev --record ~/Desktop/IMS-backups/ops/transfer-email-<transfer id>.json \
+  --check-smtp   # dry run: shows the masked recipient and content, checks the SMTP login, sends nothing
+# after the owner confirms the dry run: the same command with --send instead of --check-smtp, once
+unset CATCH_UP_DATABASE
+```
+
 ### Current deployment (2026-11-13, scheduled trainee transfer, AD-65)
 - Worker `ims-api` version `beaf2d36-e98b-4978-9415-495d3e2d56bb` (with the Cron Trigger `5 3,21,22 * * *`) and Pages
   production deployment `0ac20f21-698f-49d9-8bf8-694924565a35` (commit `bffc706`; database first, then Worker, then

@@ -4,6 +4,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Bindings } from '../src/config';
 import { Database, type AuditActor, type Queryable } from '../src/db';
 import { calendarDate, decideTransfer, previousDay, transferExecution } from '../src/domain/training';
+import type { EmailMessage } from '../src/email';
+import { renderEventEmail, trainingTransferredEmails } from '../src/features/notifications/eventEmails';
+import {
+  classifySmtpOutcome,
+  maskEmail,
+  prepareTransferCatchUpEmail,
+} from '../src/features/notifications/transferEmailCatchUp';
 import { executeDueTransfers, type TransactionalDatabase } from '../src/features/training/transfers';
 import { createScheduledHandler } from '../src/scheduled';
 import { body, createTestApi, signInStaff, signInTrainee, type TestApi, type TestClient, withDb } from './helpers';
@@ -20,6 +27,7 @@ import { newField, seedAssignment, submitApplication } from './seed';
  */
 const ENABLED: Partial<Bindings> = { EVENT_EMAILS: 'enabled' };
 const api = createTestApi({}, ENABLED);
+const TRANSFER_SUBJECT = 'تم نقل متدرب إليك / A trainee has been transferred to you';
 const DAY = 86_400_000;
 
 beforeEach(() => {
@@ -112,13 +120,14 @@ const assignments = (applicationId: string) =>
 const links = (applicationId: string) =>
   withDb((db) =>
     db.query<{
+      id: string;
       decision_id: string;
       from_assignment_id: string;
       to_assignment_id: string;
       transferred_by_id: string;
       transferred_at: Date;
     }>(
-      `SELECT x.decision_id, x.from_assignment_id, x.to_assignment_id, x.transferred_by_id, x.transferred_at
+      `SELECT x.id, x.decision_id, x.from_assignment_id, x.to_assignment_id, x.transferred_by_id, x.transferred_at
          FROM assignment_transfers x JOIN assignments s ON s.id = x.from_assignment_id
         WHERE s.application_id = $1 ORDER BY x.transferred_at, x.id`,
       [applicationId],
@@ -302,7 +311,10 @@ describe('HR decides a transfer (API)', () => {
       { table_name: 'assignment_transfers', operation: 'INSERT', ...actor },
       { table_name: 'transfer_decisions', operation: 'UPDATE', ...actor },
     ]);
-    expect(api.emails.sent.length).toBe(sentBefore);
+    // One e-mail, to the incoming mentor only (AD-65); no in-app notification.
+    expect(api.emails.sent.slice(sentBefore).map((m) => [m.to, m.subject])).toEqual([
+      [t.mentorB.email, TRANSFER_SUBJECT],
+    ]);
     expect(await notificationCount(users)).toBe(notificationsBefore);
 
     // The HR list: the outgoing row links forward and shows its executed decision.
@@ -680,7 +692,8 @@ describe('scheduled execution of due transfers (AD-65)', () => {
         }),
     });
     const failed = await runJob(new Date(hebronMidnight(effective).getTime() + 60_000), failing);
-    expect(failed.failed).toBeGreaterThanOrEqual(1);
+    expect(failed.summary.failed).toBeGreaterThanOrEqual(1);
+    expect(failed.executedTransferIds).toEqual([]); // nothing committed, so nothing to e-mail
     expect((await decisions(t.applicationId)).map((d) => d.status)).toEqual(['Pending']);
     expect((await assignments(t.applicationId)).map((a) => a.status)).toEqual(['Active']);
 
@@ -789,13 +802,307 @@ describe('scheduled execution of due transfers (AD-65)', () => {
     await transfer(t.hrA.client, t.id, { employeeId: t.mentorB.user.id, transferDate: effective, reason: 'Moved' });
     const at = new Date(hebronMidnight(effective).getTime() + 5 * 60_000);
     const ctx = createExecutionContext();
-    createScheduledHandler({ now: () => at })(
+    createScheduledHandler({ now: () => at, emailSender: () => api.emails })(
       createScheduledController({ scheduledTime: at.getTime(), cron: '5 3,21,22 * * *' }),
       env as unknown as Bindings,
       ctx,
     );
     await waitOnExecutionContext(ctx);
     expect((await decisions(t.applicationId)).map((d) => d.status)).toEqual(['Executed']);
+  });
+});
+
+describe('the incoming mentor e-mail (AD-65, TrainingTransferredToYou)', () => {
+  const SITE = 'https://ims.example';
+  /** Runs the Cron Trigger handler at `at`, with event e-mails on (or off) and the given sender. */
+  async function cron(at: Date, sent: EmailMessage[], options: { enabled?: boolean; failing?: boolean } = {}) {
+    const ctx = createExecutionContext();
+    const sender = {
+      async send(message: EmailMessage) {
+        if (options.failing) throw new Error('smtp down');
+        sent.push(message);
+      },
+    };
+    createScheduledHandler({ now: () => at, emailSender: () => sender })(
+      createScheduledController({ scheduledTime: at.getTime(), cron: '5 3,21,22 * * *' }),
+      { ...(env as unknown as Bindings), EVENT_EMAILS: options.enabled === false ? 'disabled' : 'enabled' },
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+  }
+  const to = (sent: EmailMessage[], email: string) => sent.filter((m) => m.to === email);
+
+  it('the template: Arabic then English, exactly the approved facts, nothing about the reason or earlier mentor', () => {
+    const message = renderEventEmail(
+      {
+        content: {
+          kind: 'TrainingTransferredToYou',
+          field: 'Full <stack>',
+          traineeName: 'Lina & Co',
+          mentorName: 'Mentor Two',
+          effectiveDate: '2026-11-14',
+          plannedEndDate: '2027-02-01',
+        },
+        entityId: 'x',
+        recipient: { type: 'Employee', id: 'e2', email: 'two@company.example' },
+      },
+      `${SITE}/`,
+    );
+    expect(message.to).toBe('two@company.example');
+    expect(message.subject).toBe(TRANSFER_SUBJECT);
+    const text = message.textBody;
+    expect(text.indexOf('تم نقل متدرب إليك')).toBe(0);
+    expect(text.indexOf('A trainee has been transferred to you')).toBeGreaterThan(0);
+    for (const value of [
+      'Lina & Co',
+      'Mentor Two',
+      'Full <stack>',
+      '2026-11-14',
+      '2027-02-01',
+      `${SITE}/employee/trainees`,
+    ]) {
+      expect(text.split(value).length - 1, value).toBe(2); // once in Arabic, once in English
+    }
+    for (const label of [
+      'المتدرب:',
+      'المشرف:',
+      'المجال:',
+      'تاريخ البداية:',
+      'تاريخ الانتهاء المخطط:',
+      'Planned end date:',
+    ]) {
+      expect(text).toContain(label);
+    }
+    expect(message.htmlBody).toContain('Full &lt;stack&gt;'); // escaped
+    expect(message.htmlBody.indexOf('<div dir="rtl" lang="ar"')).toBeLessThan(
+      message.htmlBody.indexOf('<div dir="ltr" lang="en"'),
+    );
+    // Without a trainee name the line is left out, never printed empty.
+    const unnamed = renderEventEmail(
+      {
+        content: {
+          kind: 'TrainingTransferredToYou',
+          field: 'QA',
+          traineeName: null,
+          mentorName: 'M',
+          effectiveDate: '2026-11-14',
+          plannedEndDate: '2027-02-01',
+        },
+        entityId: 'x',
+        recipient: { type: 'Employee', id: 'e2', email: 'two@company.example' },
+      },
+      SITE,
+    );
+    expect(unnamed.textBody).not.toContain('المتدرب:');
+    expect(unnamed.textBody).not.toContain('Trainee:');
+  });
+
+  it('immediate: one e-mail to the incoming mentor with the right content; never the reason or the earlier mentor', async () => {
+    const t = await training(api, addDays(today(), -20), addDays(today(), 30));
+    const earlierName = `Earlier Mentor ${crypto.randomUUID().slice(0, 8)}`;
+    await withDb((db) =>
+      db.query('UPDATE employees SET full_name = $2 WHERE id = $1', [t.mentorA.user.id, earlierName]),
+    );
+    const before = api.emails.sent.length;
+    await transfer(t.hrA.client, t.id, {
+      employeeId: t.mentorB.user.id,
+      transferDate: today(),
+      reason: 'Secret reason',
+    });
+    const sent = api.emails.sent.slice(before);
+    expect(sent.map((m) => m.to)).toEqual([t.mentorB.email]);
+    const text = sent[0]!.textBody;
+    for (const value of [today(), addDays(today(), 30), '/employee/trainees']) expect(text).toContain(value);
+    expect(text).not.toContain('Secret reason');
+    expect(text).not.toContain(earlierName);
+    expect(text).not.toContain(t.mentorA.email);
+  });
+
+  it('scheduled: nothing when decided; one e-mail when the job executes it, with the end date as extended meanwhile', async () => {
+    const t = await training(api, addDays(today(), -20), addDays(today(), 30));
+    const effective = addDays(today(), 2);
+    const before = api.emails.sent.length;
+    await transfer(t.hrA.client, t.id, { employeeId: t.mentorB.user.id, transferDate: effective, reason: 'Later' });
+    await t.hrB.client.post(`/api/hr/assignments/${t.id}/extend`, { endDate: addDays(today(), 50), reason: 'More' });
+    expect(api.emails.sent.slice(before).filter((m) => m.subject === TRANSFER_SUBJECT)).toEqual([]);
+
+    const sent: EmailMessage[] = [];
+    await cron(new Date(hebronMidnight(effective).getTime() - 60_000), sent); // not due yet
+    expect(to(sent, t.mentorB.email)).toEqual([]);
+    await cron(new Date(hebronMidnight(effective).getTime() + 60_000), sent);
+    const mine = to(sent, t.mentorB.email);
+    expect(mine.map((m) => m.subject)).toEqual([TRANSFER_SUBJECT]);
+    expect(mine[0]!.textBody).toContain(effective);
+    expect(mine[0]!.textBody).toContain(addDays(today(), 50));
+    expect(to(sent, t.mentorA.email)).toEqual([]);
+    // A later run of the job does not e-mail it again.
+    await cron(new Date(hebronMidnight(effective).getTime() + 3_600_000), sent);
+    expect(to(sent, t.mentorB.email)).toHaveLength(1);
+  });
+
+  it('concurrent runs: the transfer is executed once and its mentor gets exactly one e-mail', async () => {
+    const t = await training(api, addDays(today(), -20), addDays(today(), 30));
+    const effective = addDays(today(), 1);
+    await transfer(t.hrA.client, t.id, { employeeId: t.mentorB.user.id, transferDate: effective, reason: 'Moved' });
+    const sent: EmailMessage[] = [];
+    const at = new Date(hebronMidnight(effective).getTime() + 60_000);
+    await Promise.all([cron(at, sent), cron(at, sent), cron(at, sent)]);
+    expect(to(sent, t.mentorB.email)).toHaveLength(1);
+    expect(await links(t.applicationId)).toHaveLength(1);
+  });
+
+  it('cancelled and void decisions, and e-mails turned off, send nothing', async () => {
+    const effective = addDays(today(), 1);
+    const at = new Date(hebronMidnight(effective).getTime() + 60_000);
+    const cancelled = await training(api, addDays(today(), -20), addDays(today(), 30));
+    const decided = await body<{ transferDecisions: { id: string }[] }>(
+      await transfer(cancelled.hrA.client, cancelled.id, {
+        employeeId: cancelled.mentorB.user.id,
+        transferDate: effective,
+        reason: 'x',
+      }),
+    );
+    await cancel(cancelled.hrA.client, decided.transferDecisions[0]!.id, { reason: 'No' });
+    const voided = await training(api, addDays(today(), -20), addDays(today(), 30));
+    await transfer(voided.hrA.client, voided.id, {
+      employeeId: voided.mentorB.user.id,
+      transferDate: effective,
+      reason: 'x',
+    });
+    await voided.admin.client.put(`/api/admin/users/${voided.mentorB.user.id}/role`, { role: 'HR' });
+    const off = await training(api, addDays(today(), -20), addDays(today(), 30));
+    await transfer(off.hrA.client, off.id, { employeeId: off.mentorB.user.id, transferDate: effective, reason: 'x' });
+
+    const sent: EmailMessage[] = [];
+    await cron(at, sent, { enabled: false });
+    expect((await decisions(off.applicationId)).map((d) => d.status)).toEqual(['Executed']); // executed, not e-mailed
+    expect((await decisions(voided.applicationId)).map((d) => d.status)).toEqual(['Void']);
+    await cron(at, sent); // e-mails on: nothing left to execute for these three
+    for (const mentor of [cancelled.mentorB, voided.mentorB, off.mentorB]) expect(to(sent, mentor.email)).toEqual([]);
+  });
+
+  it('a failed e-mail never undoes the transfer, immediate or scheduled', async () => {
+    // Only the transfer e-mail fails; everything else (sign-in codes) is captured as usual.
+    const failing = createTestApi(
+      {
+        emailSender: () => ({
+          send: (m: EmailMessage) =>
+            m.subject === TRANSFER_SUBJECT ? Promise.reject(new Error('smtp down')) : failing.emails.send(m),
+        }),
+      },
+      ENABLED,
+    );
+    const now = await training(failing, addDays(today(), -20), addDays(today(), 30));
+    const response = await transfer(now.hrA.client, now.id, {
+      employeeId: now.mentorB.user.id,
+      transferDate: today(),
+      reason: 'x',
+    });
+    expect(response.status).toBe(200);
+    expect((await assignments(now.applicationId)).map((a) => a.status)).toEqual(['Transferred', 'Active']);
+
+    const later = await training(api, addDays(today(), -20), addDays(today(), 30));
+    const effective = addDays(today(), 1);
+    await transfer(later.hrA.client, later.id, {
+      employeeId: later.mentorB.user.id,
+      transferDate: effective,
+      reason: 'x',
+    });
+    await cron(new Date(hebronMidnight(effective).getTime() + 60_000), [], { failing: true });
+    expect((await decisions(later.applicationId)).map((d) => d.status)).toEqual(['Executed']);
+    expect(await links(later.applicationId)).toHaveLength(1);
+  });
+
+  it('the loader gives only executed transfers, one per id asked for', async () => {
+    const t = await training(api, addDays(today(), -20), addDays(today(), 30));
+    await transfer(t.hrA.client, t.id, { employeeId: t.mentorB.user.id, transferDate: today(), reason: 'x' });
+    const [link] = await links(t.applicationId);
+    const pending = await training(api, addDays(today(), -20), addDays(today(), 30));
+    await transfer(pending.hrA.client, pending.id, {
+      employeeId: pending.mentorB.user.id,
+      transferDate: addDays(today(), 3),
+      reason: 'x',
+    });
+    const pendingDecision = (await decisions(pending.applicationId))[0]!.id;
+    await withDb(async (db) => {
+      expect((await trainingTransferredEmails(db, [link!.id])).map((e) => e.recipient.email)).toEqual([
+        t.mentorB.email,
+      ]);
+      expect(await trainingTransferredEmails(db, [pendingDecision, crypto.randomUUID()])).toEqual([]);
+      expect(await trainingTransferredEmails(db, [])).toEqual([]);
+    });
+  });
+
+  it('the one-time catch-up prepares exactly one executed transfer, for the confirmed recipient only', async () => {
+    const t = await training(api, addDays(today(), -20), addDays(today(), 30));
+    await transfer(t.hrA.client, t.id, { employeeId: t.mentorB.user.id, transferDate: today(), reason: 'x' });
+    const [link] = await links(t.applicationId);
+    const other = await training(api, addDays(today(), -20), addDays(today(), 30));
+    await transfer(other.hrA.client, other.id, {
+      employeeId: other.mentorB.user.id,
+      transferDate: addDays(today(), 2),
+      reason: 'x',
+    });
+    const otherDecision = (await decisions(other.applicationId))[0]!.id;
+    const expected = maskEmail(t.mentorB.email);
+    await withDb(async (db) => {
+      const ok = await prepareTransferCatchUpEmail(db, {
+        transferId: link!.id,
+        expectedMaskedRecipient: expected,
+        siteBaseUrl: SITE,
+      });
+      expect([ok.message.to, ok.message.subject, ok.maskedRecipient]).toEqual([
+        t.mentorB.email,
+        TRANSFER_SUBJECT,
+        expected,
+      ]);
+      const refused = (options: Partial<Parameters<typeof prepareTransferCatchUpEmail>[1]>) =>
+        prepareTransferCatchUpEmail(db, {
+          transferId: link!.id,
+          expectedMaskedRecipient: expected,
+          siteBaseUrl: SITE,
+          ...options,
+        }).then(
+          () => 'sent',
+          (error: Error) => error.name,
+        );
+      expect(await refused({ transferId: otherDecision })).toBe('CatchUpRefused'); // a pending decision, not a transfer
+      expect(await refused({ transferId: crypto.randomUUID() })).toBe('CatchUpRefused');
+      expect(await refused({ transferId: `${link!.id},${crypto.randomUUID()}` })).toBe('CatchUpRefused');
+      expect(await refused({ transferId: '%' })).toBe('CatchUpRefused');
+      expect(await refused({ expectedMaskedRecipient: maskEmail(t.mentorA.email) })).toBe('CatchUpRefused');
+      expect(await refused({ siteBaseUrl: 'http://ims.example' })).toBe('CatchUpRefused');
+    });
+    expect(maskEmail('s12345676@stu.najah.edu')).toBe('s***6@stu.najah.edu');
+  });
+});
+
+describe('the catch-up SMTP outcome (never optimistic)', () => {
+  const to = 'mentor@company.example';
+  it('ACCEPTED only for a 250 answer that accepted exactly this recipient', () => {
+    expect(
+      classifySmtpOutcome(
+        { ok: true, info: { accepted: ['Mentor@Company.example'], rejected: [], response: '250 2.0.0 OK id' } },
+        to,
+      ),
+    ).toBe('ACCEPTED');
+    expect(classifySmtpOutcome({ ok: true, info: { accepted: [], rejected: [to], response: '250 OK' } }, to)).toBe(
+      'UNKNOWN',
+    );
+    expect(classifySmtpOutcome({ ok: true, info: { accepted: [to], rejected: [], response: '' } }, to)).toBe('UNKNOWN');
+    expect(classifySmtpOutcome({ ok: true, info: {} }, to)).toBe('UNKNOWN');
+  });
+  it('FAILED only for an explicit refusal; timeouts and dropped connections are UNKNOWN', () => {
+    const failed = (error: object) => classifySmtpOutcome({ ok: false, error }, to);
+    expect(failed({ code: 'EAUTH', responseCode: 535 })).toBe('FAILED');
+    expect(failed({ code: 'EENVELOPE' })).toBe('FAILED');
+    expect(failed({ code: 'EMESSAGE', responseCode: 552 })).toBe('FAILED');
+    expect(failed({ code: 'EPROTOCOL', responseCode: 451 })).toBe('FAILED');
+    expect(failed({ code: 'ECONNREFUSED' })).toBe('FAILED');
+    expect(failed({ code: 'ETIMEDOUT' })).toBe('UNKNOWN');
+    expect(failed({ code: 'ESOCKET' })).toBe('UNKNOWN');
+    expect(failed({ code: 'ECONNECTION' })).toBe('UNKNOWN');
+    expect(failed(new Error('anything else'))).toBe('UNKNOWN');
   });
 });
 

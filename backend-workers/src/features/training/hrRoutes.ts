@@ -28,7 +28,12 @@ import { parseGuid, uuidV7 } from '../../domain/uuid';
 import { bindJson, type RequestSchema } from '../../http/body';
 import { endpointFailure, json, statusProblem } from '../../http/problems';
 import { routeId, type Route } from '../../http/routes';
-import { applicationDecisionEmails, mentorRequestDecisionEmails, sendEventEmails } from '../notifications/eventEmails';
+import {
+  applicationDecisionEmails,
+  mentorRequestDecisionEmails,
+  sendEventEmails,
+  trainingTransferredEmails,
+} from '../notifications/eventEmails';
 import { notifyEmployee } from '../notifications/notify';
 import { readableAttachment } from './access';
 import { fileLink } from './files';
@@ -501,7 +506,8 @@ export const hrRoutes: Route[] = [
     // (the outgoing assignment becomes Transferred and ends yesterday, the incoming one starts today with the same
     // planned end date, the link is recorded). A later date: the decision stays Pending and nothing else changes; the
     // scheduled job executes it on that date. Past dates are refused. At most one pending transfer per training (409).
-    // Audited with the HR user as the actor. No e-mail or notification (none in PDF §7 for a transfer, AD-59).
+    // Audited with the HR user as the actor. No in-app notification; when the transfer is executed, its incoming mentor
+    // gets one e-mail (AD-65, owner decision 2026-11-13, an approved addition to PDF §7).
     method: 'POST',
     path: '/api/hr/assignments/:id/transfer',
     policy: 'HR',
@@ -583,11 +589,16 @@ export const hrRoutes: Route[] = [
             now,
           ],
         );
-        if (decision.effectiveDate > today) return id;
-        return applyTransfer(tx, pendingDecision, current, now);
+        if (decision.effectiveDate > today) return { assignmentId: id, transferId: null };
+        const { incomingId, transferId } = await applyTransfer(tx, pendingDecision, current, now);
+        return { assignmentId: incomingId, transferId };
       });
       if (outcome instanceof Response) return outcome;
-      return json((await hrAssignments(c, outcome))[0]);
+      // AD-65: executed today, so the incoming mentor gets their e-mail now, after the commit (best effort). A scheduled
+      // transfer's e-mail is sent by the scheduled job when it executes it.
+      const { transferId } = outcome;
+      if (transferId) await sendEventEmails(c, (q) => trainingTransferredEmails(q, [transferId]));
+      return json((await hrAssignments(c, outcome.assignmentId))[0]);
     },
   },
   {

@@ -2,6 +2,7 @@ import { productionDependencies } from './app';
 import { loadSettings, type Bindings } from './config';
 import type { Dependencies } from './context';
 import { Database } from './db';
+import { deliverEventEmails, trainingTransferredEmails } from './features/notifications/eventEmails';
 import { executeDueTransfers } from './features/training/transfers';
 
 /**
@@ -14,23 +15,41 @@ import { executeDueTransfers } from './features/training/transfers';
  * decisions are due never depends on the run time: every Pending decision dated today or earlier in Asia/Hebron
  * (computed from the clock, daylight saving included) is executed, so a missed run (an outage) is caught up by the next
  * one with the decision's own dates. Between midnight and the run, the gap guards refuse changes to the assignment.
+ *
+ * E-mail (AD-65): the incoming mentor of each transfer **this run** executed gets one e-mail, best effort, after its
+ * transaction committed (the same delivery as every event e-mail: no delivery record, no retry). A decision executed by
+ * a concurrent run, or whose commit failed, is not this run's, so no run e-mails a transfer twice.
  */
-export function createScheduledHandler(dependencies: Pick<Dependencies, 'now'> = productionDependencies) {
+export function createScheduledHandler(
+  dependencies: Pick<Dependencies, 'now' | 'emailSender'> = productionDependencies,
+) {
   return (controller: ScheduledController, env: Bindings, ctx: ExecutionContext): void => {
-    ctx.waitUntil(runScheduledJobs(controller, env, dependencies));
+    ctx.waitUntil(runScheduledJobs(controller, env, dependencies, ctx));
   };
 }
 
 async function runScheduledJobs(
   controller: ScheduledController,
   env: Bindings,
-  dependencies: Pick<Dependencies, 'now'>,
+  dependencies: Pick<Dependencies, 'now' | 'emailSender'>,
+  ctx: ExecutionContext,
 ): Promise<void> {
-  const db = new Database(loadSettings(env).databaseUrl);
+  const settings = loadSettings(env);
+  const db = new Database(settings.databaseUrl);
   try {
-    const summary = await executeDueTransfers(db, dependencies.now());
+    const { summary, executedTransferIds } = await executeDueTransfers(db, dependencies.now());
     console.log(
       JSON.stringify({ level: 'info', message: 'Scheduled transfers run', cron: controller.cron, ...summary }),
+    );
+    // Loaded and rendered here, before the connection closes; each send then runs in waitUntil. Never throws.
+    await deliverEventEmails(
+      {
+        settings,
+        db,
+        sender: () => dependencies.emailSender(settings),
+        waitUntil: (promise) => ctx.waitUntil(promise),
+      },
+      (q) => trainingTransferredEmails(q, executedTransferIds),
     );
   } catch (error) {
     // The database was unreachable, for example: nothing was changed, and the next run picks everything up.
