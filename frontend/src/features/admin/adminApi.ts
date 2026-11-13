@@ -35,6 +35,11 @@ export const adminApi = {
   changeUserRole: (id: string, role: UserRole) =>
     apiRequest<User>('PUT', `/admin/users/${id}/role`, { role }),
   listAcceptedTrainees: () => apiRequest<AcceptedTrainee[]>('GET', '/admin/accepted-trainees'),
+  /** AD-64: appoint a replacement responsible HR (a user who holds the HR role now). */
+  appointResponsibleHr: (applicationId: string, hrId: string) =>
+    apiRequest<AcceptedTrainee>('PUT', `/admin/accepted-trainees/${applicationId}/responsible-hr`, {
+      hrId,
+    }),
   /** The audit log, newest first; `before` = the last entry shown, for the next (older) page. */
   auditLogs: (filters: AuditFilters, before?: string) => {
     const query = new URLSearchParams(

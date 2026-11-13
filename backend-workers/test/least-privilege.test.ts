@@ -54,6 +54,7 @@ const TABLES = [
   'notification_settings',
   'notifications',
   'progress_notes',
+  'responsible_hr_changes',
   'roles',
   'trainee_sign_in_codes',
   'trainees',

@@ -51,6 +51,8 @@ public interface IAppDbContext
 
     DbSet<AssignmentExtension> AssignmentExtensions { get; }
 
+    DbSet<ResponsibleHrChange> ResponsibleHrChanges { get; }
+
     DbSet<Notification> Notifications { get; }
 
     /// <summary>Read-only: rows are written by database triggers.</summary>

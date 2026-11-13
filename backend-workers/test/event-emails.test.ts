@@ -9,7 +9,6 @@ import type { EmailMessage, EmailSender } from '../src/email';
 import { escapeHtml } from '../src/emailTemplate';
 import {
   applicationSubmittedEmails,
-  mentorRequestSubmittedEmails,
   renderEventEmail,
   sendEventEmails,
   type EventEmail,
@@ -538,24 +537,19 @@ describe('HR recipients (NEW-24): every user whose current role is HR, at their 
     });
   }
 
-  it('follows the current role: a former HR user is dropped, a new HR user is added; others never receive it', async () => {
+  // The new-application e-mail goes to every current HR user (NEW-24). The mentor-request e-mail goes only to the
+  // application's current responsible HR (AD-64): see responsible-hr.test.ts.
+  it('new application: follows the current role, a former HR user is dropped, a new HR user is added; others never receive it', async () => {
     const { admin, hr, employee, field } = await cast(api);
     const hr2 = await signInStaff(api, 'HR');
     const trainee = await signInTrainee(api);
     const applicationId = await submitApplication(trainee.client, field.id);
-    await hr.client.post(`/api/hr/applications/${applicationId}/accept`);
-    const requestId = (
-      await body<{ id: string }>(
-        await employee.client.post('/api/employee/mentor-requests', { applicationId, note: 'Request' }),
-      )
-    ).id;
 
     await setRole(hr2.email, 'Employee'); // no longer HR
     await setRole(admin.email, 'HR'); // now HR
 
     for (const load of [
       (q: Parameters<typeof applicationSubmittedEmails>[0]) => applicationSubmittedEmails(q, applicationId),
-      (q: Parameters<typeof mentorRequestSubmittedEmails>[0]) => mentorRequestSubmittedEmails(q, requestId),
     ]) {
       const { events, hr: hrUsers } = await recipientsAndHr(load);
       expect(events.map((e) => [e.recipient.id, e.recipient.email])).toEqual(hrUsers.map((u) => [u.id, u.email]));

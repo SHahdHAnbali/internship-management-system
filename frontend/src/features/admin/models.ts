@@ -39,7 +39,26 @@ export interface User {
   role: UserRole;
 }
 
-/** An accepted application (PDF §2: the Admin sees the accepted trainees), with its recorded assignments. */
+/** A staff member named in a record. */
+export interface StaffRef {
+  id: string;
+  fullName: string;
+}
+
+/**
+ * The responsible HR of an accepted application (AD-64): the HR member who accepted it, the current one (an Admin's
+ * latest appointment, else the accepting HR) and whether they hold the HR role now, and every appointment, oldest first.
+ */
+export interface ResponsibleHr {
+  acceptedBy: StaffRef;
+  current: StaffRef & { isHr: boolean };
+  changes: { sequence: number; hr: StaffRef; changedBy: string; changedAt: string }[];
+}
+
+/**
+ * An accepted application (PDF §2: the Admin sees the accepted trainees), with its recorded assignments and its
+ * responsible HR.
+ */
 export interface AcceptedTrainee {
   applicationId: string;
   trainee: {
@@ -60,6 +79,7 @@ export interface AcceptedTrainee {
     startDate: string;
     endDate: string;
   }[];
+  responsibleHr: ResponsibleHr;
 }
 
 /** PDF §7: the 7 / 3 / 5-day intervals the Admin can change. */
@@ -83,6 +103,7 @@ export const AUDITED_TABLES = [
   'notification_settings',
   'notifications',
   'progress_notes',
+  'responsible_hr_changes',
   'roles',
   'trainee_sign_in_codes',
   'trainees',

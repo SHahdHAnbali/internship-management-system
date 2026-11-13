@@ -152,6 +152,57 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ims.Domain.Applications.ResponsibleHrChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("changed_at");
+
+                    b.Property<Guid>("ChangedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("changed_by_id");
+
+                    b.Property<Guid>("HrId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hr_id");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_responsible_hr_changes");
+
+                    b.HasIndex("ChangedById")
+                        .HasDatabaseName("ix_responsible_hr_changes_changed_by_id");
+
+                    b.HasIndex("HrId")
+                        .HasDatabaseName("ix_responsible_hr_changes_hr_id");
+
+                    b.HasIndex("ApplicationId", "Sequence")
+                        .IsUnique()
+                        .HasDatabaseName("ux_responsible_hr_changes_application_id_sequence");
+
+                    b.ToTable("responsible_hr_changes", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_responsible_hr_changes_sequence", "sequence >= 1");
+                        });
+                });
+
             modelBuilder.Entity("Ims.Domain.Applications.TrainingApplication", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1059,6 +1110,30 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_contact_logs_employees_author_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Applications.ResponsibleHrChange", b =>
+                {
+                    b.HasOne("Ims.Domain.Applications.TrainingApplication", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_responsible_hr_changes_training_applications_application_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("ChangedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_responsible_hr_changes_employees_changed_by_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("HrId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_responsible_hr_changes_employees_hr_id");
                 });
 
             modelBuilder.Entity("Ims.Domain.Applications.TrainingApplication", b =>

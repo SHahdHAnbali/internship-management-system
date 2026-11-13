@@ -9,8 +9,9 @@ import { json, statusProblem } from '../../http/problems';
 import { routeId, type Route } from '../../http/routes';
 import { EMPLOYEE_MAY_SEE_CV, IS_AVAILABLE } from './access';
 import { mentorRequestSubmittedEmails, sendEventEmails } from '../notifications/eventEmails';
-import { notifyHr } from '../notifications/notify';
+import { notifyEmployee } from '../notifications/notify';
 import { fileLink } from './files';
+import { eligibleResponsibleHr, type ResponsibleHrRecipient } from './responsibleHr';
 
 /**
  * `/api/employee` (Employee role only; PDF §2, §4): the available trainees (accepted and not yet assigned), filterable
@@ -131,16 +132,23 @@ export const employeeRoutes: Route[] = [
 
       const now = c.var.deps.now();
       const id = uuidV7(now);
+      let recipient: ResponsibleHrRecipient | null = null;
       await c.var.db.transaction(c.var.actor, async (tx) => {
         await tx.query(
           `INSERT INTO mentor_requests (id, employee_id, application_id, note, status, requested_at)
            VALUES ($1, $2, $3, $4, 'Pending', $5)`,
           [id, c.var.user!.id, applicationId, note, now],
         );
-        await notifyHr(tx, 'MentorRequestSubmitted', id, now); // PDF §7: "employee requested to train a trainee"
+        // PDF §7 "employee requested to train a trainee", in-app: only to the application's current responsible HR
+        // while they hold the HR role (AD-64, supersedes Q41/C1 for this event). None eligible: the request is kept and
+        // nobody is notified, never the former HR and never every HR user.
+        recipient = await eligibleResponsibleHr(tx, applicationId);
+        if (recipient) await notifyEmployee(tx, recipient.id, 'MentorRequestSubmitted', id, now);
       });
-      // PDF §7: the same event by e-mail to every HR user (NEW-24), after the commit (best effort, if enabled).
-      await sendEventEmails(c, (q) => mentorRequestSubmittedEmails(q, id));
+      // The same event by e-mail, to the same user resolved in the transaction (AD-64, supersedes NEW-24 for this
+      // event), after the commit (best effort, if enabled).
+      const emailTo: ResponsibleHrRecipient | null = recipient;
+      if (emailTo) await sendEventEmails(c, (q) => mentorRequestSubmittedEmails(q, id, emailTo));
       return json({ id, status: 'Pending', note, requestedAt: now }, 201);
     },
   },

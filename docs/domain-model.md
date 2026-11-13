@@ -26,6 +26,7 @@ AuditLog — covers every table
 | `Employee` | name, Google email, department, role (Employee / HR / Admin) | Has many assignments. Created automatically with role Employee on first Google sign-in from the company domain. |
 | `Field` | name, description, active flag | Linked to applications and employees. Deactivated, never deleted. |
 | `TrainingApplication` | trainee, field, requested period, hours, mandatory-for-university flag, status, rejection reason, attachments (CV, university letter) | Has many assignments. Status `Submitted → UnderReview → Accepted / Rejected` (AD-47); "available", "in training" and "completed" come from mentor requests and assignments, not from this status. |
+| `ResponsibleHrChange` | application, sequence, HR member, Admin, time | An Admin's appointment of a replacement responsible HR (AD-64). The current responsible HR is the latest change, else the HR who accepted the application. Insert-only, never deleted. |
 | `MentorRequest` | employee, application, note, status `Pending / Approved / Rejected` | Approval creates an `Assignment`. Rejection returns the trainee to the available list. |
 | `Assignment` | application, employee, start date, end date, status, end/transfer reason | Has one evaluation and many progress notes. Transfer = close this assignment and open a new one. Status `Active, Completed, EndedEarly, Transferred, Withdrawn` (AD-49). |
 | `ProgressNote` | assignment, author, date, text | |

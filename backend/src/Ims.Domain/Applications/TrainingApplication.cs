@@ -89,6 +89,23 @@ public sealed class TrainingApplication : Entity
     public void Reject(Guid hrId, string reason, DateTimeOffset now) =>
         Decide(ApplicationStatus.Rejected, hrId, Guard.Required(reason, "Rejection reason", RejectionReasonMaxLength), now);
 
+    /// <summary>
+    /// An Admin appoints a replacement responsible HR for this accepted application (AD-64). The accepting HR
+    /// (<see cref="DecidedById"/>) stays as recorded; the change with the highest sequence names the current one.
+    /// That the appointed user currently holds the HR role is checked by the caller, which reads the roles.
+    /// </summary>
+    public ResponsibleHrChange AppointResponsibleHr(int sequence, Guid hrId, Guid adminId, DateTimeOffset now)
+    {
+        if (Status != ApplicationStatus.Accepted)
+        {
+            throw new DomainException(
+                "application.invalid_status",
+                "A responsible HR can be appointed only for an accepted application.");
+        }
+
+        return ResponsibleHrChange.Record(Id, sequence, hrId, adminId, now);
+    }
+
     private void Decide(ApplicationStatus decision, Guid hrId, string? reason, DateTimeOffset now)
     {
         if (Status is not (ApplicationStatus.Submitted or ApplicationStatus.UnderReview))

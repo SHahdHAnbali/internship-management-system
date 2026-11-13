@@ -48,6 +48,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<AssignmentExtension> AssignmentExtensions => Set<AssignmentExtension>();
 
+    public DbSet<ResponsibleHrChange> ResponsibleHrChanges => Set<ResponsibleHrChange>();
+
     public DbSet<Notification> Notifications => Set<Notification>();
 
     public IQueryable<AuditLogEntry> AuditLogs => Set<AuditLogEntry>().AsNoTracking();

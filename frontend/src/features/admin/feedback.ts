@@ -7,6 +7,7 @@ import { previewActive } from '../../preview/mode';
 const CODE_MESSAGES: Record<string, string> = {
   'employee.self_role_change': 'admin.users.ownRole',
   'employee.last_admin': 'admin.users.lastAdmin',
+  'responsible_hr.not_hr': 'admin.acceptedTrainees.errors.notHr',
 };
 
 /** Maps an API error to the translated Admin message. */

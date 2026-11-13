@@ -32,14 +32,14 @@ REVOKE CREATE ON SCHEMA public FROM ims_app;
 GRANT SELECT ON
     application_attachments, assignment_extensions, assignments, audit_logs, certificate_templates, contact_logs, employees,
     evaluation_criteria, fields, mentor_requests, notification_settings, notifications, progress_notes,
-    trainee_sign_in_codes, trainees, training_applications, user_sessions
+    responsible_hr_changes, trainee_sign_in_codes, trainees, training_applications, user_sessions
 TO ims_app;
 
 -- Inserts (`audit_logs` only through the audit trigger, see above).
 GRANT INSERT ON
     application_attachments, assignment_extensions, assignments, audit_logs, certificate_templates, contact_logs, employees,
-    evaluation_criteria, fields, mentor_requests, notifications, progress_notes, trainee_sign_in_codes, trainees,
-    training_applications, user_sessions
+    evaluation_criteria, fields, mentor_requests, notifications, progress_notes, responsible_hr_changes,
+    trainee_sign_in_codes, trainees, training_applications, user_sessions
 TO ims_app;
 
 -- Updates (no UPDATE on contact logs, progress notes, attachments or audit_logs: the Worker has none).
@@ -54,6 +54,8 @@ TO ims_app;
 GRANT UPDATE (status, end_date, end_reason) ON assignments TO ims_app;
 -- Training extension (AD-63 L2, NEW-35): `assignment_extensions` is insert-only for the Worker (SELECT and INSERT above,
 -- no UPDATE): every extension and its reason stay as recorded; the extension moves `assignments.end_date` (granted above).
+-- Responsible HR (AD-64): `responsible_hr_changes` is insert-only for the Worker too (SELECT and INSERT above, no UPDATE):
+-- every Admin appointment stays as recorded; the accepting HR stays in `training_applications.decided_by_id`.
 
 -- Only the schema owner sets up audit protection on a table.
 REVOKE EXECUTE ON FUNCTION ims_protect_table(regclass) FROM PUBLIC;

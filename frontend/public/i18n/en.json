@@ -80,7 +80,28 @@
       "hours": "Hours",
       "acceptedAt": "Accepted on",
       "assignments": "Assignment",
-      "noAssignment": "No assignment yet"
+      "noAssignment": "No assignment yet",
+      "responsibleHr": "Responsible HR",
+      "notHr": "No longer HR",
+      "change": "Change",
+      "changeFor": "Change the responsible HR of {{name}}",
+      "changeTitle": "Responsible HR of {{name}}",
+      "acceptedBy": "Accepted by",
+      "currentHr": "Current responsible HR",
+      "noRecipient": "The current responsible HR no longer holds the HR role, so mentor-request notifications for this trainee are not sent until a replacement is appointed.",
+      "history": "Earlier appointments",
+      "historyItem": "{{hr}}, appointed by {{admin}} on {{date}}",
+      "newHr": "New responsible HR",
+      "chooseHr": "Choose an HR user",
+      "noCandidates": "There is no other user with the HR role.",
+      "review": "Review",
+      "back": "Back",
+      "confirm": "Confirm",
+      "reviewText": "{{hr}} will become the responsible HR of {{name}}. Mentor-request notifications for this trainee will go to {{hr}} only.",
+      "errors": {
+        "chooseHr": "Choose the new responsible HR.",
+        "notHr": "The chosen user no longer holds the HR role. Choose another HR user."
+      }
     },
     "settings": {
       "title": "Notification settings",
@@ -311,7 +332,8 @@
         "training_applications": "Training applications",
         "user_sessions": "Sign-in sessions",
         "other": "Other data",
-        "assignment_extensions": "Training extensions"
+        "assignment_extensions": "Training extensions",
+        "responsible_hr_changes": "Responsible HR appointments"
       },
       "unknownUser": "Unknown user",
       "traineeWithoutName": "Trainee (name not entered yet)",
@@ -471,6 +493,10 @@
         "assignment_extensions": {
           "created": "A training was extended",
           "updated": "A training extension was updated"
+        },
+        "responsible_hr_changes": {
+          "created": "A responsible HR was appointed",
+          "updated": "A responsible HR appointment was updated"
         }
       }
     }

@@ -7,7 +7,8 @@ import { renderBilingualHtml, renderBilingualText, type EmailSection } from '../
 /**
  * Event e-mails of PDF §7 whose workflows exist (AD-59, AD-61): only the e-mail channel the table gives each event,
  * Arabic first then English, HTML with the same plain text (AD-60), sender ProGineer. HR e-mails go separately to every
- * user whose current role is HR (NEW-24); the trainee's assignment e-mail names the mentor (NEW-30).
+ * user whose current role is HR (NEW-24), except the mentor-request e-mail, which goes only to the application's current
+ * responsible HR (AD-64); the trainee's assignment e-mail names the mentor (NEW-30).
  *
  * Delivery is **best effort only**: the e-mail is sent after the business transaction has committed, in the background
  * (`waitUntil`), so a failure never changes or rolls back the business operation. There is **no delivery record, no
@@ -305,8 +306,16 @@ export async function applicationSubmittedEmails(q: Queryable, applicationId: st
   }));
 }
 
-/** "An employee asked to train a trainee" to HR (PDF §7 «موظف طلب تدريب متدرب»), one e-mail per HR user. */
-export async function mentorRequestSubmittedEmails(q: Queryable, requestId: string): Promise<EventEmail[]> {
+/**
+ * "An employee asked to train a trainee" to HR (PDF §7 «موظف طلب تدريب متدرب»): one e-mail to the application's current
+ * responsible HR, the recipient the caller resolved in the request's transaction (AD-64; supersedes NEW-24 for this
+ * event only).
+ */
+export async function mentorRequestSubmittedEmails(
+  q: Queryable,
+  requestId: string,
+  recipient: { id: string; email: string },
+): Promise<EventEmail[]> {
   const { rows } = await q.query<{ employee_name: string; trainee_name: string | null; field: string }>(
     `SELECT e.full_name AS employee_name, t.full_name AS trainee_name, f.name AS field
        FROM mentor_requests r
@@ -319,16 +328,18 @@ export async function mentorRequestSubmittedEmails(q: Queryable, requestId: stri
   );
   const r = rows[0];
   if (!r) return [];
-  return (await hrRecipients(q)).map((recipient) => ({
-    content: {
-      kind: 'MentorRequestSubmitted',
-      field: r.field,
-      traineeName: r.trainee_name,
-      employeeName: r.employee_name,
+  return [
+    {
+      content: {
+        kind: 'MentorRequestSubmitted',
+        field: r.field,
+        traineeName: r.trainee_name,
+        employeeName: r.employee_name,
+      },
+      entityId: requestId,
+      recipient: { type: 'Employee', id: recipient.id, email: recipient.email },
     },
-    entityId: requestId,
-    recipient,
-  }));
+  ];
 }
 
 /**

@@ -4,8 +4,9 @@ import { uuidV7 } from '../../domain/uuid';
 /**
  * In-app notifications (PDF §7, the events whose channel includes "إشعار"; PDF §8 Notification: recipient, type, read
  * or not). Only the events whose workflow exists are written: a new training application and an employee's request to
- * train a trainee (to HR), and HR approving or rejecting that request (to the employee who asked). The other in-app
- * events (training ending in 7 days, training ended, new trainee in your field) wait for their features or decisions.
+ * train a trainee (to the application's current responsible HR only, AD-64), and HR approving or rejecting that
+ * request (to the employee who asked). The other in-app events (training ending in 7 days, training ended, new trainee
+ * in your field) wait for their features or decisions.
  */
 export const NOTIFICATION_TYPES = [
   'ApplicationSubmitted',

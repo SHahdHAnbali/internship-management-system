@@ -572,3 +572,31 @@ VALUES ('20261112161441_AssignmentExtensions', '10.0.13');
 
 COMMIT;
 
+START TRANSACTION;
+CREATE TABLE responsible_hr_changes (
+    id uuid NOT NULL,
+    application_id uuid NOT NULL,
+    sequence integer NOT NULL,
+    hr_id uuid NOT NULL,
+    changed_by_id uuid NOT NULL,
+    changed_at timestamp with time zone NOT NULL,
+    CONSTRAINT pk_responsible_hr_changes PRIMARY KEY (id),
+    CONSTRAINT ck_responsible_hr_changes_sequence CHECK (sequence >= 1),
+    CONSTRAINT fk_responsible_hr_changes_employees_changed_by_id FOREIGN KEY (changed_by_id) REFERENCES employees (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_responsible_hr_changes_employees_hr_id FOREIGN KEY (hr_id) REFERENCES employees (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_responsible_hr_changes_training_applications_application_id FOREIGN KEY (application_id) REFERENCES training_applications (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX ix_responsible_hr_changes_changed_by_id ON responsible_hr_changes (changed_by_id);
+
+CREATE INDEX ix_responsible_hr_changes_hr_id ON responsible_hr_changes (hr_id);
+
+CREATE UNIQUE INDEX ux_responsible_hr_changes_application_id_sequence ON responsible_hr_changes (application_id, sequence);
+
+SELECT ims_protect_table('responsible_hr_changes');
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261113100241_ResponsibleHrChanges', '10.0.13');
+
+COMMIT;
+
