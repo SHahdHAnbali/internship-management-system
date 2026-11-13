@@ -71,7 +71,7 @@ below). Sign-in e-mails do not depend on it.
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
-### Scheduled jobs: Cron Triggers (AD-65, implemented locally only, **not deployed**)
+### Scheduled jobs: Cron Triggers (AD-65, in production since 2026-11-13)
 - `wrangler.jsonc` `triggers.crons`: `5 3,21,22 * * *` (UTC). The only job (`src/scheduled.ts`) executes the **due
   transfer decisions** (scheduled trainee transfers, AD-65). It is not the 09:00 reminder schedule of AD-62, which is
   not built.
@@ -91,6 +91,9 @@ below). Sign-in e-mails do not depend on it.
   (`due`, `executed`, `voided`, `skipped`, `failed`); a failed decision logs its id and error name, never personal data.
 - **Free plan:** three Cron invocations a day (each one short query when nothing is due), far below the limits; each
   run wakes the Neon compute briefly.
+- **Production:** deployed with Worker `beaf2d36-e98b-4978-9415-495d3e2d56bb` (2026-11-13); `wrangler deploy` reported
+  `schedule: 5 3,21,22 * * *`. The `/__scheduled` test route exists only under `wrangler dev --test-scheduled`: in
+  production the Worker has no public URL, and that path on the site is the ordinary SPA page.
 - **Local:** `npx wrangler dev --test-scheduled` (from `backend-workers/`), then
   `curl "http://localhost:<port>/__scheduled?cron=5+22+*+*+*"` runs the job once against the database in `.dev.vars`.
 - **Release order (when authorized):** Neon backup → migrations `AssignmentTransfers` and `TransferDecisions` → the
@@ -100,8 +103,47 @@ below). Sign-in e-mails do not depend on it.
   `scheduled` handler, check in the dashboard whether the trigger must also be removed (`wrangler triggers deploy`
   with a configuration without `crons`).
 
-### Current deployment (2026-11-13, responsible HR and mentor-request routing, AD-64)
-- Worker `ims-api` version `e7913829-8be9-4172-bba3-89f0aa1755de` and Pages production deployment
+### Current deployment (2026-11-13, scheduled trainee transfer, AD-65)
+- Worker `ims-api` version `beaf2d36-e98b-4978-9415-495d3e2d56bb` (with the Cron Trigger `5 3,21,22 * * *`) and Pages
+  production deployment `0ac20f21-698f-49d9-8bf8-694924565a35` (commit `bffc706`; database first, then Worker, then
+  Pages). The application's current responsible HR (AD-64) transfers an Active training to another user who holds the
+  Employee role, with a mandatory reason: today (executed at once) or a later Asia/Hebron date (a Pending decision,
+  executed by the scheduled job on that date); past dates refused; one pending transfer per training; the current
+  responsible HR cancels a pending one with a reason; every decision kept in `transfer_decisions` and every executed
+  transfer in the insert-only `assignment_transfers`; the latest mentor reads the earlier mentors' notes, read-only.
+  New endpoints: `POST /api/hr/assignments/:id/transfer`, `POST /api/hr/transfer-decisions/:id/cancel`,
+  `GET /api/hr/mentors`, `GET /api/employee/assignments/:id/earlier-notes`. No e-mail or notification, no final
+  evaluation. **Database (Neon `ims_db`, as `neondb_owner`):** preflight (read-only): the migration history equal to
+  the repository except the two AD-65 migrations (10 recorded, last `ResponsibleHrChanges`); every pre-existing table,
+  constraint, index, trigger, function and grant (479 catalog entries) identical to the migrated local database.
+  **Backup (AD-54):** `pg_dump -Fc` taken read-only before any change (`IMS-backups/neon-2026-11-13-ad65`, outside the
+  repository) and verified by restoring it into a disposable PostgreSQL 18.6 container: schema identical (56 triggers),
+  every row count and the assignment, application, employee, note and responsible-HR checksums equal to production.
+  Note: a plain PostgreSQL restore of a Neon dump now fails on six Neon-only column options
+  (`ALTER TABLE ONLY public.responsible_hr_changes ALTER COLUMN … SET (pg_attver=…)`); the verification restored the
+  dump's SQL without exactly those six statements (nothing else filtered; the dump file is unchanged). A restore into
+  Neon itself accepts them. **Migrations** `20261113163803_AssignmentTransfers` then
+  `20261113194359_TransferDecisions`, each in its own transaction (5-second lock timeout), the SQL identical to the
+  reviewed script and purely additive (two new tables, their checks, `RESTRICT` foreign keys, indexes including the
+  partial unique index of one pending decision per application, and the audit, no-delete and no-truncate triggers);
+  both tables identical to the tested local ones. **Grants:** `SELECT, INSERT` on `assignment_transfers` and
+  `transfer_decisions`, and `UPDATE (status, resolved_at, resolved_by_id, resolution_code, resolution_reason)` on
+  `transfer_decisions`, in one transaction; verified: no table-wide UPDATE, DELETE, TRUNCATE, TRIGGER or REFERENCES;
+  `ims_app` owns nothing and holds no elevated attribute or membership; identical to the local grants (see
+  [least-privilege.md](least-privilege.md)). After: every pre-existing table, trigger, function and grant unchanged;
+  the only data change was the migration history (10 → 12); both new tables empty. `wrangler.jsonc` adds only the Cron
+  Trigger (`EVENT_EMAILS` still `enabled`, staff domains unchanged); bindings and secrets unchanged (the four names
+  present, not re-entered). Before: 84/84 .NET tests, 472/472 Worker tests, Worker typecheck and dry-run build,
+  362/362 frontend tests, frontend build and lint passed; the owner manually tested the feature in the local frontend
+  (local Docker database). After (signed out, read-only): `/health` Healthy; `/api/auth/config` 200 with both staff
+  domains; `/api/auth/me`, `/api/hr/mentors`, `/api/hr/assignments`, the transfer, cancel and earlier-notes endpoints
+  401; site `/` and `/hr/trainings` 200; both translation files serve the new labels; the served HR Trainings chunk
+  contains the scheduled-transfer, cancel and decision-history UI and the HR API chunk the cancel call; Worker
+  `beaf2d36` at 100%; the scheduler's due query and the HR list's transfer subqueries run as `ims_app` (read-only):
+  nothing due, no transfer data. **Not live-tested:** no transfer was decided, cancelled or executed in production,
+  and the first scheduled run had not happened at the time of the release (the logic is covered by the automated
+  tests). Rollback: Worker `e7913829` and site `b8d97853` together (below).
+- Previous (responsible HR and mentor-request routing, AD-64, 2026-11-13): Worker `ims-api` version `e7913829-8be9-4172-bba3-89f0aa1755de` and Pages production deployment
   `b8d97853-bea0-426a-a0d3-f67ab9ca6a2d` (commit `d0b193d`; database first, then Worker, then Pages). Each accepted
   application has a responsible HR: the HR member who accepted it (`training_applications.decided_by_id`, never
   changed) until an Admin appoints a replacement in Admin › Accepted trainees (`PUT
@@ -316,9 +358,16 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 | C3 | One rate-limit counter shared by trainee sign-in and application submit | **Open**: owner decision (optional) |
 
 ### Rollback
-- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`54722aca-948c-4ec6-9c91-36983dfa0e31`, commit `a0a9977`, before the responsible HR: the Admin page then has no responsible HR column; roll back the Worker with it, and never leave this site version behind the older Worker; earlier: `eb43ce16-2927-49be-88c9-ad44bf337454`, commit `74eaf72`, before the training extension: no Extend action or extension history; `7272d5d9-3ade-4802-9150-b04f3a9ca230`, commit `958578d`, before the Google trainee sign-in and the homepage cleanup; `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
+- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`b8d97853-bea0-426a-a0d3-f67ab9ca6a2d`, commit `d0b193d`, before the transfer: HR › Trainings has no Transfer action; roll back the Worker to `e7913829` with it; earlier: `54722aca-948c-4ec6-9c91-36983dfa0e31`, commit `a0a9977`, before the responsible HR: the Admin page then has no responsible HR column; roll back the Worker with it, and never leave this site version behind the older Worker; earlier: `eb43ce16-2927-49be-88c9-ad44bf337454`, commit `74eaf72`, before the training extension: no Extend action or extension history; `7272d5d9-3ade-4802-9150-b04f3a9ca230`, commit `958578d`, before the Google trainee sign-in and the homepage cleanup; `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback 422b35e8-1406-449c-8fb4-f22886e17f58` (in `backend-workers/`; before the
+- **Worker code:** `npx wrangler rollback e7913829-8be9-4172-bba3-89f0aa1755de` (in `backend-workers/`; before the
+  transfer: the transfer, cancel, mentors and earlier-notes endpoints are gone; **roll back the site to `b8d97853` with
+  it**; the `assignment_transfers` and `transfer_decisions` tables, their rows and grants stay, unused; a Pending
+  decision is then not executed, and executes on the next run once AD-65 is deployed again, with its own dates). The
+  Cron Trigger is configured on the Worker, not stored in its versions: after rolling back to a version without a
+  `scheduled` handler, remove it with `npx wrangler triggers deploy` from a configuration without `crons` (or in the
+  dashboard), otherwise each run only logs a missing-handler error; or
+  `422b35e8-1406-449c-8fb4-f22886e17f58` (before the
   responsible HR: mentor requests notify every HR user again; **roll back the site to `54722aca` with it**, because the
   new Admin › Accepted trainees page needs the responsible HR from the API; the `responsible_hr_changes` table, its
   rows and its grant stay, unused), or
@@ -356,7 +405,9 @@ None of these touches the data.
   verified on 2026-11-04 before the `ims_app` rollout; another on 2026-11-12 before the `AssignmentExtensions`
   migration (restored into a disposable container: every row count and the assignment and audit checksums equal to
   production); another on 2026-11-13 before the `ResponsibleHrChanges` migration (restored likewise: 53 triggers,
-  every business table's checksum and every row count equal to production).
+  every business table's checksum and every row count equal to production); another on 2026-11-13 before the AD-65
+  migrations (56 triggers, every row count and the business checksums equal to production; restoring a Neon dump into
+  plain PostgreSQL needs the Neon-only `SET (pg_attver=…)` column statements left out, see the AD-65 deployment).
 - Rolling back the Worker or Pages never touches the database (above).
 
 ### Google sign-in
