@@ -48,6 +48,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<AssignmentExtension> AssignmentExtensions => Set<AssignmentExtension>();
 
+    public DbSet<AssignmentTransfer> AssignmentTransfers => Set<AssignmentTransfer>();
+
+    public DbSet<TransferDecision> TransferDecisions => Set<TransferDecision>();
+
     public DbSet<ResponsibleHrChange> ResponsibleHrChanges => Set<ResponsibleHrChange>();
 
     public DbSet<Notification> Notifications => Set<Notification>();

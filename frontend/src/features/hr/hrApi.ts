@@ -5,6 +5,7 @@ import type {
   ContactMethod,
   HrApplication,
   HrAssignment,
+  HrMentor,
   HrMentorRequest,
   HrTrainee,
   TraineeHistory,
@@ -44,6 +45,21 @@ export const hrApi = {
     apiRequest<HrAssignment>('POST', `/hr/assignments/${id}/extend`, { endDate, reason }),
   withdrawAssignment: (id: string, endDate: string, reason: string) =>
     apiRequest<HrAssignment>('POST', `/hr/assignments/${id}/withdraw`, { endDate, reason }),
+  /**
+   * AD-65: the current responsible HR transfers the training to another mentor with a reason: today (executed at once;
+   * returns the new assignment) or a later date (scheduled; returns this assignment with its pending decision).
+   */
+  transferAssignment: (id: string, employeeId: string, transferDate: string, reason: string) =>
+    apiRequest<HrAssignment>('POST', `/hr/assignments/${id}/transfer`, {
+      employeeId,
+      transferDate,
+      reason,
+    }),
+  /** AD-65: the current responsible HR cancels a pending transfer, with a reason; returns the assignment. */
+  cancelTransfer: (decisionId: string, reason: string) =>
+    apiRequest<HrAssignment>('POST', `/hr/transfer-decisions/${decisionId}/cancel`, { reason }),
+  /** AD-65: the users who hold the Employee role now (possible incoming mentors). */
+  mentors: () => apiRequest<HrMentor[]>('GET', '/hr/mentors'),
   trainees: () => apiRequest<HrTrainee[]>('GET', '/hr/trainees'),
   /** One trainee's history; the optional filters narrow its trainings only (period overlap, field). */
   traineeHistory: (

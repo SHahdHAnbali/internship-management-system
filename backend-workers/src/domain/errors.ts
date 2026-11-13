@@ -33,6 +33,20 @@ export class ConcurrencyError extends Error {
   }
 }
 
+/**
+ * The request conflicts with the current state of other records (HTTP 409), with a stable `code`; for example a
+ * second transfer of a training while one is pending.
+ */
+export class StateConflictError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'StateConflictError';
+    this.code = code;
+  }
+}
+
 /** No e-mail provider is configured, so the message cannot be delivered (HTTP 503). */
 export class EmailNotConfiguredError extends Error {
   constructor() {

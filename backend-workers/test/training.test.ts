@@ -1088,9 +1088,16 @@ describe('HR: running trainings (the list)', () => {
       trainee: { id: current.trainee.user.id, fullName: 'Current Trainee', email: current.trainee.email },
       employee: { id: employee.user.id, fullName: expect.any(String), email: employee.email },
       fieldName: field.name,
+      // AD-65: this HR accepted the application, so is its responsible HR and may transfer the Active training.
+      canTransfer: true,
+      canCancelTransfer: false,
+      transferDecisions: [],
+      transferredFrom: null,
+      transferredTo: null,
     });
     expect(list.find((a) => a.id === previous.assignmentId)).toMatchObject({
       status: 'Completed',
+      canTransfer: false,
       employee: { id: colleague.user.id },
     });
     // Reading changes nothing.

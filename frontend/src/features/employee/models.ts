@@ -46,6 +46,20 @@ export interface MyTrainee {
   endDate: string;
   trainee: { fullName: string | null; university: string | null; major: string | null };
   fieldName: string;
+  /**
+   * AD-65: this is the latest assignment of a training that was transferred to this employee, so they may read the
+   * earlier mentors' notes (read-only). Absent from an API older than AD-65.
+   */
+  canReadEarlierNotes?: boolean;
+}
+
+/** An earlier mentor's progress note of the same training (AD-65), read-only. */
+export interface EarlierProgressNote {
+  id: string;
+  writtenAt: string;
+  text: string;
+  authorName: string;
+  assignment: { startDate: string; endDate: string; mentorName: string };
 }
 
 export interface ProgressNote {

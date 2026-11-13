@@ -5,13 +5,14 @@ import { required } from '../../domain/guard';
 import { MENTOR_NOTE_MAX_LENGTH, parseDate, PROGRESS_NOTE_MAX_LENGTH } from '../../domain/training';
 import { parseGuid, uuidV7 } from '../../domain/uuid';
 import { bindJson, type RequestSchema } from '../../http/body';
-import { json, statusProblem } from '../../http/problems';
+import { endpointFailure, json, statusProblem } from '../../http/problems';
 import { routeId, type Route } from '../../http/routes';
 import { EMPLOYEE_MAY_SEE_CV, IS_AVAILABLE } from './access';
 import { mentorRequestSubmittedEmails, sendEventEmails } from '../notifications/eventEmails';
 import { notifyEmployee } from '../notifications/notify';
 import { fileLink } from './files';
 import { eligibleResponsibleHr, type ResponsibleHrRecipient } from './responsibleHr';
+import { assertNoDueTransfer } from './transfers';
 
 /**
  * `/api/employee` (Employee role only; PDF §2, §4): the available trainees (accepted and not yet assigned), filterable
@@ -205,9 +206,10 @@ export const employeeRoutes: Route[] = [
         university: string | null;
         major: string | null;
         field_name: string;
+        can_read_earlier_notes: boolean;
       }>(
         `SELECT s.id, s.application_id, s.status, s.start_date::text, s.end_date::text, t.full_name, t.university, t.major,
-                f.name AS field_name
+                f.name AS field_name, ${IS_LATEST_WITH_EARLIER} AS can_read_earlier_notes
            FROM assignments s JOIN training_applications a ON a.id = s.application_id
            JOIN trainees t ON t.id = a.trainee_id JOIN fields f ON f.id = a.field_id
           WHERE s.employee_id = $1 ORDER BY s.start_date DESC`,
@@ -222,6 +224,55 @@ export const employeeRoutes: Route[] = [
           endDate: r.end_date,
           trainee: { fullName: r.full_name, university: r.university, major: r.major },
           fieldName: r.field_name,
+          canReadEarlierNotes: r.can_read_earlier_notes,
+        })),
+      );
+    },
+  },
+  {
+    // AD-65: the earlier mentors' progress notes of the same training, read-only, for the mentor of its latest assignment
+    // (nothing transferred out of it), also after the training has ended. An earlier mentor keeps reading only their own
+    // notes (the endpoint above); nobody else reads these.
+    method: 'GET',
+    path: '/api/employee/assignments/:id/earlier-notes',
+    policy: 'Employee',
+    async handle(c) {
+      const assignment = await ownAssignment(c, routeId(c));
+      const { rows: latest } = await c.var.db.query<{ latest: boolean }>(
+        'SELECT NOT EXISTS (SELECT 1 FROM assignment_transfers x WHERE x.from_assignment_id = $1) AS latest',
+        [assignment.id],
+      );
+      if (!latest[0]?.latest) {
+        return endpointFailure(
+          403,
+          'progress_note.not_latest_mentor',
+          "Only the mentor of the training's latest assignment may read the earlier mentors' notes.",
+        );
+      }
+      const { rows } = await c.var.db.query<{
+        id: string;
+        written_at: Date;
+        text: string;
+        author_name: string;
+        start_date: string;
+        end_date: string;
+        mentor_name: string;
+      }>(
+        `SELECT n.id, n.written_at, n.text, au.full_name AS author_name, p.start_date::text, p.end_date::text,
+                pe.full_name AS mentor_name
+           FROM progress_notes n JOIN assignments p ON p.id = n.assignment_id
+           JOIN employees au ON au.id = n.author_id JOIN employees pe ON pe.id = p.employee_id
+          WHERE p.application_id = (SELECT application_id FROM assignments WHERE id = $1) AND p.id <> $1
+          ORDER BY n.written_at, n.id`,
+        [assignment.id],
+      );
+      return json(
+        rows.map((n) => ({
+          id: n.id,
+          writtenAt: n.written_at,
+          text: n.text,
+          authorName: n.author_name,
+          assignment: { startDate: n.start_date, endDate: n.end_date, mentorName: n.mentor_name },
         })),
       );
     },
@@ -257,16 +308,32 @@ export const employeeRoutes: Route[] = [
 
       const now = c.var.deps.now();
       const id = uuidV7(now);
-      await c.var.db.transaction(c.var.actor, (tx) =>
-        tx.query(
+      await c.var.db.transaction(c.var.actor, async (tx) => {
+        // AD-65: under a shared lock, so a transfer executed meanwhile is seen (the note would belong to an assignment
+        // that has ended), and never while a transfer that takes effect today waits for the scheduled run.
+        const { rows } = await tx.query<{ status: string }>('SELECT status FROM assignments WHERE id = $1 FOR SHARE', [
+          assignment.id,
+        ]);
+        if (rows[0]?.status !== 'Active') {
+          throw new DomainError('progress_note.not_active', 'Notes can only be written while the training is active.');
+        }
+        await assertNoDueTransfer(tx, assignment.id, now);
+        await tx.query(
           'INSERT INTO progress_notes (id, assignment_id, author_id, written_at, text) VALUES ($1, $2, $3, $4, $5)',
           [id, assignment.id, c.var.user!.id, now, text],
-        ),
-      );
+        );
+      });
       return json({ id, writtenAt: now, text }, 201);
     },
   },
 ];
+
+/**
+ * AD-65: `s` is the latest assignment of its training (nothing was transferred out of it) and the training has earlier
+ * assignments, so its mentor may read the earlier mentors' notes.
+ */
+const IS_LATEST_WITH_EARLIER = `(NOT EXISTS (SELECT 1 FROM assignment_transfers x WHERE x.from_assignment_id = s.id)
+  AND EXISTS (SELECT 1 FROM assignments p WHERE p.application_id = s.application_id AND p.id <> s.id))`;
 
 /** The signed-in employee's own assignment; another employee's is reported as not found. */
 async function ownAssignment(c: Context<AppEnv>, id: string) {

@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import type { AppEnv } from '../../context';
-import { ConcurrencyError, DomainError, NotFoundError } from '../../domain/errors';
-import { updateOrConflict } from '../../db';
+import { ConcurrencyError, DomainError, NotFoundError, StateConflictError } from '../../domain/errors';
+import { updateOrConflict, type Queryable } from '../../db';
 import { required } from '../../domain/guard';
 import {
   APPLICATION_STATUSES,
@@ -14,6 +14,7 @@ import {
   ASSIGNMENT_EXTENSION_REASON_MAX_LENGTH,
   calendarDate,
   endAssignment,
+  decideTransfer,
   extendAssignment,
   type AssignmentEndingKind,
   MENTOR_REQUEST_STATUSES,
@@ -25,12 +26,20 @@ import {
 } from '../../domain/training';
 import { parseGuid, uuidV7 } from '../../domain/uuid';
 import { bindJson, type RequestSchema } from '../../http/body';
-import { json, statusProblem } from '../../http/problems';
+import { endpointFailure, json, statusProblem } from '../../http/problems';
 import { routeId, type Route } from '../../http/routes';
 import { applicationDecisionEmails, mentorRequestDecisionEmails, sendEventEmails } from '../notifications/eventEmails';
 import { notifyEmployee } from '../notifications/notify';
 import { readableAttachment } from './access';
 import { fileLink } from './files';
+import { CURRENT_RESPONSIBLE_HR_ID } from './responsibleHr';
+import {
+  applyTransfer,
+  assertNoDueTransfer,
+  holdsEmployeeRole,
+  lockAssignment,
+  voidPendingTransfer,
+} from './transfers';
 import { attachmentsOf } from './traineeRoutes';
 
 /**
@@ -77,6 +86,43 @@ const extendAssignmentRequest: RequestSchema = {
     { name: 'Reason', kind: 'string', required: true, maxLength: ASSIGNMENT_EXTENSION_REASON_MAX_LENGTH },
   ],
 };
+
+// AD-65: the current responsible HR transfers a training to another mentor (an Employee), from today or a later date,
+// with a reason.
+const transferAssignmentRequest: RequestSchema = {
+  typeName: 'Ims.Application.Hr.TransferAssignmentRequest',
+  properties: [
+    { name: 'EmployeeId', kind: 'string', required: true, maxLength: 36 },
+    { name: 'TransferDate', kind: 'string', required: true, maxLength: 10 },
+    { name: 'Reason', kind: 'string', required: true, maxLength: ASSIGNMENT_END_REASON_MAX_LENGTH },
+  ],
+};
+
+// AD-65: the current responsible HR cancels a pending transfer, with a reason.
+const cancelTransferRequest: RequestSchema = {
+  typeName: 'Ims.Application.Hr.CancelTransferRequest',
+  properties: [{ name: 'Reason', kind: 'string', required: true, maxLength: ASSIGNMENT_END_REASON_MAX_LENGTH }],
+};
+
+const notResponsible = () =>
+  endpointFailure(
+    403,
+    'assignment.transfer_not_responsible',
+    "Only the training application's current responsible HR may transfer it or cancel its transfer.",
+  );
+
+/**
+ * Whether `hrId` is the application's current responsible HR (AD-64), read under a shared lock: an Admin's replacement
+ * of the responsible HR waits for this transaction, and this one waits for a replacement already under way, so the
+ * check and the change see the same holder.
+ */
+async function isResponsibleHr(tx: Queryable, applicationId: string, hrId: string): Promise<boolean> {
+  const { rows } = await tx.query<{ responsible_hr_id: string }>(
+    `SELECT ${CURRENT_RESPONSIBLE_HR_ID} AS responsible_hr_id FROM training_applications a WHERE a.id = $1 FOR SHARE`,
+    [applicationId],
+  );
+  return rows[0]?.responsible_hr_id === hrId;
+}
 
 const APPLICATION_SELECT = `
   SELECT a.id, a.status, a.available_from::text, a.available_to::text, a.hours, a.mandatory_for_university,
@@ -383,7 +429,7 @@ export const hrRoutes: Route[] = [
   },
   {
     // PDF §4 "running training": every assignment with its trainee, mentor, field, dates, status and, once ended, the
-    // reason HR recorded (shown to HR only, AD-63). Ending is below; extend, transfer and reopen are not built.
+    // reason HR recorded (shown to HR only, AD-63). Ending, extending and transferring are below; reopening is not built.
     method: 'GET',
     path: '/api/hr/assignments',
     policy: 'HR',
@@ -442,8 +488,168 @@ export const hrRoutes: Route[] = [
           `UPDATE assignments SET end_date = $2 WHERE id = $1 AND status = 'Active' AND xmin = $3::xid`,
           [id, extension.newEndDate, current.version],
         );
+        // AD-65: not while a transfer that takes effect today waits for the scheduled run. A scheduled transfer's
+        // incoming assignment inherits the extended end date when it is executed.
+        await assertNoDueTransfer(tx, id, now);
       });
       return json((await hrAssignments(c, id))[0]);
+    },
+  },
+  {
+    // AD-65 (revised): the current responsible HR (AD-64) decides to transfer an Active training to another mentor, who
+    // holds the Employee role now and does not approve. Today: the decision is executed at once in the same transaction
+    // (the outgoing assignment becomes Transferred and ends yesterday, the incoming one starts today with the same
+    // planned end date, the link is recorded). A later date: the decision stays Pending and nothing else changes; the
+    // scheduled job executes it on that date. Past dates are refused. At most one pending transfer per training (409).
+    // Audited with the HR user as the actor. No e-mail or notification (none in PDF §7 for a transfer, AD-59).
+    method: 'POST',
+    path: '/api/hr/assignments/:id/transfer',
+    policy: 'HR',
+    async handle(c) {
+      const body = await bindJson<{ employeeId: string; transferDate: string; reason: string }>(
+        c.req.raw,
+        transferAssignmentRequest,
+        c.var.traceId,
+      );
+      if (!body.ok) return body.response;
+      const id = routeId(c);
+      const hrId = c.var.user!.id;
+      const { rows } = await c.var.db.query<{ application_id: string; responsible_hr_id: string }>(
+        `SELECT s.application_id, ${CURRENT_RESPONSIBLE_HR_ID} AS responsible_hr_id
+           FROM assignments s JOIN training_applications a ON a.id = s.application_id
+          WHERE s.id = $1`,
+        [id],
+      );
+      if (!rows[0]) throw NotFoundError.for('Assignment', id);
+      if (rows[0].responsible_hr_id !== hrId) return notResponsible();
+
+      const now = c.var.deps.now();
+      const today = calendarDate(now);
+      const outcome = await c.var.db.transaction(c.var.actor, async (tx) => {
+        if (!(await isResponsibleHr(tx, rows[0]!.application_id, hrId))) return notResponsible();
+        // The rules are checked against the assignment as locked here, so a concurrent change waits or is seen.
+        const current = (await lockAssignment(tx, id))!;
+        const decision = decideTransfer(
+          {
+            employeeId: parseGuid(body.value.employeeId),
+            transferDate: body.value.transferDate,
+            reason: body.value.reason,
+          },
+          {
+            status: current.status,
+            startDate: current.start_date,
+            plannedEndDate: current.end_date,
+            employeeId: current.employee_id,
+          },
+          today,
+        );
+        const { rows: pending } = await tx.query(
+          "SELECT 1 FROM transfer_decisions WHERE application_id = $1 AND status = 'Pending'",
+          [current.application_id],
+        );
+        if (pending.length > 0) {
+          throw new StateConflictError(
+            'assignment.transfer_pending',
+            'A transfer of this training is already scheduled. Cancel it first to choose another one.',
+          );
+        }
+        if (!(await holdsEmployeeRole(tx, decision.incomingEmployeeId))) {
+          throw new DomainError(
+            'assignment.transfer_mentor_not_employee',
+            'The incoming mentor must currently hold the Employee role.',
+          );
+        }
+        const pendingDecision = {
+          id: uuidV7(now),
+          incoming_employee_id: decision.incomingEmployeeId,
+          effective_date: decision.effectiveDate,
+          reason: decision.reason,
+          decided_by_id: hrId,
+        };
+        // Pending first, so the unique index (one pending decision per application) also guards an immediate one.
+        await tx.query(
+          `INSERT INTO transfer_decisions
+             (id, application_id, from_assignment_id, incoming_employee_id, effective_date, reason, decided_by_id,
+              decided_at, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending')`,
+          [
+            pendingDecision.id,
+            current.application_id,
+            id,
+            pendingDecision.incoming_employee_id,
+            pendingDecision.effective_date,
+            pendingDecision.reason,
+            hrId,
+            now,
+          ],
+        );
+        if (decision.effectiveDate > today) return id;
+        return applyTransfer(tx, pendingDecision, current, now);
+      });
+      if (outcome instanceof Response) return outcome;
+      return json((await hrAssignments(c, outcome))[0]);
+    },
+  },
+  {
+    // AD-65 (revised): the current responsible HR cancels a pending transfer, with a mandatory reason. The decision is
+    // kept (Cancelled, with who, when and why); to choose another date or mentor, HR then decides a new transfer.
+    method: 'POST',
+    path: '/api/hr/transfer-decisions/:id/cancel',
+    policy: 'HR',
+    async handle(c) {
+      const body = await bindJson<{ reason: string }>(c.req.raw, cancelTransferRequest, c.var.traceId);
+      if (!body.ok) return body.response;
+      const id = routeId(c);
+      const hrId = c.var.user!.id;
+      const reason = required(body.value.reason, 'Cancellation reason', ASSIGNMENT_END_REASON_MAX_LENGTH);
+      const { rows } = await c.var.db.query<{
+        application_id: string;
+        from_assignment_id: string;
+        responsible_hr_id: string;
+      }>(
+        `SELECT d.application_id, d.from_assignment_id, ${CURRENT_RESPONSIBLE_HR_ID} AS responsible_hr_id
+           FROM transfer_decisions d JOIN training_applications a ON a.id = d.application_id
+          WHERE d.id = $1`,
+        [id],
+      );
+      const decision = rows[0];
+      if (!decision) throw NotFoundError.for('TransferDecision', id);
+      if (decision.responsible_hr_id !== hrId) return notResponsible();
+
+      const now = c.var.deps.now();
+      const refused = await c.var.db.transaction(c.var.actor, async (tx) => {
+        if (!(await isResponsibleHr(tx, decision.application_id, hrId))) return notResponsible();
+        await lockAssignment(tx, decision.from_assignment_id); // the same lock order as the scheduled job
+        const { rows: locked } = await tx.query<{ status: string }>(
+          'SELECT status FROM transfer_decisions WHERE id = $1 FOR UPDATE',
+          [id],
+        );
+        if (locked[0]?.status !== 'Pending') {
+          throw new DomainError('transfer_decision.invalid_status', 'The transfer is no longer pending.');
+        }
+        await tx.query(
+          `UPDATE transfer_decisions
+              SET status = 'Cancelled', resolved_by_id = $2, resolution_reason = $3, resolved_at = $4
+            WHERE id = $1 AND status = 'Pending'`,
+          [id, hrId, reason, now],
+        );
+        return null;
+      });
+      if (refused) return refused;
+      return json((await hrAssignments(c, decision.from_assignment_id))[0]);
+    },
+  },
+  {
+    // AD-65: the mentors HR may choose as the incoming mentor of a transfer: users who hold the Employee role now. Names
+    // only.
+    method: 'GET',
+    path: '/api/hr/mentors',
+    policy: 'HR',
+    async handle(c) {
+      const { rows } = await c.var.db.query<{ id: string; full_name: string }>(
+        "SELECT id, full_name FROM employees WHERE role = 'Employee' ORDER BY full_name, id",
+      );
+      return json(rows.map((r) => ({ id: r.id, fullName: r.full_name })));
     },
   },
   {
@@ -681,9 +887,31 @@ interface HrAssignmentRow {
   employee_name: string;
   employee_email: string;
   field_name: string;
+  can_transfer: boolean;
+  can_cancel_transfer: boolean;
+  transfer_decisions: {
+    id: string;
+    status: string;
+    effectiveDate: string;
+    incomingEmployeeName: string;
+    reason: string;
+    decidedBy: string;
+    decidedAt: string;
+    resolvedAt: string | null;
+    resolvedBy: string | null;
+    resolutionCode: string | null;
+    resolutionReason: string | null;
+  }[];
+  transferred_from: { assignmentId: string; employeeName: string } | null;
+  transferred_to: { assignmentId: string; employeeName: string } | null;
 }
 
-/** HR's view of the assignments (all, or one), newest first. */
+/**
+ * HR's view of the assignments (all, or one), newest first, with the transfer decisions taken from each (AD-65: pending,
+ * executed, cancelled or void, oldest first), the executed transfer links, and whether the signed-in HR may transfer it
+ * (Active, no pending transfer, and they are the application's current responsible HR, AD-64) or cancel its pending
+ * transfer (the same HR). The endpoints check the same themselves.
+ */
 async function hrAssignments(c: Context<AppEnv>, id: string | null = null) {
   const { rows } = await c.var.db.query<HrAssignmentRow>(
     `SELECT s.id, s.application_id, s.status, s.start_date::text, s.end_date::text, s.end_reason,
@@ -694,13 +922,39 @@ async function hrAssignments(c: Context<AppEnv>, id: string | null = null) {
                         FROM assignment_extensions x JOIN employees h ON h.id = x.extended_by_id
                        WHERE x.assignment_id = s.id), '[]') AS extensions,
             t.id AS trainee_id, t.full_name AS trainee_name, t.email AS trainee_email,
-            e.id AS employee_id, e.full_name AS employee_name, e.email AS employee_email, f.name AS field_name
+            e.id AS employee_id, e.full_name AS employee_name, e.email AS employee_email, f.name AS field_name,
+            (s.status = 'Active' AND ${CURRENT_RESPONSIBLE_HR_ID} = $2::uuid
+               AND NOT EXISTS (SELECT 1 FROM transfer_decisions d
+                                WHERE d.application_id = s.application_id AND d.status = 'Pending')) AS can_transfer,
+            (${CURRENT_RESPONSIBLE_HR_ID} = $2::uuid
+               AND EXISTS (SELECT 1 FROM transfer_decisions d
+                            WHERE d.from_assignment_id = s.id AND d.status = 'Pending')) AS can_cancel_transfer,
+            coalesce((SELECT json_agg(json_build_object('id', d.id, 'status', d.status,
+                                                        'effectiveDate', d.effective_date::text,
+                                                        'incomingEmployeeName', ie.full_name, 'reason', d.reason,
+                                                        'decidedBy', dh.full_name, 'decidedAt', d.decided_at,
+                                                        'resolvedAt', d.resolved_at, 'resolvedBy', rh.full_name,
+                                                        'resolutionCode', d.resolution_code,
+                                                        'resolutionReason', d.resolution_reason)
+                                      ORDER BY d.decided_at, d.id)
+                        FROM transfer_decisions d JOIN employees ie ON ie.id = d.incoming_employee_id
+                        JOIN employees dh ON dh.id = d.decided_by_id
+                        LEFT JOIN employees rh ON rh.id = d.resolved_by_id
+                       WHERE d.from_assignment_id = s.id), '[]') AS transfer_decisions,
+            (SELECT json_build_object('assignmentId', o.id, 'employeeName', oe.full_name)
+               FROM assignment_transfers x JOIN assignments o ON o.id = x.from_assignment_id
+               JOIN employees oe ON oe.id = o.employee_id
+              WHERE x.to_assignment_id = s.id) AS transferred_from,
+            (SELECT json_build_object('assignmentId', o.id, 'employeeName', oe.full_name)
+               FROM assignment_transfers x JOIN assignments o ON o.id = x.to_assignment_id
+               JOIN employees oe ON oe.id = o.employee_id
+              WHERE x.from_assignment_id = s.id) AS transferred_to
        FROM assignments s JOIN employees e ON e.id = s.employee_id
        JOIN training_applications a ON a.id = s.application_id JOIN trainees t ON t.id = a.trainee_id
        JOIN fields f ON f.id = a.field_id
       WHERE ($1::uuid IS NULL OR s.id = $1)
       ORDER BY s.start_date DESC, s.created_at DESC`,
-    [id],
+    [id, c.var.user!.id],
   );
   return rows.map((r) => ({
     id: r.id,
@@ -713,6 +967,11 @@ async function hrAssignments(c: Context<AppEnv>, id: string | null = null) {
     trainee: { id: r.trainee_id, fullName: r.trainee_name, email: r.trainee_email },
     employee: { id: r.employee_id, fullName: r.employee_name, email: r.employee_email },
     fieldName: r.field_name,
+    canTransfer: r.can_transfer,
+    canCancelTransfer: r.can_cancel_transfer,
+    transferDecisions: r.transfer_decisions,
+    transferredFrom: r.transferred_from,
+    transferredTo: r.transferred_to,
   }));
 }
 
@@ -742,13 +1001,18 @@ async function endHrAssignment(c: Context<AppEnv>, kind: AssignmentEndingKind) {
     { status: current.status, startDate: current.start_date, plannedEndDate: current.end_date },
     calendarDate(c.var.deps.now()),
   );
-  await c.var.db.transaction(c.var.actor, (tx) =>
-    updateOrConflict(
+  const now = c.var.deps.now();
+  await c.var.db.transaction(c.var.actor, async (tx) => {
+    await updateOrConflict(
       tx,
       `UPDATE assignments SET status = $2, end_date = $3, end_reason = $4
         WHERE id = $1 AND status = 'Active' AND xmin = $5::xid`,
       [id, ending.status, ending.endDate, ending.reason, current.version],
-    ),
-  );
+    );
+    // AD-65: not while a transfer that takes effect today waits for the scheduled run; a transfer scheduled for a later
+    // date can no longer happen, so its decision is voided (kept, with the reason code).
+    await assertNoDueTransfer(tx, id, now);
+    await voidPendingTransfer(tx, id, now);
+  });
   return json((await hrAssignments(c, id))[0]);
 }

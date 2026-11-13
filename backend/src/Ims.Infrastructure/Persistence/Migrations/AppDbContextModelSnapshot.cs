@@ -613,6 +613,62 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ims.Domain.Mentoring.AssignmentTransfer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("DecisionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decision_id");
+
+                    b.Property<Guid>("FromAssignmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("from_assignment_id");
+
+                    b.Property<Guid>("ToAssignmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("to_assignment_id");
+
+                    b.Property<DateTimeOffset>("TransferredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("transferred_at");
+
+                    b.Property<Guid>("TransferredById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transferred_by_id");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_assignment_transfers");
+
+                    b.HasIndex("DecisionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_assignment_transfers_decision_id");
+
+                    b.HasIndex("FromAssignmentId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_assignment_transfers_from_assignment_id");
+
+                    b.HasIndex("ToAssignmentId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_assignment_transfers_to_assignment_id");
+
+                    b.HasIndex("TransferredById")
+                        .HasDatabaseName("ix_assignment_transfers_transferred_by_id");
+
+                    b.ToTable("assignment_transfers", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_assignment_transfers_distinct", "from_assignment_id <> to_assignment_id");
+                        });
+                });
+
             modelBuilder.Entity("Ims.Domain.Mentoring.MentorRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -717,6 +773,107 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_progress_notes_author_id");
 
                     b.ToTable("progress_notes", (string)null);
+                });
+
+            modelBuilder.Entity("Ims.Domain.Mentoring.TransferDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<DateTimeOffset>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid>("DecidedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_id");
+
+                    b.Property<DateOnly>("EffectiveDate")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_date");
+
+                    b.Property<Guid>("FromAssignmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("from_assignment_id");
+
+                    b.Property<Guid>("IncomingEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("incoming_employee_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("ResolutionCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("resolution_code");
+
+                    b.Property<string>("ResolutionReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("resolution_reason");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<Guid?>("ResolvedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resolved_by_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_transfer_decisions");
+
+                    b.HasIndex("ApplicationId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_transfer_decisions_application_id")
+                        .HasFilter("status = 'Pending'");
+
+                    b.HasIndex("DecidedById")
+                        .HasDatabaseName("ix_transfer_decisions_decided_by_id");
+
+                    b.HasIndex("FromAssignmentId")
+                        .HasDatabaseName("ix_transfer_decisions_from_assignment_id");
+
+                    b.HasIndex("IncomingEmployeeId")
+                        .HasDatabaseName("ix_transfer_decisions_incoming_employee_id");
+
+                    b.HasIndex("ResolvedById")
+                        .HasDatabaseName("ix_transfer_decisions_resolved_by_id");
+
+                    b.HasIndex("Status", "EffectiveDate")
+                        .HasDatabaseName("ix_transfer_decisions_status_effective_date");
+
+                    b.ToTable("transfer_decisions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_transfer_decisions_cancelled", "status <> 'Cancelled' OR (resolved_by_id IS NOT NULL AND resolution_reason IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_transfer_decisions_resolved", "(status = 'Pending') = (resolved_at IS NULL)");
+
+                            t.HasCheckConstraint("ck_transfer_decisions_status", "status IN ('Pending', 'Executed', 'Cancelled', 'Void')");
+
+                            t.HasCheckConstraint("ck_transfer_decisions_void", "status <> 'Void' OR resolution_code IS NOT NULL");
+                        });
                 });
 
             modelBuilder.Entity("Ims.Domain.Notifications.Notification", b =>
@@ -1199,6 +1356,37 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_assignment_extensions_employees_extended_by_id");
                 });
 
+            modelBuilder.Entity("Ims.Domain.Mentoring.AssignmentTransfer", b =>
+                {
+                    b.HasOne("Ims.Domain.Mentoring.TransferDecision", null)
+                        .WithMany()
+                        .HasForeignKey("DecisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_assignment_transfers_transfer_decisions_decision_id");
+
+                    b.HasOne("Ims.Domain.Mentoring.Assignment", null)
+                        .WithMany()
+                        .HasForeignKey("FromAssignmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_assignment_transfers_assignments_from_assignment_id");
+
+                    b.HasOne("Ims.Domain.Mentoring.Assignment", null)
+                        .WithMany()
+                        .HasForeignKey("ToAssignmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_assignment_transfers_assignments_to_assignment_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("TransferredById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_assignment_transfers_employees_transferred_by_id");
+                });
+
             modelBuilder.Entity("Ims.Domain.Mentoring.MentorRequest", b =>
                 {
                     b.HasOne("Ims.Domain.Applications.TrainingApplication", null)
@@ -1237,6 +1425,43 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_progress_notes_employees_author_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Mentoring.TransferDecision", b =>
+                {
+                    b.HasOne("Ims.Domain.Applications.TrainingApplication", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transfer_decisions_training_applications_application_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("DecidedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transfer_decisions_employees_decided_by_id");
+
+                    b.HasOne("Ims.Domain.Mentoring.Assignment", null)
+                        .WithMany()
+                        .HasForeignKey("FromAssignmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transfer_decisions_assignments_from_assignment_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("IncomingEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transfer_decisions_employees_incoming_employee_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("ResolvedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transfer_decisions_employees_resolved_by_id");
                 });
 
             modelBuilder.Entity("Ims.Domain.Notifications.Notification", b =>

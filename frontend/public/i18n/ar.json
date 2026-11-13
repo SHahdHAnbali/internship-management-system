@@ -333,7 +333,9 @@
         "user_sessions": "جلسات الدخول",
         "other": "بيانات أخرى",
         "assignment_extensions": "تمديدات التدريب",
-        "responsible_hr_changes": "تعيينات مسؤول الموارد البشرية"
+        "responsible_hr_changes": "تعيينات مسؤول الموارد البشرية",
+        "assignment_transfers": "عمليات نقل التدريب",
+        "transfer_decisions": "قرارات نقل التدريب"
       },
       "unknownUser": "مستخدم غير معروف",
       "traineeWithoutName": "متدرب (لم يُدخل اسمه بعد)",
@@ -497,6 +499,14 @@
         "responsible_hr_changes": {
           "created": "تم تعيين مسؤول موارد بشرية",
           "updated": "تم تحديث تعيين مسؤول موارد بشرية"
+        },
+        "assignment_transfers": {
+          "created": "تم نقل تدريب",
+          "updated": "تم تحديث نقل تدريب"
+        },
+        "transfer_decisions": {
+          "created": "تم اتخاذ قرار بنقل تدريب",
+          "updated": "تم تنفيذ قرار نقل تدريب أو إلغاؤه أو إبطاله"
         }
       }
     }
@@ -697,7 +707,11 @@
       "add": "إضافة ملاحظة",
       "saved": "تم حفظ الملاحظة.",
       "empty": "لا توجد ملاحظات بعد.",
-      "loadFailed": "تعذّر تحميل الملاحظات. يرجى المحاولة مرة أخرى."
+      "loadFailed": "تعذّر تحميل الملاحظات. يرجى المحاولة مرة أخرى.",
+      "earlierTitle": "ملاحظات المدرّبين السابقين",
+      "earlierEmpty": "لم يكتب المدرّبون السابقون أي ملاحظات.",
+      "earlierContext": "{{mentor}}، {{from}} – {{to}}",
+      "transferDue": "يُنقل هذا التدريب إلى مشرف آخر اليوم. لا يمكن إضافة ملاحظات الآن."
     },
     "reports": {
       "title": "تقاريري"
@@ -775,7 +789,16 @@
         "dateBeforeStart": "لا يمكن أن يكون تاريخ الانتهاء الفعلي قبل تاريخ بداية التدريب.",
         "dateInFuture": "لا يمكن أن يكون تاريخ الانتهاء الفعلي في المستقبل.",
         "reason": "أدخل السبب.",
-        "notLater": "يجب أن يكون تاريخ الانتهاء الجديد بعد تاريخ الانتهاء المخطط الحالي."
+        "notLater": "يجب أن يكون تاريخ الانتهاء الجديد بعد تاريخ الانتهاء المخطط الحالي.",
+        "mentor": "اختر المدرّب الجديد (غير المدرّب الحالي).",
+        "mentorNotEmployee": "المستخدم المختار لم يعد يحمل دور الموظف. اختر مدرّباً آخر.",
+        "transferNotAfterStart": "يجب أن يكون تاريخ النقل بعد تاريخ بدء التدريب.",
+        "transferAfterEnd": "لا يمكن أن يكون تاريخ النقل بعد تاريخ الانتهاء المخطط.",
+        "transferNotResponsible": "لا يستطيع نقل هذا التدريب إلا مسؤول الموارد البشرية للمتدرب.",
+        "transferInPast": "لا يمكن أن يكون تاريخ النقل في الماضي.",
+        "transferPending": "يوجد نقل مجدول لهذا التدريب. ألغِه أولًا لاختيار نقل آخر.",
+        "transferDue": "يبدأ نقل هذا التدريب اليوم وهو قيد التنفيذ. حاول مرة أخرى لاحقًا.",
+        "transferNotPending": "لم يعد هذا النقل مجدولًا."
       },
       "extend": "تمديد",
       "extendFor": "تمديد تدريب {{name}}",
@@ -789,7 +812,57 @@
       "historyFor": "سجل تمديدات تدريب {{name}}",
       "historyTitle": "تمديدات تدريب {{name}}",
       "extendedBy": "بواسطة {{name}} في {{date}}",
-      "close": "إغلاق"
+      "close": "إغلاق",
+      "transfer": "نقل",
+      "transferFor": "نقل تدريب {{name}}",
+      "transferTitle": "نقل تدريب {{name}}",
+      "currentMentor": "المدرّب الحالي",
+      "newMentor": "المدرّب الجديد",
+      "chooseMentor": "اختر مدرّباً",
+      "noMentors": "لا يوجد مستخدم آخر بدور الموظف.",
+      "transferDate": "تاريخ النقل",
+      "transferReason": "سبب النقل",
+      "plannedEndKept": "تاريخ الانتهاء المخطط (يبقى كما هو)",
+      "currentMentorUntil": "المدرّب الحالي حتى",
+      "transferNote": "لا يحتاج المدرّب الجديد إلى الموافقة. يبقى سجل تدريب المدرّب الحالي وملاحظاته محفوظاً.",
+      "transferred": "تم نقل التدريب.",
+      "transferredFrom": "منقول من {{name}}",
+      "transferredTo": "منقول إلى {{name}}",
+      "transferDateHint": "اختيار تاريخ اليوم ينقل التدريب فورًا، واختيار تاريخ لاحق يجدول النقل.",
+      "transferImmediate": "نقل فوري: يتولى المشرف الجديد التدريب اليوم.",
+      "transferScheduledHint": "نقل مجدول: يبقى المشرف الحالي مسؤولًا حتى {{date}}، حين يُنفَّذ النقل تلقائيًا.",
+      "transferType": "نوع النقل",
+      "typeImmediate": "فوري",
+      "typeScheduled": "مجدول بتاريخ {{date}}",
+      "transferScheduled": "تمت جدولة النقل.",
+      "scheduledTransfer": "نقل مجدول إلى {{name}} بتاريخ {{date}}",
+      "cancelTransfer": "إلغاء النقل المجدول",
+      "cancelTransferFor": "إلغاء النقل المجدول لتدريب {{name}}",
+      "cancelTransferTitle": "إلغاء النقل المجدول لتدريب {{name}}",
+      "cancelReason": "سبب الإلغاء",
+      "cancelTransferNote": "يبقى القرار محفوظًا في سجل التدريب. لاختيار تاريخ أو مشرف آخر، جدوِل نقلًا جديدًا.",
+      "confirmCancelTransfer": "إلغاء النقل",
+      "keepTransfer": "إبقاؤه",
+      "transferCancelled": "تم إلغاء النقل المجدول.",
+      "transferDecisions": "عمليات النقل ({{count}})",
+      "transferDecisionsFor": "قرارات نقل تدريب {{name}}",
+      "transferDecisionsTitle": "قرارات النقل: {{name}}",
+      "decisionTarget": "إلى {{name}}، اعتبارًا من {{date}}",
+      "decidedBy": "قرّره {{name}} بتاريخ {{date}}",
+      "executedOn": "نُفِّذ بتاريخ {{date}}",
+      "cancelledBy": "ألغاه {{name}} بتاريخ {{date}}",
+      "voidedOn": "لم يُنفَّذ ({{date}}): {{reason}}",
+      "decisionStatus": {
+        "Pending": "مجدول",
+        "Executed": "منفَّذ",
+        "Cancelled": "ملغى",
+        "Void": "لم يُنفَّذ"
+      },
+      "voidReasons": {
+        "training_ended": "انتهى التدريب قبل تاريخ النقل",
+        "mentor_not_employee": "لم يعد المشرف الجديد يحمل دور الموظف",
+        "dates_invalid": "لم تعد تواريخ النقل صالحة"
+      }
     },
     "reports": {
       "title": "التقارير",

@@ -9,6 +9,7 @@ import { withDb } from './helpers';
 const BUSINESS_TABLES = [
   'application_attachments',
   'assignment_extensions',
+  'assignment_transfers',
   'assignments',
   'certificate_templates',
   'contact_logs',
@@ -24,6 +25,7 @@ const BUSINESS_TABLES = [
   'trainee_sign_in_codes',
   'trainees',
   'training_applications',
+  'transfer_decisions',
   'user_sessions',
 ];
 

@@ -67,6 +67,51 @@ export interface HrAssignment {
   trainee: { id: string; fullName: string | null; email: string };
   employee: { id: string; fullName: string; email: string };
   fieldName: string;
+  /**
+   * AD-65: Active, and the signed-in HR is the application's current responsible HR (AD-64), so may transfer it. The
+   * server checks the same on the transfer itself. Absent from an API older than AD-65.
+   */
+  canTransfer?: boolean;
+  /** AD-65: the signed-in HR is the current responsible HR and this assignment has a pending transfer to cancel. */
+  canCancelTransfer?: boolean;
+  /** AD-65: the transfer decisions taken from this assignment (pending, executed, cancelled, void), oldest first. */
+  transferDecisions?: HrTransferDecision[];
+  /** AD-65: the assignment this one continues after a transfer, and its mentor. */
+  transferredFrom?: HrTransferLink | null;
+  /** AD-65: the assignment that continued this one after a transfer, and its mentor. */
+  transferredTo?: HrTransferLink | null;
+}
+
+export type TransferDecisionStatus = 'Pending' | 'Executed' | 'Cancelled' | 'Void';
+
+/**
+ * AD-65: the current responsible HR's decision to transfer a training from an effective date (today: executed at once;
+ * later: Pending until the scheduled run of that date). Never deleted: it ends Executed, Cancelled (with who and why) or
+ * Void (it could no longer be executed: `resolutionCode`).
+ */
+export interface HrTransferDecision {
+  id: string;
+  status: TransferDecisionStatus;
+  effectiveDate: string;
+  incomingEmployeeName: string;
+  reason: string;
+  decidedBy: string;
+  decidedAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  resolutionCode: string | null;
+  resolutionReason: string | null;
+}
+
+export interface HrTransferLink {
+  assignmentId: string;
+  employeeName: string;
+}
+
+/** A user who holds the Employee role now: a possible incoming mentor of a transfer (AD-65). */
+export interface HrMentor {
+  id: string;
+  fullName: string;
 }
 
 /** A trainee who applied (the entry to their history). */

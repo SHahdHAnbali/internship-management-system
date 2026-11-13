@@ -600,3 +600,82 @@ VALUES ('20261113100241_ResponsibleHrChanges', '10.0.13');
 
 COMMIT;
 
+START TRANSACTION;
+CREATE TABLE assignment_transfers (
+    id uuid NOT NULL,
+    from_assignment_id uuid NOT NULL,
+    to_assignment_id uuid NOT NULL,
+    transferred_by_id uuid NOT NULL,
+    transferred_at timestamp with time zone NOT NULL,
+    CONSTRAINT pk_assignment_transfers PRIMARY KEY (id),
+    CONSTRAINT ck_assignment_transfers_distinct CHECK (from_assignment_id <> to_assignment_id),
+    CONSTRAINT fk_assignment_transfers_assignments_from_assignment_id FOREIGN KEY (from_assignment_id) REFERENCES assignments (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_assignment_transfers_assignments_to_assignment_id FOREIGN KEY (to_assignment_id) REFERENCES assignments (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_assignment_transfers_employees_transferred_by_id FOREIGN KEY (transferred_by_id) REFERENCES employees (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX ix_assignment_transfers_transferred_by_id ON assignment_transfers (transferred_by_id);
+
+CREATE UNIQUE INDEX ux_assignment_transfers_from_assignment_id ON assignment_transfers (from_assignment_id);
+
+CREATE UNIQUE INDEX ux_assignment_transfers_to_assignment_id ON assignment_transfers (to_assignment_id);
+
+SELECT ims_protect_table('assignment_transfers');
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261113163803_AssignmentTransfers', '10.0.13');
+
+COMMIT;
+
+START TRANSACTION;
+ALTER TABLE assignment_transfers ADD decision_id uuid NOT NULL;
+
+CREATE TABLE transfer_decisions (
+    id uuid NOT NULL,
+    application_id uuid NOT NULL,
+    from_assignment_id uuid NOT NULL,
+    incoming_employee_id uuid NOT NULL,
+    effective_date date NOT NULL,
+    reason character varying(2000) NOT NULL,
+    decided_by_id uuid NOT NULL,
+    decided_at timestamp with time zone NOT NULL,
+    status character varying(32) NOT NULL,
+    resolved_at timestamp with time zone,
+    resolved_by_id uuid,
+    resolution_code character varying(64),
+    resolution_reason character varying(2000),
+    CONSTRAINT pk_transfer_decisions PRIMARY KEY (id),
+    CONSTRAINT ck_transfer_decisions_cancelled CHECK (status <> 'Cancelled' OR (resolved_by_id IS NOT NULL AND resolution_reason IS NOT NULL)),
+    CONSTRAINT ck_transfer_decisions_resolved CHECK ((status = 'Pending') = (resolved_at IS NULL)),
+    CONSTRAINT ck_transfer_decisions_status CHECK (status IN ('Pending', 'Executed', 'Cancelled', 'Void')),
+    CONSTRAINT ck_transfer_decisions_void CHECK (status <> 'Void' OR resolution_code IS NOT NULL),
+    CONSTRAINT fk_transfer_decisions_assignments_from_assignment_id FOREIGN KEY (from_assignment_id) REFERENCES assignments (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_transfer_decisions_employees_decided_by_id FOREIGN KEY (decided_by_id) REFERENCES employees (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_transfer_decisions_employees_incoming_employee_id FOREIGN KEY (incoming_employee_id) REFERENCES employees (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_transfer_decisions_employees_resolved_by_id FOREIGN KEY (resolved_by_id) REFERENCES employees (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_transfer_decisions_training_applications_application_id FOREIGN KEY (application_id) REFERENCES training_applications (id) ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX ux_assignment_transfers_decision_id ON assignment_transfers (decision_id);
+
+CREATE INDEX ix_transfer_decisions_decided_by_id ON transfer_decisions (decided_by_id);
+
+CREATE INDEX ix_transfer_decisions_from_assignment_id ON transfer_decisions (from_assignment_id);
+
+CREATE INDEX ix_transfer_decisions_incoming_employee_id ON transfer_decisions (incoming_employee_id);
+
+CREATE INDEX ix_transfer_decisions_resolved_by_id ON transfer_decisions (resolved_by_id);
+
+CREATE INDEX ix_transfer_decisions_status_effective_date ON transfer_decisions (status, effective_date);
+
+CREATE UNIQUE INDEX ux_transfer_decisions_application_id ON transfer_decisions (application_id) WHERE status = 'Pending';
+
+ALTER TABLE assignment_transfers ADD CONSTRAINT fk_assignment_transfers_transfer_decisions_decision_id FOREIGN KEY (decision_id) REFERENCES transfer_decisions (id) ON DELETE RESTRICT;
+
+SELECT ims_protect_table('transfer_decisions');
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261113194359_TransferDecisions', '10.0.13');
+
+COMMIT;
+

@@ -30,16 +30,17 @@ REVOKE CREATE ON SCHEMA public FROM ims_app;
 
 -- Reads (the Worker never reads `roles` or `__EFMigrationsHistory`).
 GRANT SELECT ON
-    application_attachments, assignment_extensions, assignments, audit_logs, certificate_templates, contact_logs, employees,
-    evaluation_criteria, fields, mentor_requests, notification_settings, notifications, progress_notes,
-    responsible_hr_changes, trainee_sign_in_codes, trainees, training_applications, user_sessions
+    application_attachments, assignment_extensions, assignment_transfers, assignments, audit_logs, certificate_templates,
+    contact_logs, employees, evaluation_criteria, fields, mentor_requests, notification_settings, notifications,
+    progress_notes, responsible_hr_changes, trainee_sign_in_codes, trainees, training_applications, transfer_decisions,
+    user_sessions
 TO ims_app;
 
 -- Inserts (`audit_logs` only through the audit trigger, see above).
 GRANT INSERT ON
-    application_attachments, assignment_extensions, assignments, audit_logs, certificate_templates, contact_logs, employees,
-    evaluation_criteria, fields, mentor_requests, notifications, progress_notes, responsible_hr_changes,
-    trainee_sign_in_codes, trainees, training_applications, user_sessions
+    application_attachments, assignment_extensions, assignment_transfers, assignments, audit_logs, certificate_templates,
+    contact_logs, employees, evaluation_criteria, fields, mentor_requests, notifications, progress_notes,
+    responsible_hr_changes, trainee_sign_in_codes, trainees, training_applications, transfer_decisions, user_sessions
 TO ims_app;
 
 -- Updates (no UPDATE on contact logs, progress notes, attachments or audit_logs: the Worker has none).
@@ -56,6 +57,10 @@ GRANT UPDATE (status, end_date, end_reason) ON assignments TO ims_app;
 -- no UPDATE): every extension and its reason stay as recorded; the extension moves `assignments.end_date` (granted above).
 -- Responsible HR (AD-64): `responsible_hr_changes` is insert-only for the Worker too (SELECT and INSERT above, no UPDATE):
 -- every Admin appointment stays as recorded; the accepting HR stays in `training_applications.decided_by_id`.
+-- Transfer (AD-65): `assignment_transfers` is insert-only for the Worker too (SELECT and INSERT above, no UPDATE); an
+-- executed transfer closes the outgoing assignment through the column grant above and inserts the incoming one. A
+-- transfer decision only ever leaves Pending (executed, cancelled or void), so only its resolution columns are updatable.
+GRANT UPDATE (status, resolved_at, resolved_by_id, resolution_code, resolution_reason) ON transfer_decisions TO ims_app;
 
 -- Only the schema owner sets up audit protection on a table.
 REVOKE EXECUTE ON FUNCTION ims_protect_table(regclass) FROM PUBLIC;

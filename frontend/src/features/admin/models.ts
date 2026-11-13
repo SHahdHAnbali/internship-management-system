@@ -93,6 +93,7 @@ export interface NotificationSettings {
 export const AUDITED_TABLES = [
   'application_attachments',
   'assignment_extensions',
+  'assignment_transfers',
   'assignments',
   'certificate_templates',
   'contact_logs',
@@ -108,6 +109,7 @@ export const AUDITED_TABLES = [
   'trainee_sign_in_codes',
   'trainees',
   'training_applications',
+  'transfer_decisions',
   'user_sessions',
 ] as const;
 export type AuditedTable = (typeof AUDITED_TABLES)[number];

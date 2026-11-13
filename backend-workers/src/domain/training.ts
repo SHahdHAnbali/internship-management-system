@@ -176,3 +176,81 @@ export function extendAssignment(
   const reason = required(input.reason, 'Extension reason', ASSIGNMENT_EXTENSION_REASON_MAX_LENGTH);
   return { newEndDate, reason };
 }
+
+/** The calendar day before `date` (`YYYY-MM-DD`). */
+export function previousDay(date: string): string {
+  const day = new Date(`${date}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+}
+
+/**
+ * AD-65 (owner decisions 2026-11-13, revised): the current responsible HR decides to transfer an Active training to
+ * another mentor from an effective date (Asia/Hebron): today (executed at once) or later (a scheduled transfer, executed
+ * on that date), never earlier; strictly after the current assignment's start date and not after its current planned end
+ * date; with a mandatory reason. That the caller is the current responsible HR (AD-64), that the incoming mentor holds the
+ * Employee role now and that no other transfer of the training is pending are checked by the route, which reads the
+ * roles and the decisions. Mirrors Assignment.DecideTransfer in Ims.Domain.
+ */
+export function decideTransfer(
+  input: { employeeId: string | null; transferDate: string | null | undefined; reason: string | null | undefined },
+  assignment: { status: string; startDate: string; plannedEndDate: string; employeeId: string },
+  today: string,
+): { incomingEmployeeId: string; effectiveDate: string; reason: string } {
+  checkTransferable(assignment);
+  if (!input.employeeId) throw new DomainError('validation.required', 'The incoming mentor is required.');
+  const effectiveDate = parseDate(input.transferDate);
+  if (!effectiveDate) throw new DomainError('validation.required', 'The transfer date is required.');
+  if (effectiveDate < today) {
+    throw new DomainError('assignment.transfer_in_past', 'The transfer date cannot be in the past.');
+  }
+  checkTransfer({ incomingEmployeeId: input.employeeId, effectiveDate }, assignment);
+  const reason = required(input.reason, 'Transfer reason', ASSIGNMENT_END_REASON_MAX_LENGTH);
+  return { incomingEmployeeId: input.employeeId, effectiveDate, reason };
+}
+
+/**
+ * AD-65: carrying out a transfer decision on or after its effective date (at once for today's, else by the scheduled
+ * job, possibly late after an outage): the outgoing assignment ends the day before the effective date and the incoming
+ * one starts on it, with the outgoing assignment's planned end date as it is now (extensions made since the decision
+ * included). The same rules as the decision, checked again against the assignment as it is now. Mirrors
+ * TransferDecision.Execute in Ims.Domain.
+ */
+export function transferExecution(
+  decision: { incomingEmployeeId: string; effectiveDate: string },
+  assignment: { status: string; startDate: string; plannedEndDate: string; employeeId: string },
+): { outgoingEndDate: string; plannedEndDate: string } {
+  checkTransferable(assignment);
+  checkTransfer(decision, assignment);
+  return { outgoingEndDate: previousDay(decision.effectiveDate), plannedEndDate: assignment.plannedEndDate };
+}
+
+function checkTransferable(assignment: { status: string }) {
+  if (assignment.status !== 'Active') {
+    throw new DomainError('assignment.invalid_status', 'Only an active training can be transferred.');
+  }
+}
+
+function checkTransfer(
+  transfer: { incomingEmployeeId: string; effectiveDate: string },
+  assignment: { startDate: string; plannedEndDate: string; employeeId: string },
+) {
+  if (transfer.incomingEmployeeId === assignment.employeeId) {
+    throw new DomainError(
+      'assignment.transfer_same_mentor',
+      'The incoming mentor must be different from the current mentor.',
+    );
+  }
+  if (transfer.effectiveDate <= assignment.startDate) {
+    throw new DomainError(
+      'assignment.transfer_not_after_start',
+      "The transfer date must be after the training's start date.",
+    );
+  }
+  if (transfer.effectiveDate > assignment.plannedEndDate) {
+    throw new DomainError(
+      'assignment.transfer_after_end',
+      "The transfer date cannot be after the training's planned end date.",
+    );
+  }
+}

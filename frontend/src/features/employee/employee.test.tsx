@@ -330,4 +330,87 @@ describe('progress notes of a current trainee', () => {
       }),
     );
   });
+
+  it('on the day a scheduled transfer takes effect (409 transfer_due) the note is refused and kept in the box', async () => {
+    notesApi((method) =>
+      method === 'POST' ? [409, { status: 409, code: 'assignment.transfer_due' }] : [200, []],
+    );
+    renderPage(<MyTraineesPage />);
+    const user = userEvent.setup();
+    const section = await currentSection();
+    await within(section).findByText('employee.notes.empty');
+    await user.type(within(section).getByLabelText('employee.notes.new'), 'Day one');
+    await user.click(within(section).getByRole('button', { name: 'employee.notes.add' }));
+    expect(await screen.findByText('employee.notes.transferDue')).toBeInTheDocument();
+    expect(within(section).getByLabelText('employee.notes.new')).toHaveValue('Day one');
+  });
+});
+
+describe('earlier mentors’ notes after a transfer (AD-65)', () => {
+  const mine = (id: string, status: string, canReadEarlierNotes: boolean) => ({
+    id,
+    applicationId: 'app-1',
+    status,
+    startDate: '2027-02-10',
+    endDate: '2027-04-28',
+    trainee: { fullName: 'Lina Haddad', university: 'Example University', major: 'CE' },
+    fieldName: 'Backend',
+    canReadEarlierNotes,
+  });
+  const earlier = [
+    {
+      id: 'n1',
+      writtenAt: '2027-02-01T09:00:00Z',
+      text: 'Earlier <b>note</b>',
+      authorName: 'Mentor A',
+      assignment: { startDate: '2027-01-03', endDate: '2027-02-09', mentorName: 'Mentor A' },
+    },
+  ];
+
+  function setup(trainees: object[]) {
+    return mockFetch((_method, url) => {
+      if (url === '/api/employee/mentor-requests') return [200, []];
+      if (url === '/api/employee/trainees') return [200, trainees];
+      if (url.endsWith('/earlier-notes')) return [200, earlier];
+      if (url.endsWith('/notes')) return [200, []];
+      return [404];
+    });
+  }
+
+  it('the latest mentor opens the earlier notes, read-only, as plain text with the earlier mentor and period', async () => {
+    const fetchMock = setup([mine('s2', 'Active', true)]);
+    renderPage(<MyTraineesPage />);
+    const toggle = await screen.findByRole('button', { name: 'employee.notes.earlierTitle' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/earlier-notes'))).toBe(
+      false,
+    ); // on demand
+    await userEvent.setup().click(toggle);
+    expect(await screen.findByText('Earlier <b>note</b>')).toHaveAttribute('dir', 'auto');
+    expect(document.querySelector('b')).toBeNull();
+    expect(screen.getByText('employee.notes.earlierContext')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/employee/assignments/s2/earlier-notes',
+      expect.anything(),
+    );
+    // Read-only: no form or button for the earlier notes besides the toggle; one note form (the current training).
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+  });
+
+  it('also after the training ended; never for an assignment that was transferred onward', async () => {
+    setup([mine('s2', 'Completed', true), mine('s1', 'Transferred', false)]);
+    renderPage(<MyTraineesPage />);
+    expect(
+      await screen.findAllByRole('button', { name: 'employee.notes.earlierTitle' }),
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    ['ar', arMessages, 'ملاحظات المدرّبين السابقين'],
+    ['en', enMessages, 'Earlier mentors’ notes'],
+  ] as const)('reads in %s', async (language, raw, label) => {
+    setup([mine('s2', 'Active', true)]);
+    renderPage(<MyTraineesPage />, { i18n: testI18n(JSON.parse(raw), language) });
+    expect(await screen.findByRole('button', { name: label })).toBeInTheDocument();
+  });
 });

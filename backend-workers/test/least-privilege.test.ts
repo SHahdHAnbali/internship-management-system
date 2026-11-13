@@ -43,6 +43,7 @@ async function refused(sql: string): Promise<{ code: string; message: string }> 
 const TABLES = [
   'application_attachments',
   'assignment_extensions',
+  'assignment_transfers',
   'assignments',
   'audit_logs',
   'certificate_templates',
@@ -59,6 +60,7 @@ const TABLES = [
   'trainee_sign_in_codes',
   'trainees',
   'training_applications',
+  'transfer_decisions',
   'user_sessions',
   '__EFMigrationsHistory',
 ];
@@ -163,6 +165,35 @@ describe('ims_app: exactly the privileges the Worker needs', () => {
     ]);
   });
 
+  it('may update only the resolution of a transfer decision (AD-65), never what was decided', async () => {
+    const columns = await withDb((db) =>
+      db.query<{ column: string; granted: boolean }>(
+        `SELECT a.attname AS column,
+                has_column_privilege('ims_app', 'public.transfer_decisions', a.attname, 'UPDATE') AS granted
+           FROM pg_attribute a
+          WHERE a.attrelid = 'public.transfer_decisions'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+          ORDER BY a.attname`,
+      ),
+    );
+    expect(columns.rows.filter((c) => c.granted).map((c) => c.column)).toEqual([
+      'resolution_code',
+      'resolution_reason',
+      'resolved_at',
+      'resolved_by_id',
+      'status',
+    ]);
+    expect(columns.rows.filter((c) => !c.granted).map((c) => c.column)).toEqual([
+      'application_id',
+      'decided_at',
+      'decided_by_id',
+      'effective_date',
+      'from_assignment_id',
+      'id',
+      'incoming_employee_id',
+      'reason',
+    ]);
+  });
+
   it('cannot create anything: no schema CREATE, no TEMP (also not through PUBLIC), no protect function', async () => {
     const checks = await withDb((db) =>
       db.query(
@@ -191,6 +222,13 @@ describe('ims_app: refused (negative tests, disposable test database only)', () 
     ['UPDATE audit_logs', "UPDATE audit_logs SET actor_type = 'System' WHERE id = 1"],
     ["UPDATE an assignment's employee", 'UPDATE assignments SET employee_id = employee_id'],
     ["UPDATE an assignment's start date", 'UPDATE assignments SET start_date = start_date'],
+    ["UPDATE a transfer decision's date", 'UPDATE transfer_decisions SET effective_date = effective_date'],
+    [
+      "UPDATE a transfer decision's mentor",
+      'UPDATE transfer_decisions SET incoming_employee_id = incoming_employee_id',
+    ],
+    ['UPDATE an executed transfer link', 'UPDATE assignment_transfers SET to_assignment_id = to_assignment_id'],
+    ['DELETE a transfer decision', 'DELETE FROM transfer_decisions'],
     ['DELETE FROM audit_logs', 'DELETE FROM audit_logs WHERE id = 1'],
     ['TRUNCATE audit_logs', 'TRUNCATE audit_logs'],
     ['DISABLE an audit trigger', 'ALTER TABLE fields DISABLE TRIGGER audit_row_change'],

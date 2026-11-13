@@ -51,6 +51,10 @@ public interface IAppDbContext
 
     DbSet<AssignmentExtension> AssignmentExtensions { get; }
 
+    DbSet<AssignmentTransfer> AssignmentTransfers { get; }
+
+    DbSet<TransferDecision> TransferDecisions { get; }
+
     DbSet<ResponsibleHrChange> ResponsibleHrChanges { get; }
 
     DbSet<Notification> Notifications { get; }

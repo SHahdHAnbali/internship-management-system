@@ -6,7 +6,8 @@ namespace Ims.Domain.Mentoring;
 /// The approved link between an accepted application and the employee who mentors it (PDF §3, §8: application,
 /// employee, start date, end date, status, end or transfer reason). Created by HR's approval of a mentor request.
 /// Statuses (owner decision 2026-10-29): Active, Completed, EndedEarly, Transferred, Withdrawn. The Workers API ends a
-/// training (AD-63 Phase 1) and extends it (<see cref="Extend"/>, NEW-35). Never deleted.
+/// training (AD-63 Phase 1), extends it (<see cref="Extend"/>, NEW-35) and transfers it to another mentor, now or
+/// from a later date (<see cref="DecideTransfer"/>, AD-65). Never deleted.
 /// </summary>
 public sealed class Assignment : Entity
 {
@@ -20,7 +21,7 @@ public sealed class Assignment : Entity
 
     public Guid EmployeeId { get; private set; }
 
-    /// <summary>The approved request this assignment came from.</summary>
+    /// <summary>The approved request this assignment came from; none for an assignment created by a transfer.</summary>
     public Guid? MentorRequestId { get; private set; }
 
     public DateOnly StartDate { get; private set; }
@@ -81,6 +82,86 @@ public sealed class Assignment : Entity
         var extension = AssignmentExtension.Record(Id, EndDate, newEndDate, reason, hrId, now);
         EndDate = newEndDate;
         return extension;
+    }
+
+    /// <summary>
+    /// The current responsible HR's decision to transfer this Active training to another mentor (AD-65, owner
+    /// 2026-11-13, revised): the effective date (Asia/Hebron) is today (an immediate transfer) or later (a scheduled one),
+    /// never earlier, strictly after this assignment's start date and not after its current planned end date; the reason
+    /// is mandatory. Nothing changes on this assignment until the decision is executed
+    /// (<see cref="TransferDecision.Execute"/>). That the caller is the current responsible HR (AD-64), that the incoming
+    /// mentor holds the Employee role now and that no other transfer of the training is pending are checked by the
+    /// caller, which reads the roles and the other decisions.
+    /// </summary>
+    public TransferDecision DecideTransfer(
+        Guid incomingEmployeeId,
+        DateOnly effectiveDate,
+        string reason,
+        Guid hrId,
+        DateOnly today,
+        DateTimeOffset now)
+    {
+        if (effectiveDate < today)
+        {
+            throw new DomainException("assignment.transfer_in_past", "The transfer date cannot be in the past.");
+        }
+
+        CheckTransfer(incomingEmployeeId, effectiveDate);
+        return TransferDecision.Create(this, incomingEmployeeId, effectiveDate, reason, hrId, now);
+    }
+
+    /// <summary>
+    /// Carries out a transfer decision (AD-65): this assignment becomes <see cref="AssignmentStatus.Transferred"/>, ends
+    /// the day before the effective date and keeps the decision's reason; the incoming assignment starts on the effective
+    /// date with this assignment's planned end date as it is now (extensions made since the decision included), without a
+    /// mentor request.
+    /// </summary>
+    internal Assignment Transfer(Guid incomingEmployeeId, DateOnly effectiveDate, string reason, DateTimeOffset now)
+    {
+        CheckTransfer(incomingEmployeeId, effectiveDate);
+        var incoming = new Assignment
+        {
+            ApplicationId = ApplicationId,
+            EmployeeId = incomingEmployeeId,
+            MentorRequestId = null,
+            StartDate = effectiveDate,
+            EndDate = EndDate,
+            Status = AssignmentStatus.Active,
+            CreatedAt = Guard.Utc(now),
+        };
+        Status = AssignmentStatus.Transferred;
+        EndDate = effectiveDate.AddDays(-1);
+        EndReason = reason;
+        return incoming;
+    }
+
+    private void CheckTransfer(Guid incomingEmployeeId, DateOnly effectiveDate)
+    {
+        if (Status != AssignmentStatus.Active)
+        {
+            throw new DomainException("assignment.invalid_status", "Only an active training can be transferred.");
+        }
+
+        if (Guard.NotEmpty(incomingEmployeeId, "Incoming mentor") == EmployeeId)
+        {
+            throw new DomainException(
+                "assignment.transfer_same_mentor",
+                "The incoming mentor must be different from the current mentor.");
+        }
+
+        if (effectiveDate <= StartDate)
+        {
+            throw new DomainException(
+                "assignment.transfer_not_after_start",
+                "The transfer date must be after the training's start date.");
+        }
+
+        if (effectiveDate > EndDate)
+        {
+            throw new DomainException(
+                "assignment.transfer_after_end",
+                "The transfer date cannot be after the training's planned end date.");
+        }
     }
 }
 

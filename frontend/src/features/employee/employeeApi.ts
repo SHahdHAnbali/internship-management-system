@@ -5,6 +5,7 @@ import type {
   FieldOption,
   MyMentorRequest,
   MyTrainee,
+  EarlierProgressNote,
   ProgressNote,
 } from './models';
 
@@ -28,6 +29,9 @@ export const employeeApi = {
   myTrainees: () => apiRequest<MyTrainee[]>('GET', '/employee/trainees'),
   notes: (assignmentId: string) =>
     apiRequest<ProgressNote[]>('GET', `/employee/assignments/${assignmentId}/notes`),
+  /** AD-65: the earlier mentors' notes of the same training, for the mentor of its latest assignment. */
+  earlierNotes: (assignmentId: string) =>
+    apiRequest<EarlierProgressNote[]>('GET', `/employee/assignments/${assignmentId}/earlier-notes`),
   addNote: (assignmentId: string, text: string) =>
     apiRequest<ProgressNote>('POST', `/employee/assignments/${assignmentId}/notes`, { text }),
 };

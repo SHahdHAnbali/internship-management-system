@@ -20,6 +20,7 @@ import {
   EmailNotConfiguredError,
   EmailSendError,
   NotFoundError,
+  StateConflictError,
 } from './domain/errors';
 import { emailSenderFor } from './email';
 import { auditLogRoutes } from './features/admin/auditLogRoutes';
@@ -148,6 +149,7 @@ export function createApp(dependencies: Dependencies = productionDependencies) {
     const traceId = c.var.traceId ?? newTraceId();
     if (error instanceof DomainError) return errorProblem(400, error.code, error.message, traceId);
     if (error instanceof NotFoundError) return errorProblem(404, 'not_found', error.message, traceId);
+    if (error instanceof StateConflictError) return errorProblem(409, error.code, error.message, traceId);
     if (error instanceof EmailSendError) {
       return errorProblem(503, 'email.send_failed', 'The e-mail could not be sent. Please try again later.', traceId);
     }

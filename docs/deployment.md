@@ -71,6 +71,35 @@ below). Sign-in e-mails do not depend on it.
   `/health` keeps its own `no-store, no-cache`. Signed out, an unknown `/api/*` path is 401 (sign-in is required first).
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
+### Scheduled jobs: Cron Triggers (AD-65, implemented locally only, **not deployed**)
+- `wrangler.jsonc` `triggers.crons`: `5 3,21,22 * * *` (UTC). The only job (`src/scheduled.ts`) executes the **due
+  transfer decisions** (scheduled trainee transfers, AD-65). It is not the 09:00 reminder schedule of AD-62, which is
+  not built.
+- **Timing and daylight saving:** Cron Triggers run in UTC; Asia/Hebron is UTC+2 in winter and UTC+3 in summer. 21:05
+  UTC is 00:05 Asia/Hebron in summer and 22:05 UTC is 00:05 in winter, so a transfer dated D normally executes about
+  five minutes after D starts in Palestine; the other of the two runs finds nothing new or retries. 03:05 UTC (05:05 or
+  06:05 Asia/Hebron) is a catch-up run. Which decisions are due never depends on the run time: every Pending decision
+  dated today or earlier **in Asia/Hebron** (computed from the clock, daylight saving included) is executed.
+- **Between midnight and the run** (normally a few minutes), the outgoing mentor's new notes and HR's extend, complete
+  and withdraw on that assignment are refused with 409 `assignment.transfer_due`, so nothing is written to an
+  assignment that ends the day before.
+- **Failures and outages:** each decision runs in its own transaction as the `System` audit actor; a failure rolls that
+  decision back and keeps it Pending for the next run; if runs are missed (the Worker or Neon unavailable), the next
+  successful run executes the decision with **its own dates** (outgoing ends D−1, incoming starts D) and records the
+  actual time in `assignment_transfers.transferred_at`. Concurrent or repeated runs are harmless (row locks, the
+  Pending status check and the unique links). Each run logs one line `Scheduled transfers run` with counts only
+  (`due`, `executed`, `voided`, `skipped`, `failed`); a failed decision logs its id and error name, never personal data.
+- **Free plan:** three Cron invocations a day (each one short query when nothing is due), far below the limits; each
+  run wakes the Neon compute briefly.
+- **Local:** `npx wrangler dev --test-scheduled` (from `backend-workers/`), then
+  `curl "http://localhost:<port>/__scheduled?cron=5+22+*+*+*"` runs the job once against the database in `.dev.vars`.
+- **Release order (when authorized):** Neon backup → migrations `AssignmentTransfers` and `TransferDecisions` → the
+  `ims_app` grants for `assignment_transfers` and `transfer_decisions` (`scripts/ims-app-grants.sql`) → Worker (it
+  brings the Cron Trigger) → Pages. A Worker without the tables would fail every transfer request and every cron run.
+  Cron Triggers are configured on the Worker, not stored in each version: when rolling back to a version without a
+  `scheduled` handler, check in the dashboard whether the trigger must also be removed (`wrangler triggers deploy`
+  with a configuration without `crons`).
+
 ### Current deployment (2026-11-13, responsible HR and mentor-request routing, AD-64)
 - Worker `ims-api` version `e7913829-8be9-4172-bba3-89f0aa1755de` and Pages production deployment
   `b8d97853-bea0-426a-a0d3-f67ab9ca6a2d` (commit `d0b193d`; database first, then Worker, then Pages). Each accepted

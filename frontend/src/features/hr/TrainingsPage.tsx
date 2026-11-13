@@ -5,7 +5,13 @@ import { useToast } from '../../components/toastContext';
 import { useI18n } from '../../i18n/context';
 import { ApiError } from '../../lib/api';
 import { hrApi } from './hrApi';
-import type { AssignmentStatus, HrAssignment, HrAssignmentExtension } from './models';
+import type {
+  AssignmentStatus,
+  HrAssignment,
+  HrAssignmentExtension,
+  HrMentor,
+  HrTransferDecision,
+} from './models';
 
 /**
  * HR: the trainings (assignments) as recorded (PDF §4 "running training"). Current = Active (AD-49); every other status
@@ -13,7 +19,10 @@ import type { AssignmentStatus, HrAssignment, HrAssignmentExtension } from './mo
  * completion (Completed on or after the planned end date, Ended early before it, with a reason) or the trainee's
  * withdrawal (with a reason), on an actual end date between the start and today (Asia/Hebron). HR also extends a
  * current training (AD-63 L2, NEW-35): a later planned end date with a reason, any number of times; every extension is
- * kept and listed in its history (HR only). Transferring and reopening are not built.
+ * kept and listed in its history (HR only). The application's current responsible HR (AD-64) transfers a current
+ * training to another mentor (AD-65), with a reason: today (at once) or from a later date (scheduled; the current mentor
+ * stays responsible until then), and may cancel a scheduled transfer with a reason. Both assignments of an executed
+ * transfer stay listed with the link between them, and every transfer decision is kept. Reopening is not built.
  */
 export function TrainingsPage() {
   const { t } = useI18n();
@@ -23,6 +32,9 @@ export function TrainingsPage() {
   const [ending, setEnding] = useState<HrAssignment | null>(null);
   const [extending, setExtending] = useState<HrAssignment | null>(null);
   const [showingHistory, setShowingHistory] = useState<HrAssignment | null>(null);
+  const [transferring, setTransferring] = useState<HrAssignment | null>(null);
+  const [cancellingTransfer, setCancellingTransfer] = useState<HrAssignment | null>(null);
+  const [showingTransfers, setShowingTransfers] = useState<HrAssignment | null>(null);
 
   const load = useCallback(
     () => hrApi.assignments().then(setAssignments, () => setFailed(true)),
@@ -48,7 +60,10 @@ export function TrainingsPage() {
         rows={current}
         onEnd={setEnding}
         onExtend={setExtending}
+        onTransfer={setTransferring}
+        onCancelTransfer={setCancellingTransfer}
         onHistory={setShowingHistory}
+        onTransfers={setShowingTransfers}
       />
       <TrainingTable
         id="previous-trainings"
@@ -57,6 +72,7 @@ export function TrainingsPage() {
         rows={previous}
         showReason
         onHistory={setShowingHistory}
+        onTransfers={setShowingTransfers}
       />
       {ending && (
         <EndTrainingDialog
@@ -67,9 +83,9 @@ export function TrainingsPage() {
             toast('hr.trainings.ended');
             void load();
           }}
-          onConflict={() => {
+          onConflict={(message) => {
             setEnding(null);
-            toast('training.errors.conflict');
+            toast(message);
             void load();
           }}
         />
@@ -83,11 +99,44 @@ export function TrainingsPage() {
             toast('hr.trainings.extended');
             void load();
           }}
-          onConflict={() => {
+          onConflict={(message) => {
             setExtending(null);
-            toast('training.errors.conflict');
+            toast(message);
             void load();
           }}
+        />
+      )}
+      {transferring && (
+        <TransferTrainingDialog
+          assignment={transferring}
+          onClose={() => setTransferring(null)}
+          onTransferred={(scheduled) => {
+            setTransferring(null);
+            toast(scheduled ? 'hr.trainings.transferScheduled' : 'hr.trainings.transferred');
+            void load();
+          }}
+          onRefused={(message) => {
+            setTransferring(null);
+            toast(message);
+            void load();
+          }}
+        />
+      )}
+      {cancellingTransfer && (
+        <CancelTransferDialog
+          assignment={cancellingTransfer}
+          onClose={() => setCancellingTransfer(null)}
+          onDone={(message) => {
+            setCancellingTransfer(null);
+            toast(message);
+            void load();
+          }}
+        />
+      )}
+      {showingTransfers && (
+        <TransferDecisionsDialog
+          assignment={showingTransfers}
+          onClose={() => setShowingTransfers(null)}
         />
       )}
       {showingHistory && (
@@ -107,7 +156,10 @@ function TrainingTable({
   rows,
   onEnd,
   onExtend,
+  onTransfer,
+  onCancelTransfer,
   onHistory,
+  onTransfers,
   showReason = false,
 }: {
   id: string;
@@ -116,13 +168,23 @@ function TrainingTable({
   rows: HrAssignment[];
   onEnd?: (assignment: HrAssignment) => void;
   onExtend?: (assignment: HrAssignment) => void;
+  onTransfer?: (assignment: HrAssignment) => void;
+  onCancelTransfer?: (assignment: HrAssignment) => void;
   onHistory?: (assignment: HrAssignment) => void;
+  onTransfers?: (assignment: HrAssignment) => void;
   showReason?: boolean;
 }) {
   const { t, language } = useI18n();
   const date = (value: string) => new Date(value).toLocaleDateString(language);
   const hasHistory = (a: HrAssignment) => (a.extensions?.length ?? 0) > 0;
-  const showActions = Boolean(onEnd || onExtend || (onHistory && rows.some(hasHistory)));
+  const hasTransfers = (a: HrAssignment) => (a.transferDecisions?.length ?? 0) > 0;
+  const pending = (a: HrAssignment) => a.transferDecisions?.find((d) => d.status === 'Pending');
+  const showActions = Boolean(
+    onEnd ||
+    onExtend ||
+    (onHistory && rows.some(hasHistory)) ||
+    (onTransfers && rows.some(hasTransfers)),
+  );
   return (
     <section aria-labelledby={id} className="mb-10">
       <h2 id={id} className="mb-4 text-h3 font-semibold text-heading">
@@ -156,7 +218,29 @@ function TrainingTable({
                       {traineeName(a)}
                     </Link>
                   </td>
-                  <td>{a.employee.fullName}</td>
+                  <td>
+                    {a.employee.fullName}
+                    {a.transferredFrom && (
+                      <span className="block text-small text-muted">
+                        {t('hr.trainings.transferredFrom', {
+                          name: a.transferredFrom.employeeName,
+                        })}
+                      </span>
+                    )}
+                    {a.transferredTo && (
+                      <span className="block text-small text-muted">
+                        {t('hr.trainings.transferredTo', { name: a.transferredTo.employeeName })}
+                      </span>
+                    )}
+                    {pending(a) && (
+                      <span className="ims-badge mt-1">
+                        {t('hr.trainings.scheduledTransfer', {
+                          name: pending(a)!.incomingEmployeeName,
+                          date: date(pending(a)!.effectiveDate),
+                        })}
+                      </span>
+                    )}
+                  </td>
                   <td>{a.fieldName}</td>
                   <td>{date(a.startDate)}</td>
                   <td>{date(a.endDate)}</td>
@@ -181,6 +265,28 @@ function TrainingTable({
                             {t('hr.trainings.extend')}
                           </button>
                         )}
+                        {onTransfer && a.canTransfer && (
+                          <button
+                            type="button"
+                            className="ims-btn-outline"
+                            aria-label={t('hr.trainings.transferFor', { name: traineeName(a) })}
+                            onClick={() => onTransfer(a)}
+                          >
+                            {t('hr.trainings.transfer')}
+                          </button>
+                        )}
+                        {onCancelTransfer && a.canCancelTransfer && (
+                          <button
+                            type="button"
+                            className="ims-btn-outline"
+                            aria-label={t('hr.trainings.cancelTransferFor', {
+                              name: traineeName(a),
+                            })}
+                            onClick={() => onCancelTransfer(a)}
+                          >
+                            {t('hr.trainings.cancelTransfer')}
+                          </button>
+                        )}
                         {onEnd && (
                           <button
                             type="button"
@@ -199,6 +305,20 @@ function TrainingTable({
                             onClick={() => onHistory(a)}
                           >
                             {t('hr.trainings.history', { count: a.extensions?.length ?? 0 })}
+                          </button>
+                        )}
+                        {onTransfers && hasTransfers(a) && (
+                          <button
+                            type="button"
+                            className="ims-btn-text"
+                            aria-label={t('hr.trainings.transferDecisionsFor', {
+                              name: traineeName(a),
+                            })}
+                            onClick={() => onTransfers(a)}
+                          >
+                            {t('hr.trainings.transferDecisions', {
+                              count: a.transferDecisions?.length ?? 0,
+                            })}
                           </button>
                         )}
                       </div>
@@ -251,7 +371,8 @@ function EndTrainingDialog({
   assignment: HrAssignment;
   onClose: () => void;
   onEnded: () => void;
-  onConflict: () => void;
+  /** A 409: the toast to show (a transfer due today, AD-65, or a concurrent change). */
+  onConflict: (message: string) => void;
 }) {
   const { t, language } = useI18n();
   const id = useId();
@@ -293,7 +414,8 @@ function EndTrainingDialog({
       else await hrApi.completeAssignment(a.id, endDate, needsReason ? reason.trim() : null);
       onEnded();
     } catch (error) {
-      if (error instanceof ApiError && error.status === 409) return onConflict();
+      if (error instanceof ApiError && error.status === 409)
+        return onConflict(conflictMessage(error));
       const problem = error instanceof ApiError ? SERVER_PROBLEMS[error.code ?? ''] : undefined;
       if (problem) setProblems([problem]);
       else setFailed(true);
@@ -487,7 +609,8 @@ function ExtendTrainingDialog({
   assignment: HrAssignment;
   onClose: () => void;
   onExtended: () => void;
-  onConflict: () => void;
+  /** A 409: the toast to show (a transfer due today, AD-65, or a concurrent change). */
+  onConflict: (message: string) => void;
 }) {
   const { t, language } = useI18n();
   const id = useId();
@@ -522,7 +645,8 @@ function ExtendTrainingDialog({
       await hrApi.extendAssignment(a.id, endDate, reason.trim());
       onExtended();
     } catch (error) {
-      if (error instanceof ApiError && error.status === 409) return onConflict();
+      if (error instanceof ApiError && error.status === 409)
+        return onConflict(conflictMessage(error));
       if (error instanceof ApiError && error.code === 'assignment.extension_not_later')
         setProblems(['notLater']);
       else setFailed(true);
@@ -634,6 +758,469 @@ function ExtendTrainingDialog({
           </div>
         </form>
       )}
+    </Dialog>
+  );
+}
+
+/** The toast for a 409 on a training: a transfer that takes effect today waits for its scheduled run (AD-65). */
+function conflictMessage(error: ApiError): string {
+  return error.code === 'assignment.transfer_due'
+    ? 'hr.trainings.errors.transferDue'
+    : 'training.errors.conflict';
+}
+
+type TransferProblem =
+  | 'mentor'
+  | 'date'
+  | 'notAfterStart'
+  | 'inPast'
+  | 'afterEnd'
+  | 'reason'
+  | 'mentorNotEmployee';
+
+const TRANSFER_PROBLEMS: Record<string, TransferProblem> = {
+  'assignment.transfer_not_after_start': 'notAfterStart',
+  'assignment.transfer_in_past': 'inPast',
+  'assignment.transfer_after_end': 'afterEnd',
+  'assignment.transfer_same_mentor': 'mentor',
+  'assignment.transfer_mentor_not_employee': 'mentorNotEmployee',
+};
+
+/**
+ * AD-65: the current responsible HR transfers a current training to another mentor (a user who holds the Employee role
+ * now; no approval from them), with a reason. The date (Asia/Hebron) is today (an immediate transfer) or later (a
+ * scheduled one: the current mentor stays responsible until then), never earlier; after the start date and not after
+ * the planned end date. The current mentor's assignment ends the day before; the new one keeps the planned end date as it
+ * is on that date. Reviewed, then confirmed once.
+ */
+function TransferTrainingDialog({
+  assignment: a,
+  onClose,
+  onTransferred,
+  onRefused,
+}: {
+  assignment: HrAssignment;
+  onClose: () => void;
+  /** `scheduled`: the transfer takes effect on a later date. */
+  onTransferred: (scheduled: boolean) => void;
+  onRefused: (message: string) => void;
+}) {
+  const { t, language } = useI18n();
+  const id = useId();
+  const today = hebronToday();
+  const afterStart = addDays(a.startDate, 1);
+  const earliest = afterStart > today ? afterStart : today;
+  const [mentors, setMentors] = useState<HrMentor[] | null>(null);
+  const [mentorsFailed, setMentorsFailed] = useState(false);
+  const [employeeId, setEmployeeId] = useState('');
+  const [transferDate, setTransferDate] = useState('');
+  const [reason, setReason] = useState('');
+  const [problems, setProblems] = useState<TransferProblem[]>([]);
+  const [reviewing, setReviewing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const submitting = useRef(false);
+  const date = (value: string) => new Date(value).toLocaleDateString(language);
+  const has = (problem: TransferProblem) => problems.includes(problem);
+  const mentorProblem = has('mentor') || has('mentorNotEmployee');
+  const dateProblem = has('date') || has('notAfterStart') || has('inPast') || has('afterEnd');
+  const dateMessage = has('date')
+    ? 'hr.trainings.errors.date'
+    : has('inPast')
+      ? 'hr.trainings.errors.transferInPast'
+      : has('notAfterStart')
+        ? 'hr.trainings.errors.transferNotAfterStart'
+        : 'hr.trainings.errors.transferAfterEnd';
+  const scheduled = transferDate > today;
+
+  useEffect(() => {
+    let active = true;
+    hrApi.mentors().then(
+      // The current mentor cannot be the incoming one.
+      (all) => active && setMentors(all.filter((m) => m.id !== a.employee.id)),
+      () => active && setMentorsFailed(true),
+    );
+    return () => {
+      active = false;
+    };
+  }, [a.employee.id]);
+
+  const chosen = mentors?.find((m) => m.id === employeeId) ?? null;
+
+  const review = (event: FormEvent) => {
+    event.preventDefault();
+    const found: TransferProblem[] = [];
+    if (!chosen) found.push('mentor');
+    if (!transferDate) found.push('date');
+    else if (transferDate < today) found.push('inPast');
+    else if (transferDate <= a.startDate) found.push('notAfterStart');
+    else if (transferDate > a.endDate) found.push('afterEnd');
+    if (reason.trim() === '') found.push('reason');
+    setProblems(found);
+    setFailed(false);
+    if (found.length === 0) setReviewing(true);
+  };
+
+  const confirm = async () => {
+    if (!chosen || submitting.current) return; // one submission at a time
+    submitting.current = true;
+    setBusy(true);
+    try {
+      await hrApi.transferAssignment(a.id, chosen.id, transferDate, reason.trim());
+      onTransferred(scheduled);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409)
+        return onRefused(
+          error.code === 'assignment.transfer_pending'
+            ? 'hr.trainings.errors.transferPending'
+            : conflictMessage(error),
+        );
+      if (error instanceof ApiError && error.status === 403)
+        return onRefused('hr.trainings.errors.transferNotResponsible');
+      const problem =
+        error instanceof ApiError && error.code ? TRANSFER_PROBLEMS[error.code] : undefined;
+      if (problem) setProblems([problem]);
+      else setFailed(true);
+      setReviewing(false);
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open
+      title={t('hr.trainings.transferTitle', { name: traineeName(a) })}
+      onClose={busy ? () => {} : onClose}
+    >
+      {reviewing && chosen ? (
+        <div className="flex flex-col gap-4">
+          <p className="text-heading">{t('hr.trainings.reviewIntro')}</p>
+          <dl className="grid gap-x-4 gap-y-2 text-small sm:grid-cols-2">
+            <dt className="text-muted">{t('hr.trainings.trainee')}</dt>
+            <dd className="text-heading">{traineeName(a)}</dd>
+            <dt className="text-muted">{t('hr.trainings.currentMentor')}</dt>
+            <dd className="text-heading">{a.employee.fullName}</dd>
+            <dt className="text-muted">{t('hr.trainings.newMentor')}</dt>
+            <dd className="text-heading">{chosen.fullName}</dd>
+            <dt className="text-muted">{t('hr.trainings.transferType')}</dt>
+            <dd className="text-heading">
+              {scheduled
+                ? t('hr.trainings.typeScheduled', { date: date(transferDate) })
+                : t('hr.trainings.typeImmediate')}
+            </dd>
+            <dt className="text-muted">{t('hr.trainings.transferDate')}</dt>
+            <dd className="text-heading">{date(transferDate)}</dd>
+            <dt className="text-muted">{t('hr.trainings.currentMentorUntil')}</dt>
+            <dd className="text-heading">{date(addDays(transferDate, -1))}</dd>
+            <dt className="text-muted">{t('hr.trainings.plannedEndKept')}</dt>
+            <dd className="text-heading">{date(a.endDate)}</dd>
+            <dt className="text-muted">{t('hr.trainings.transferReason')}</dt>
+            <dd dir="auto" className="whitespace-pre-line break-words text-heading">
+              {reason.trim()}
+            </dd>
+          </dl>
+          <p className="text-small text-muted">
+            {scheduled
+              ? t('hr.trainings.transferScheduledHint', { date: date(transferDate) })
+              : t('hr.trainings.transferImmediate')}
+          </p>
+          <p className="text-small text-muted">{t('hr.trainings.transferNote')}</p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="ims-btn-text"
+              disabled={busy}
+              onClick={() => setReviewing(false)}
+            >
+              {t('hr.trainings.back')}
+            </button>
+            <button
+              type="button"
+              className="ims-btn-primary"
+              disabled={busy}
+              onClick={() => void confirm()}
+            >
+              {t('hr.trainings.confirm')}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={review} noValidate className="flex flex-col gap-4">
+          <dl className="grid gap-x-4 gap-y-1 text-small sm:grid-cols-2">
+            <dt className="text-muted">{t('hr.trainings.currentMentor')}</dt>
+            <dd className="text-heading">{a.employee.fullName}</dd>
+            <dt className="text-muted">{t('hr.trainings.plannedEndKept')}</dt>
+            <dd className="text-heading">{date(a.endDate)}</dd>
+          </dl>
+          <div className="flex flex-col gap-1">
+            <label className="ims-label" htmlFor={`${id}-mentor`}>
+              {t('hr.trainings.newMentor')}
+            </label>
+            <select
+              id={`${id}-mentor`}
+              className="ims-input"
+              value={employeeId}
+              disabled={mentors === null}
+              aria-invalid={mentorProblem || undefined}
+              aria-describedby={mentorProblem ? `${id}-mentor-error` : undefined}
+              onChange={(e) => setEmployeeId(e.target.value)}
+            >
+              <option value="">{t('hr.trainings.chooseMentor')}</option>
+              {mentors?.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.fullName}
+                </option>
+              ))}
+            </select>
+            {mentors?.length === 0 && (
+              <p className="text-small text-muted">{t('hr.trainings.noMentors')}</p>
+            )}
+            {mentorsFailed && (
+              <p role="alert" className="ims-error">
+                {t('training.errors.generic')}
+              </p>
+            )}
+            {mentorProblem && (
+              <p id={`${id}-mentor-error`} role="alert" className="ims-error">
+                {t(
+                  has('mentorNotEmployee')
+                    ? 'hr.trainings.errors.mentorNotEmployee'
+                    : 'hr.trainings.errors.mentor',
+                )}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="ims-label" htmlFor={`${id}-date`}>
+              {t('hr.trainings.transferDate')}
+            </label>
+            <input
+              id={`${id}-date`}
+              type="date"
+              className="ims-input"
+              min={earliest}
+              max={a.endDate}
+              value={transferDate}
+              aria-invalid={dateProblem || undefined}
+              aria-describedby={
+                dateProblem ? `${id}-date-error ${id}-date-hint` : `${id}-date-hint`
+              }
+              onChange={(e) => setTransferDate(e.target.value)}
+            />
+            <p id={`${id}-date-hint`} className="text-small text-muted">
+              {!transferDate || transferDate < today
+                ? t('hr.trainings.transferDateHint')
+                : scheduled
+                  ? t('hr.trainings.transferScheduledHint', { date: date(transferDate) })
+                  : t('hr.trainings.transferImmediate')}
+            </p>
+            {dateProblem && (
+              <p id={`${id}-date-error`} role="alert" className="ims-error">
+                {t(dateMessage)}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="ims-label" htmlFor={`${id}-reason`}>
+              {t('hr.trainings.transferReason')}
+            </label>
+            <textarea
+              id={`${id}-reason`}
+              className="ims-input min-h-24"
+              dir="auto"
+              value={reason}
+              maxLength={2000}
+              aria-invalid={has('reason') || undefined}
+              aria-describedby={has('reason') ? `${id}-reason-error` : undefined}
+              onChange={(e) => setReason(e.target.value)}
+            />
+            {has('reason') && (
+              <p id={`${id}-reason-error`} role="alert" className="ims-error">
+                {t('hr.trainings.errors.reason')}
+              </p>
+            )}
+          </div>
+          {failed && (
+            <p role="alert" className="ims-error">
+              {t('training.errors.generic')}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="ims-btn-text" onClick={onClose}>
+              {t('training.cancel')}
+            </button>
+            <button type="submit" className="ims-btn-primary">
+              {t('hr.trainings.review')}
+            </button>
+          </div>
+        </form>
+      )}
+    </Dialog>
+  );
+}
+
+/**
+ * AD-65: the current responsible HR cancels the pending transfer of a current training, with a mandatory reason. The
+ * decision is kept (Cancelled); another date or mentor is a new transfer. Confirmed once.
+ */
+function CancelTransferDialog({
+  assignment: a,
+  onClose,
+  onDone,
+}: {
+  assignment: HrAssignment;
+  onClose: () => void;
+  /** The toast to show; the page reloads. */
+  onDone: (message: string) => void;
+}) {
+  const { t, language } = useI18n();
+  const id = useId();
+  const decision = a.transferDecisions?.find((d) => d.status === 'Pending');
+  const [reason, setReason] = useState('');
+  const [missing, setMissing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const submitting = useRef(false);
+  const date = (value: string) => new Date(value).toLocaleDateString(language);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (reason.trim() === '') {
+      setMissing(true);
+      return;
+    }
+    if (!decision || submitting.current) return; // one submission at a time
+    submitting.current = true;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await hrApi.cancelTransfer(decision.id, reason.trim());
+      onDone('hr.trainings.transferCancelled');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 403)
+        return onDone('hr.trainings.errors.transferNotResponsible');
+      if (error instanceof ApiError && error.code === 'transfer_decision.invalid_status')
+        return onDone('hr.trainings.errors.transferNotPending');
+      if (error instanceof ApiError && error.status === 409) return onDone(conflictMessage(error));
+      setFailed(true);
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open
+      title={t('hr.trainings.cancelTransferTitle', { name: traineeName(a) })}
+      onClose={busy ? () => {} : onClose}
+    >
+      <form onSubmit={(e) => void submit(e)} noValidate className="flex flex-col gap-4">
+        {decision && (
+          <p className="text-heading">
+            {t('hr.trainings.scheduledTransfer', {
+              name: decision.incomingEmployeeName,
+              date: date(decision.effectiveDate),
+            })}
+          </p>
+        )}
+        <div className="flex flex-col gap-1">
+          <label className="ims-label" htmlFor={`${id}-reason`}>
+            {t('hr.trainings.cancelReason')}
+          </label>
+          <textarea
+            id={`${id}-reason`}
+            className="ims-input min-h-24"
+            dir="auto"
+            value={reason}
+            maxLength={2000}
+            aria-invalid={missing || undefined}
+            aria-describedby={missing ? `${id}-reason-error` : undefined}
+            onChange={(e) => setReason(e.target.value)}
+          />
+          {missing && (
+            <p id={`${id}-reason-error`} role="alert" className="ims-error">
+              {t('hr.trainings.errors.reason')}
+            </p>
+          )}
+        </div>
+        <p className="text-small text-muted">{t('hr.trainings.cancelTransferNote')}</p>
+        {failed && (
+          <p role="alert" className="ims-error">
+            {t('training.errors.generic')}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="ims-btn-text" disabled={busy} onClick={onClose}>
+            {t('hr.trainings.keepTransfer')}
+          </button>
+          <button type="submit" className="ims-btn-primary" disabled={busy}>
+            {t('hr.trainings.confirmCancelTransfer')}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** AD-65: every transfer decision taken from an assignment, oldest first, with its status and outcome (HR only). */
+function TransferDecisionsDialog({
+  assignment: a,
+  onClose,
+}: {
+  assignment: HrAssignment;
+  onClose: () => void;
+}) {
+  const { t, language } = useI18n();
+  const date = (value: string) => new Date(value).toLocaleDateString(language);
+  const outcome = (d: HrTransferDecision) => {
+    if (!d.resolvedAt) return null;
+    if (d.status === 'Executed') return t('hr.trainings.executedOn', { date: date(d.resolvedAt) });
+    if (d.status === 'Cancelled')
+      return t('hr.trainings.cancelledBy', { name: d.resolvedBy ?? '', date: date(d.resolvedAt) });
+    return t('hr.trainings.voidedOn', {
+      date: date(d.resolvedAt),
+      reason: t(`hr.trainings.voidReasons.${d.resolutionCode ?? 'dates_invalid'}`),
+    });
+  };
+  return (
+    <Dialog
+      open
+      title={t('hr.trainings.transferDecisionsTitle', { name: traineeName(a) })}
+      onClose={onClose}
+    >
+      <ol className="flex flex-col gap-3">
+        {(a.transferDecisions ?? []).map((d) => (
+          <li key={d.id} className="ims-card flex flex-col gap-1 text-small">
+            <p className="flex flex-wrap items-center gap-2 font-semibold text-heading">
+              <span className="ims-badge">{t(`hr.trainings.decisionStatus.${d.status}`)}</span>
+              {t('hr.trainings.decisionTarget', {
+                name: d.incomingEmployeeName,
+                date: date(d.effectiveDate),
+              })}
+            </p>
+            <p dir="auto" className="whitespace-pre-line break-words">
+              {d.reason}
+            </p>
+            <p className="text-muted">
+              {t('hr.trainings.decidedBy', { name: d.decidedBy, date: date(d.decidedAt) })}
+            </p>
+            {outcome(d) && <p className="text-muted">{outcome(d)}</p>}
+            {d.status === 'Cancelled' && d.resolutionReason && (
+              <p dir="auto" className="whitespace-pre-line break-words">
+                {d.resolutionReason}
+              </p>
+            )}
+          </li>
+        ))}
+      </ol>
+      <div className="mt-4 flex justify-end">
+        <button type="button" className="ims-btn-outline" onClick={onClose}>
+          {t('hr.trainings.close')}
+        </button>
+      </div>
     </Dialog>
   );
 }

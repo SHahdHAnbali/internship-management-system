@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { useToast } from '../../components/toastContext';
 import { openFileLink } from '../../lib/fileLinks';
+import { ApiError } from '../../lib/api';
 import { useI18n } from '../../i18n/context';
 import { employeeApi } from './employeeApi';
-import type { MyMentorRequest, MyTrainee, ProgressNote } from './models';
+import type { EarlierProgressNote, MyMentorRequest, MyTrainee, ProgressNote } from './models';
 
 /**
  * My trainees (PDF §4): the signed-in employee's own requests (waiting for HR or decided), current trainees (active
- * assignments) with their periodic notes, and previous trainees.
+ * assignments) with their periodic notes, and previous trainees. After a transfer (AD-65), the mentor of the latest
+ * assignment may also read the earlier mentors' notes, read-only.
  */
 export function MyTraineesPage() {
   const { t, language } = useI18n();
@@ -48,6 +50,7 @@ export function MyTraineesPage() {
               <li key={a.id} className="ims-card flex flex-col gap-4">
                 <TraineeSummary assignment={a} date={date} />
                 <Notes assignmentId={a.id} />
+                {a.canReadEarlierNotes && <EarlierNotes assignmentId={a.id} date={date} />}
               </li>
             ))}
           </ul>
@@ -104,8 +107,9 @@ export function MyTraineesPage() {
         ) : (
           <ul className="flex flex-col gap-4">
             {previous.map((a) => (
-              <li key={a.id} className="ims-card">
+              <li key={a.id} className="ims-card flex flex-col gap-4">
                 <TraineeSummary assignment={a} date={date} />
+                {a.canReadEarlierNotes && <EarlierNotes assignmentId={a.id} date={date} />}
               </li>
             ))}
           </ul>
@@ -179,8 +183,13 @@ function Notes({ assignmentId }: { assignmentId: string }) {
       setError(false);
       toast('employee.notes.saved');
       await load();
-    } catch {
-      toast('training.errors.generic');
+    } catch (failure) {
+      // AD-65: a transfer of this training takes effect today and waits for the scheduled run.
+      toast(
+        failure instanceof ApiError && failure.code === 'assignment.transfer_due'
+          ? 'employee.notes.transferDue'
+          : 'training.errors.generic',
+      );
     } finally {
       setSaving(false);
     }
@@ -230,6 +239,83 @@ function Notes({ assignmentId }: { assignmentId: string }) {
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * AD-65: the earlier mentors' notes of a transferred training, read-only, for the mentor of its latest assignment (also
+ * after it has ended). Loaded when opened.
+ */
+function EarlierNotes({
+  assignmentId,
+  date,
+}: {
+  assignmentId: string;
+  date: (value: string) => string;
+}) {
+  const { t, language } = useI18n();
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState<EarlierProgressNote[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && notes === null) {
+      employeeApi.earlierNotes(assignmentId).then(
+        (loaded) => {
+          setNotes(loaded);
+          setFailed(false);
+        },
+        () => setFailed(true),
+      );
+    }
+  };
+
+  return (
+    <div className="border-t border-divider pt-4">
+      <button
+        type="button"
+        className="ims-btn-text"
+        aria-expanded={open}
+        aria-controls={`${id}-earlier`}
+        onClick={toggle}
+      >
+        {t('employee.notes.earlierTitle')}
+      </button>
+      {open && (
+        <div id={`${id}-earlier`} className="mt-3">
+          {failed ? (
+            <p role="alert" className="ims-error">
+              {t('employee.notes.loadFailed')}
+            </p>
+          ) : notes && notes.length === 0 ? (
+            <p className="text-small text-muted">{t('employee.notes.earlierEmpty')}</p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {notes?.map((note) => (
+                <li key={note.id} className="rounded-control bg-surface-subtle p-3">
+                  <p className="text-small text-muted">
+                    {t('employee.notes.earlierContext', {
+                      mentor: note.assignment.mentorName,
+                      from: date(note.assignment.startDate),
+                      to: date(note.assignment.endDate),
+                    })}
+                  </p>
+                  <p dir="auto" className="mt-1 whitespace-pre-line">
+                    {note.text}
+                  </p>
+                  <p className="mt-1 text-small text-muted">
+                    {note.authorName} · {new Date(note.writtenAt).toLocaleString(language)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );

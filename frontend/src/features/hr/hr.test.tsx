@@ -879,3 +879,404 @@ describe('HR report: trainee history (PDF §6, read-only)', () => {
     expect(screen.getByText(phone)).toBeInTheDocument();
   });
 });
+
+describe('HR transfers a training (AD-65)', () => {
+  const hebronToday = () =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Hebron' }).format(new Date());
+  const shift = (date: string, days: number) => {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+  const today = hebronToday();
+  const start = shift(today, -30);
+  const end = shift(today, 30);
+  const training = (overrides: object = {}) => ({
+    id: 's1',
+    applicationId: 'app-s1',
+    status: 'Active',
+    startDate: start,
+    endDate: end,
+    endReason: null as string | null,
+    extensions: [] as never[],
+    trainee: { id: 't1', fullName: 'Lina Haddad', email: 'lina@trainee.example' },
+    employee: { id: 'e1', fullName: 'Mentor One', email: 'mentor@company.example' },
+    fieldName: 'QA',
+    canTransfer: true,
+    transferredFrom: null,
+    transferredTo: null,
+    ...overrides,
+  });
+  const mentors = [
+    { id: 'e1', fullName: 'Mentor One' },
+    { id: 'e2', fullName: 'Mentor Two' },
+  ];
+  const posts = (fetchMock: ReturnType<typeof mockFetch>) =>
+    fetchMock.mock.calls
+      .filter(([, init]) => init?.method === 'POST')
+      .map(([url, init]) => [url, JSON.parse(String(init!.body))]);
+
+  function setup(post: [number, unknown?], rows: object[] = [training()]) {
+    return mockFetch((method, url) => {
+      if (url === '/api/hr/mentors') return [200, mentors];
+      return method === 'POST' ? post : [200, rows];
+    });
+  }
+  async function open() {
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'hr.trainings.transferFor' }));
+    const dialog = await screen.findByRole('dialog');
+    const select = within(dialog).getByLabelText('hr.trainings.newMentor');
+    await waitFor(() => expect(select).toBeEnabled());
+    return { user, dialog, select };
+  }
+  const setDate = (dialog: HTMLElement, value: string) =>
+    fireEvent.change(within(dialog).getByLabelText('hr.trainings.transferDate'), {
+      target: { value },
+    });
+
+  async function fill(
+    user: ReturnType<typeof userEvent.setup>,
+    dialog: HTMLElement,
+    select: HTMLElement,
+    date: string,
+  ) {
+    await user.selectOptions(select, 'e2');
+    setDate(dialog, date);
+    await user.type(within(dialog).getByLabelText('hr.trainings.transferReason'), ' New project ');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+  }
+  const pendingDecision = {
+    id: 'd1',
+    status: 'Pending',
+    effectiveDate: shift(today, 5),
+    incomingEmployeeName: 'Mentor Two',
+    reason: 'Plan',
+    decidedBy: 'HR One',
+    decidedAt: `${today}T08:00:00Z`,
+    resolvedAt: null,
+    resolvedBy: null,
+    resolutionCode: null,
+    resolutionReason: null,
+  };
+
+  it('today is an immediate transfer: current mentor excluded, no past dates, reviewed, confirmed once', async () => {
+    const fetchMock = setup([200, {}]);
+    renderPage(<TrainingsPage />);
+    const { user, dialog, select } = await open();
+
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['hr.trainings.chooseMentor', 'Mentor Two']);
+    const date = within(dialog).getByLabelText('hr.trainings.transferDate');
+    expect(date).toHaveAttribute('min', today); // never in the past
+    expect(date).toHaveAttribute('max', end); // not after the planned end date
+    expect(within(dialog).getByText('hr.trainings.transferDateHint')).toBeInTheDocument();
+    setDate(dialog, today);
+    expect(within(dialog).getByText('hr.trainings.transferImmediate')).toBeInTheDocument();
+    await fill(user, dialog, select, today);
+    expect(within(dialog).getByText('Mentor Two')).toBeInTheDocument();
+    expect(within(dialog).getByText('hr.trainings.typeImmediate')).toBeInTheDocument();
+    expect(within(dialog).getByText('hr.trainings.currentMentorUntil')).toBeInTheDocument();
+    await user.dblClick(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+
+    await waitFor(() => expect(screen.getByText('hr.trainings.transferred')).toBeInTheDocument());
+    expect(posts(fetchMock)).toEqual([
+      [
+        '/api/hr/assignments/s1/transfer',
+        { employeeId: 'e2', transferDate: today, reason: 'New project' },
+      ],
+    ]);
+  });
+
+  it('a later date is a scheduled transfer: labelled as such and confirmed as scheduled', async () => {
+    const fetchMock = setup([200, {}]);
+    renderPage(<TrainingsPage />);
+    const { user, dialog, select } = await open();
+    setDate(dialog, shift(today, 5));
+    expect(within(dialog).getByText('hr.trainings.transferScheduledHint')).toBeInTheDocument();
+    await fill(user, dialog, select, shift(today, 5));
+    expect(within(dialog).getByText('hr.trainings.typeScheduled')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+    await waitFor(() =>
+      expect(screen.getByText('hr.trainings.transferScheduled')).toBeInTheDocument(),
+    );
+    expect(posts(fetchMock)).toEqual([
+      [
+        '/api/hr/assignments/s1/transfer',
+        { employeeId: 'e2', transferDate: shift(today, 5), reason: 'New project' },
+      ],
+    ]);
+  });
+
+  it('requires a mentor, a valid date and a reason before review; past, first-day and late dates are refused', async () => {
+    const fetchMock = setup([200, {}]);
+    renderPage(<TrainingsPage />);
+    const { user, dialog, select } = await open();
+    const review = () =>
+      user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+
+    await review();
+    for (const message of [
+      'hr.trainings.errors.mentor',
+      'hr.trainings.errors.date',
+      'hr.trainings.errors.reason',
+    ])
+      expect(within(dialog).getByText(message)).toBeInTheDocument();
+    await user.selectOptions(select, 'e2');
+    await user.type(within(dialog).getByLabelText('hr.trainings.transferReason'), 'Moved');
+    setDate(dialog, shift(today, -1));
+    await review();
+    expect(within(dialog).getByText('hr.trainings.errors.transferInPast')).toBeInTheDocument();
+    setDate(dialog, shift(end, 1));
+    await review();
+    expect(within(dialog).getByText('hr.trainings.errors.transferAfterEnd')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('hr.trainings.transferDate')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(posts(fetchMock)).toEqual([]);
+  });
+
+  it('a training that starts later: the earliest date is the day after its start; its first day is refused', async () => {
+    const later = shift(today, 3);
+    setup([200, {}], [training({ startDate: later })]);
+    renderPage(<TrainingsPage />);
+    const { user, dialog, select } = await open();
+    expect(within(dialog).getByLabelText('hr.trainings.transferDate')).toHaveAttribute(
+      'min',
+      shift(later, 1),
+    );
+    await user.selectOptions(select, 'e2');
+    await user.type(within(dialog).getByLabelText('hr.trainings.transferReason'), 'Moved');
+    setDate(dialog, later);
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    expect(
+      within(dialog).getByText('hr.trainings.errors.transferNotAfterStart'),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    [403, 'assignment.transfer_not_responsible', 'hr.trainings.errors.transferNotResponsible'],
+    [409, 'assignment.transfer_pending', 'hr.trainings.errors.transferPending'],
+    [409, 'assignment.transfer_due', 'hr.trainings.errors.transferDue'],
+    [409, undefined, 'training.errors.conflict'],
+  ] as const)(
+    'a %i (%s) refusal closes the dialog, says why and reloads',
+    async (status, code, message) => {
+      const fetchMock = setup([status, { status, code }]);
+      renderPage(<TrainingsPage />);
+      const { user, dialog, select } = await open();
+      await fill(user, dialog, select, shift(today, 2));
+      await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.filter(
+            ([url, init]) => url === '/api/hr/assignments' && (init?.method ?? 'GET') === 'GET',
+          ),
+        ).toHaveLength(2),
+      );
+    },
+  );
+
+  it('server refusals of the mentor or the date are shown on their fields', async () => {
+    for (const [code, message] of [
+      ['assignment.transfer_mentor_not_employee', 'hr.trainings.errors.mentorNotEmployee'],
+      ['assignment.transfer_in_past', 'hr.trainings.errors.transferInPast'],
+    ] as const) {
+      setup([400, { status: 400, code }]);
+      const view = renderPage(<TrainingsPage />);
+      const { user, dialog, select } = await open();
+      await fill(user, dialog, select, today);
+      await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+      expect(await within(dialog).findByText(message)).toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
+  it('shows Transfer only where the server allows it, and the transfer links on both trainings', async () => {
+    setup(
+      [200, {}],
+      [
+        training({
+          id: 's2',
+          canTransfer: false,
+          transferredFrom: { assignmentId: 's1', employeeName: 'Mentor One' },
+        }),
+        training({
+          id: 's1',
+          status: 'Transferred',
+          canTransfer: false,
+          endReason: 'Moved',
+          transferredTo: { assignmentId: 's2', employeeName: 'Mentor Two' },
+        }),
+      ],
+    );
+    renderPage(<TrainingsPage />);
+    expect(await screen.findByText('hr.trainings.transferredFrom')).toBeInTheDocument();
+    expect(screen.getByText('hr.trainings.transferredTo')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'hr.trainings.transferFor' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a scheduled transfer is shown on the training; the responsible HR cancels it with a reason, once', async () => {
+    const fetchMock = setup(
+      [200, {}],
+      [
+        training({
+          canTransfer: false,
+          canCancelTransfer: true,
+          transferDecisions: [pendingDecision],
+        }),
+      ],
+    );
+    renderPage(<TrainingsPage />);
+    expect(await screen.findByText('hr.trainings.scheduledTransfer')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'hr.trainings.transferFor' }),
+    ).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'hr.trainings.cancelTransferFor' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'hr.trainings.confirmCancelTransfer' }),
+    );
+    expect(within(dialog).getByText('hr.trainings.errors.reason')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('hr.trainings.cancelReason')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(posts(fetchMock)).toEqual([]);
+    await user.type(within(dialog).getByLabelText('hr.trainings.cancelReason'), ' Wrong mentor ');
+    await user.dblClick(
+      within(dialog).getByRole('button', { name: 'hr.trainings.confirmCancelTransfer' }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText('hr.trainings.transferCancelled')).toBeInTheDocument(),
+    );
+    expect(posts(fetchMock)).toEqual([
+      ['/api/hr/transfer-decisions/d1/cancel', { reason: 'Wrong mentor' }],
+    ]);
+  });
+
+  it.each([
+    [403, 'assignment.transfer_not_responsible', 'hr.trainings.errors.transferNotResponsible'],
+    [400, 'transfer_decision.invalid_status', 'hr.trainings.errors.transferNotPending'],
+  ] as const)('a %i cancellation refusal says why and reloads', async (status, code, message) => {
+    setup(
+      [status, { status, code }],
+      [
+        training({
+          canTransfer: false,
+          canCancelTransfer: true,
+          transferDecisions: [pendingDecision],
+        }),
+      ],
+    );
+    renderPage(<TrainingsPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'hr.trainings.cancelTransferFor' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('hr.trainings.cancelReason'), 'x');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'hr.trainings.confirmCancelTransfer' }),
+    );
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('other HR users see the scheduled transfer but cannot cancel it', async () => {
+    setup(
+      [200, {}],
+      [
+        training({
+          canTransfer: false,
+          canCancelTransfer: false,
+          transferDecisions: [pendingDecision],
+        }),
+      ],
+    );
+    renderPage(<TrainingsPage />);
+    expect(await screen.findByText('hr.trainings.scheduledTransfer')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'hr.trainings.cancelTransferFor' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('lists every transfer decision with its status: executed, cancelled (with the reason) and not carried out', async () => {
+    const decided = { ...pendingDecision, resolvedAt: `${today}T09:00:00Z` };
+    setup(
+      [200, {}],
+      [
+        training({
+          transferDecisions: [
+            {
+              ...decided,
+              id: 'd1',
+              status: 'Cancelled',
+              resolvedBy: 'HR One',
+              resolutionReason: 'Wrong mentor',
+            },
+            { ...decided, id: 'd2', status: 'Void', resolutionCode: 'mentor_not_employee' },
+            { ...decided, id: 'd3', status: 'Executed' },
+          ],
+        }),
+      ],
+    );
+    renderPage(<TrainingsPage />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole('button', { name: 'hr.trainings.transferDecisionsFor' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    for (const text of [
+      'hr.trainings.decisionStatus.Cancelled',
+      'hr.trainings.decisionStatus.Void',
+      'hr.trainings.decisionStatus.Executed',
+      'hr.trainings.cancelledBy',
+      'Wrong mentor',
+      'hr.trainings.voidedOn',
+      'hr.trainings.executedOn',
+    ])
+      expect(within(dialog).getByText(text)).toBeInTheDocument();
+  });
+
+  it('extending while a transfer takes effect today (409 transfer_due) says so and reloads', async () => {
+    setup([409, { status: 409, code: 'assignment.transfer_due' }]);
+    renderPage(<TrainingsPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'hr.trainings.extendFor' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('hr.trainings.newEndDate'), {
+      target: { value: shift(end, 10) },
+    });
+    await user.type(within(dialog).getByLabelText('hr.trainings.extensionReason'), 'More');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.confirm' }));
+    expect(await screen.findByText('hr.trainings.errors.transferDue')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['ar', arMessages, 'نقل تدريب Lina Haddad', 'المدرّب الجديد', 'تاريخ النقل', 'سبب النقل'],
+    [
+      'en',
+      enMessages,
+      'Transfer the training of Lina Haddad',
+      'New mentor',
+      'Transfer date',
+      'Transfer reason',
+    ],
+  ] as const)('reads in %s', async (language, raw, button, mentor, date, reason) => {
+    setup([200, {}]);
+    renderPage(<TrainingsPage />, { i18n: testI18n(JSON.parse(raw), language) });
+    await userEvent.setup().click(await screen.findByRole('button', { name: button }));
+    const dialog = await screen.findByRole('dialog');
+    for (const label of [mentor, date, reason])
+      expect(within(dialog).getByLabelText(label)).toBeInTheDocument();
+  });
+});

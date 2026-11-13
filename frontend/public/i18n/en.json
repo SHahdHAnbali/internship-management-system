@@ -333,7 +333,9 @@
         "user_sessions": "Sign-in sessions",
         "other": "Other data",
         "assignment_extensions": "Training extensions",
-        "responsible_hr_changes": "Responsible HR appointments"
+        "responsible_hr_changes": "Responsible HR appointments",
+        "assignment_transfers": "Training transfers",
+        "transfer_decisions": "Transfer decisions"
       },
       "unknownUser": "Unknown user",
       "traineeWithoutName": "Trainee (name not entered yet)",
@@ -497,6 +499,14 @@
         "responsible_hr_changes": {
           "created": "A responsible HR was appointed",
           "updated": "A responsible HR appointment was updated"
+        },
+        "assignment_transfers": {
+          "created": "A training was transferred",
+          "updated": "A training transfer was updated"
+        },
+        "transfer_decisions": {
+          "created": "A training transfer was decided",
+          "updated": "A training transfer decision was executed, cancelled or voided"
         }
       }
     }
@@ -697,7 +707,11 @@
       "add": "Add note",
       "saved": "Note saved.",
       "empty": "No notes yet.",
-      "loadFailed": "Unable to load notes. Please try again."
+      "loadFailed": "Unable to load notes. Please try again.",
+      "earlierTitle": "Earlier mentors’ notes",
+      "earlierEmpty": "The earlier mentors wrote no notes.",
+      "earlierContext": "{{mentor}}, {{from}} – {{to}}",
+      "transferDue": "This training is being transferred to another mentor today. Notes cannot be added now."
     },
     "reports": {
       "title": "My reports"
@@ -775,7 +789,16 @@
         "dateBeforeStart": "The actual end date cannot be before the training start date.",
         "dateInFuture": "The actual end date cannot be in the future.",
         "reason": "Enter the reason.",
-        "notLater": "The new end date must be later than the current planned end date."
+        "notLater": "The new end date must be later than the current planned end date.",
+        "mentor": "Choose the new mentor (not the current one).",
+        "mentorNotEmployee": "The chosen user no longer holds the Employee role. Choose another mentor.",
+        "transferNotAfterStart": "The transfer date must be after the training’s start date.",
+        "transferAfterEnd": "The transfer date cannot be after the planned end date.",
+        "transferNotResponsible": "Only the trainee’s responsible HR can transfer this training.",
+        "transferInPast": "The transfer date cannot be in the past.",
+        "transferPending": "A transfer of this training is already scheduled. Cancel it first to choose another one.",
+        "transferDue": "A transfer of this training takes effect today and is being processed. Try again later.",
+        "transferNotPending": "This transfer is no longer scheduled."
       },
       "extend": "Extend",
       "extendFor": "Extend the training of {{name}}",
@@ -789,7 +812,57 @@
       "historyFor": "Extension history of {{name}}",
       "historyTitle": "Extensions of {{name}}",
       "extendedBy": "By {{name}} on {{date}}",
-      "close": "Close"
+      "close": "Close",
+      "transfer": "Transfer",
+      "transferFor": "Transfer the training of {{name}}",
+      "transferTitle": "Transfer the training of {{name}}",
+      "currentMentor": "Current mentor",
+      "newMentor": "New mentor",
+      "chooseMentor": "Choose a mentor",
+      "noMentors": "There is no other user with the Employee role.",
+      "transferDate": "Transfer date",
+      "transferReason": "Transfer reason",
+      "plannedEndKept": "Planned end date (kept)",
+      "currentMentorUntil": "Current mentor until",
+      "transferNote": "The new mentor does not need to approve. The current mentor’s training record and notes are kept.",
+      "transferred": "The training was transferred.",
+      "transferredFrom": "Transferred from {{name}}",
+      "transferredTo": "Transferred to {{name}}",
+      "transferDateHint": "Today transfers the training immediately; a later date schedules it.",
+      "transferImmediate": "Immediate transfer: the new mentor takes over today.",
+      "transferScheduledHint": "Scheduled transfer: the current mentor stays responsible until {{date}}, when the transfer takes effect automatically.",
+      "transferType": "Transfer type",
+      "typeImmediate": "Immediate",
+      "typeScheduled": "Scheduled for {{date}}",
+      "transferScheduled": "The transfer was scheduled.",
+      "scheduledTransfer": "Scheduled transfer to {{name}} on {{date}}",
+      "cancelTransfer": "Cancel scheduled transfer",
+      "cancelTransferFor": "Cancel the scheduled transfer of {{name}}",
+      "cancelTransferTitle": "Cancel the scheduled transfer of {{name}}",
+      "cancelReason": "Cancellation reason",
+      "cancelTransferNote": "The decision is kept in the training history. To choose another date or mentor, schedule a new transfer.",
+      "confirmCancelTransfer": "Cancel the transfer",
+      "keepTransfer": "Keep it",
+      "transferCancelled": "The scheduled transfer was cancelled.",
+      "transferDecisions": "Transfers ({{count}})",
+      "transferDecisionsFor": "Transfer decisions for {{name}}",
+      "transferDecisionsTitle": "Transfer decisions: {{name}}",
+      "decisionTarget": "To {{name}}, effective {{date}}",
+      "decidedBy": "Decided by {{name}} on {{date}}",
+      "executedOn": "Executed on {{date}}",
+      "cancelledBy": "Cancelled by {{name}} on {{date}}",
+      "voidedOn": "Not carried out ({{date}}): {{reason}}",
+      "decisionStatus": {
+        "Pending": "Scheduled",
+        "Executed": "Executed",
+        "Cancelled": "Cancelled",
+        "Void": "Not carried out"
+      },
+      "voidReasons": {
+        "training_ended": "the training ended before the transfer date",
+        "mentor_not_employee": "the new mentor no longer held the Employee role",
+        "dates_invalid": "the transfer dates were no longer valid"
+      }
     },
     "reports": {
       "title": "Reports",
