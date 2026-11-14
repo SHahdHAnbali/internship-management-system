@@ -133,8 +133,43 @@ node node_modules/.cache/ims-ops/transfer-email-catch-up.mjs --transfer <transfe
 unset CATCH_UP_DATABASE
 ```
 
-### Current deployment (2026-11-13, incoming-mentor transfer e-mail, AD-65)
-- Worker `ims-api` version `839ed022-ca2c-4a3d-9caf-41b1789a63a9` (commit `6404d4b`; Worker only, Pages unchanged at
+### Current deployment (2026-11-14, HR direct assignment, AD-67)
+- Worker `ims-api` version `950d83d5-c860-4ee9-bf12-f8decd9c3865` and Pages production deployment
+  `b516b290-b828-4953-ad3b-817ce57b8aa1` (commit `6650090`, https://progineer-ims.pages.dev). **Order: migration, then
+  Worker, then Pages** (the new Worker reads `mentor_requests.rejection_reason` in the existing mentor-request lists).
+  The application's current responsible HR assigns an accepted, never-assigned trainee directly to a user who holds the
+  Employee role, with the start and planned end dates (`POST /api/hr/applications/:id/direct-assignment`, HR ›
+  application detail); every pending mentor request for the trainee is rejected with a stored reason in the same
+  audited transaction; the chosen mentor gets the direct-assignment e-mail and in-app notice only, other requesters
+  the ordinary rejection notices (none for a current Admin), the trainee an e-mail with the mentor and dates (AD-67).
+  **Backup (AD-54):** `pg_dump -Fc`, read-only, before any change:
+  `IMS-backups/neon-2026-11-14-ad67/ims_db-before-AD67-20261114T123029Z.dump` (outside the repository, private; SHA-256
+  `783482db…c150d7ee`), restored into an isolated disposable PostgreSQL container: all 22 tables with identical row
+  counts, the same 12 migrations, 62 triggers enabled, the business checksums and every constraint (215, compared
+  after normalising the printed form) equal to production; the container was removed; production was unchanged by the
+  backup (read-only snapshots before and after). The plain-PostgreSQL restore leaves out 25 Neon-only
+  `SET (pg_attver=…)` column statements (one per column of the tables created on Neon since: `responsible_hr_changes`,
+  `assignment_transfers`, `transfer_decisions`), nothing else. **Preflight (read-only):** 12 migrations ending at
+  `TransferDecisions`, identical to the repository; the schema (555 catalog entries) identical to the migrated local
+  database apart from the AD-67 changes. **Migration** `20261114105015_DirectAssignment`, applied 2026-11-14 12:53 UTC
+  as `neondb_owner` in one transaction (5-second lock timeout, a guard re-checking the database and the migration
+  history first), the SQL byte-identical to the reviewed script (SHA-256 `98af5a65…4eafb9f6`): the nullable
+  `mentor_requests.rejection_reason varchar(2000)`, `ck_mentor_requests_rejection_reason`, and
+  `ck_notifications_type` widened with `TraineeDirectlyAssigned`; verified: 13 migrations, every other table, constraint,
+  index, trigger, function and grant unchanged, every row count and business checksum unchanged (the mentor requests'
+  over their original columns), no audit row written. **No grant needed:** `ims_app`'s table-level UPDATE on
+  `mentor_requests` covers the new column. **Never run this migration's `Down`** in production: it drops the column; a
+  code rollback does not need it. **Worker** deployed 13:03 UTC (Cron Trigger, bindings, variables and the four
+  secrets unchanged); **Pages** deployed 13:18 UTC. Before: 86/86 .NET, 491/491 Worker, 371/371 frontend tests,
+  typechecks, dry-run and production builds, lint, Prettier and secret scans passed. After (signed out, read-only):
+  `/health` Healthy; `/api/auth/config` 200; the protected APIs and the new endpoint 401; no CORS headers for a
+  foreign origin; the site pages and all 50 assets 200; both translation files serve the new labels; the served
+  direct-assignment chunk identical to the build; the Worker's live log without exceptions; no record created by the
+  checks. **Tested by the owner in Production** on 2026-11-14: one direct assignment (an Active assignment without a
+  mentor request; another employee's pending request rejected with the reason and notified; the chosen mentor's
+  direct-assignment notice), in one audited transaction. No rollback was needed. Rollback: Worker `839ed022` and Pages
+  `0ac20f21` together, the database left as it is (below).
+- Previous (incoming-mentor transfer e-mail, AD-65, 2026-11-13): Worker `ims-api` version `839ed022-ca2c-4a3d-9caf-41b1789a63a9` (commit `6404d4b`; Worker only, Pages unchanged at
   `0ac20f21`; no migration, grant, variable, binding or secret change; the Cron Trigger `5 3,21,22 * * *` unchanged). When a
   transfer is executed (at once for today, or by the scheduled job), its incoming mentor gets one bilingual e-mail
   (`TrainingTransferredToYou`), best effort after the commit, sent only by the request or scheduled run that committed it;
@@ -406,9 +441,14 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 | C3 | One rate-limit counter shared by trainee sign-in and application submit | **Open**: owner decision (optional) |
 
 ### Rollback
-- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`b8d97853-bea0-426a-a0d3-f67ab9ca6a2d`, commit `d0b193d`, before the transfer: HR › Trainings has no Transfer action; roll back the Worker to `e7913829` with it; earlier: `54722aca-948c-4ec6-9c91-36983dfa0e31`, commit `a0a9977`, before the responsible HR: the Admin page then has no responsible HR column; roll back the Worker with it, and never leave this site version behind the older Worker; earlier: `eb43ce16-2927-49be-88c9-ad44bf337454`, commit `74eaf72`, before the training extension: no Extend action or extension history; `7272d5d9-3ade-4802-9150-b04f3a9ca230`, commit `958578d`, before the Google trainee sign-in and the homepage cleanup; `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
+- **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`0ac20f21-698f-49d9-8bf8-694924565a35`, commit `bffc706`, before the direct assignment: no Direct assign action; roll back the Worker to `839ed022` with it; earlier: `b8d97853-bea0-426a-a0d3-f67ab9ca6a2d`, commit `d0b193d`, before the transfer: HR › Trainings has no Transfer action; roll back the Worker to `e7913829` with it; earlier: `54722aca-948c-4ec6-9c91-36983dfa0e31`, commit `a0a9977`, before the responsible HR: the Admin page then has no responsible HR column; roll back the Worker with it, and never leave this site version behind the older Worker; earlier: `eb43ce16-2927-49be-88c9-ad44bf337454`, commit `74eaf72`, before the training extension: no Extend action or extension history; `7272d5d9-3ade-4802-9150-b04f3a9ca230`, commit `958578d`, before the Google trainee sign-in and the homepage cleanup; `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback beaf2d36-e98b-4978-9415-495d3e2d56bb` (in `backend-workers/`; before the
+- **Worker code:** `npx wrangler rollback 839ed022-ca2c-4a3d-9caf-41b1789a63a9` (in `backend-workers/`; before the direct
+  assignment: the endpoint is gone and the mentor-request lists no longer return the rejection reason; it works with
+  the new schema, which is additive: the `rejection_reason` column and the widened notification check stay, and
+  `TraineeDirectlyAssigned` notifications are then simply not listed; **roll back the site to `0ac20f21` with it**;
+  never run the `DirectAssignment` migration's `Down`), or
+  `beaf2d36-e98b-4978-9415-495d3e2d56bb` (before the
   incoming-mentor transfer e-mail: transfers work, no e-mail is sent; the site needs no rollback), or
   `e7913829-8be9-4172-bba3-89f0aa1755de` (before the
   transfer: the transfer, cancel, mentors and earlier-notes endpoints are gone; **roll back the site to `b8d97853` with
@@ -457,7 +497,9 @@ None of these touches the data.
   production); another on 2026-11-13 before the `ResponsibleHrChanges` migration (restored likewise: 53 triggers,
   every business table's checksum and every row count equal to production); another on 2026-11-13 before the AD-65
   migrations (56 triggers, every row count and the business checksums equal to production; restoring a Neon dump into
-  plain PostgreSQL needs the Neon-only `SET (pg_attver=…)` column statements left out, see the AD-65 deployment).
+  plain PostgreSQL needs the Neon-only `SET (pg_attver=…)` column statements left out, see the AD-65 deployment);
+  another on 2026-11-14 before the AD-67 migration (22 tables, row counts, checksums and constraints equal to
+  production; 25 Neon-only column statements left out of the plain-PostgreSQL restore, see the AD-67 deployment).
 - Rolling back the Worker or Pages never touches the database (above).
 
 ### Google sign-in
