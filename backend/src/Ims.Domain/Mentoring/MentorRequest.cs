@@ -11,6 +11,8 @@ public sealed class MentorRequest : Entity
 {
     public const int NoteMaxLength = 2000;
 
+    public const int RejectionReasonMaxLength = 2000;
+
     private MentorRequest()
     {
         Note = null!;
@@ -31,6 +33,12 @@ public sealed class MentorRequest : Entity
 
     /// <summary>The HR member who approved or rejected it.</summary>
     public Guid? DecidedById { get; private set; }
+
+    /// <summary>
+    /// Why it was rejected, when a reason was recorded: so far only the automatic rejection of a direct assignment (AD-67);
+    /// HR's own rejection of a request takes no reason (PDF §4).
+    /// </summary>
+    public string? RejectionReason { get; private set; }
 
     public static MentorRequest Create(Guid employeeId, Guid applicationId, string note, DateTimeOffset now) => new()
     {
@@ -55,6 +63,17 @@ public sealed class MentorRequest : Entity
     }
 
     public void Reject(Guid hrId, DateTimeOffset now) => Decide(MentorRequestStatus.Rejected, hrId, now);
+
+    /// <summary>
+    /// The application's responsible HR assigned the trainee directly (AD-67): every pending request for it is rejected in
+    /// the same change, with the reason, by that HR member; the request itself is kept.
+    /// </summary>
+    public void RejectBecauseDirectlyAssigned(Guid hrId, string reason, DateTimeOffset now)
+    {
+        var cleanReason = Guard.Required(reason, "Rejection reason", RejectionReasonMaxLength);
+        Decide(MentorRequestStatus.Rejected, hrId, now);
+        RejectionReason = cleanReason;
+    }
 
     private void Decide(MentorRequestStatus decision, Guid hrId, DateTimeOffset now)
     {

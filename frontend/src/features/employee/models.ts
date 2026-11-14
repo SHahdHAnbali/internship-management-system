@@ -34,6 +34,8 @@ export interface MyMentorRequest {
   note: string;
   requestedAt: string;
   decidedAt: string | null;
+  /** AD-67: set when the request was rejected because HR assigned the trainee directly. */
+  rejectionReason?: string | null;
   traineeName: string | null;
   fieldName: string;
 }

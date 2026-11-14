@@ -51,4 +51,7 @@ public enum NotificationType
     MentorRequestSubmitted,
     MentorRequestApproved,
     MentorRequestRejected,
+
+    /// <summary>HR assigned an accepted trainee directly to this employee (direct assignment, AD-67).</summary>
+    TraineeDirectlyAssigned,
 }

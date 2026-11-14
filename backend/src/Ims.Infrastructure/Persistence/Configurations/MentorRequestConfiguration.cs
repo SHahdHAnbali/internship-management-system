@@ -10,10 +10,16 @@ internal sealed class MentorRequestConfiguration : IEntityTypeConfiguration<Ment
 {
     public void Configure(EntityTypeBuilder<MentorRequest> builder)
     {
-        builder.ToTable("mentor_requests", t => t.HasCheckConstraint(
-            "ck_mentor_requests_decision",
-            "(status IN ('Approved', 'Rejected')) = (decided_at IS NOT NULL AND decided_by_id IS NOT NULL)"));
+        builder.ToTable("mentor_requests", t =>
+        {
+            t.HasCheckConstraint(
+                "ck_mentor_requests_decision",
+                "(status IN ('Approved', 'Rejected')) = (decided_at IS NOT NULL AND decided_by_id IS NOT NULL)");
+            // A reason only on a rejection (AD-67: the automatic rejection of a direct assignment).
+            t.HasCheckConstraint("ck_mentor_requests_rejection_reason", "rejection_reason IS NULL OR status = 'Rejected'");
+        });
         builder.Property(r => r.Note).HasMaxLength(MentorRequest.NoteMaxLength);
+        builder.Property(r => r.RejectionReason).HasMaxLength(MentorRequest.RejectionReasonMaxLength);
         builder.HasOne<Employee>().WithMany().HasForeignKey(r => r.EmployeeId);
         builder.HasOne<TrainingApplication>().WithMany().HasForeignKey(r => r.ApplicationId);
         builder.HasOne<Employee>().WithMany().HasForeignKey(r => r.DecidedById);

@@ -102,6 +102,11 @@ export function MentorRequestsPage() {
                   <span className="ims-badge">{t(`training.requestStatus.${r.status}`)}</span>
                 </div>
                 <p className="whitespace-pre-line">{r.note}</p>
+                {r.rejectionReason && (
+                  <p dir="auto" className="text-small text-muted">
+                    {t('hr.mentorRequests.rejectionReason')}: {r.rejectionReason}
+                  </p>
+                )}
                 {r.status === 'Pending' && (
                   <div className="flex flex-wrap justify-end gap-2">
                     <button

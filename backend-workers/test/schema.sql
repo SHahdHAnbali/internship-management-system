@@ -679,3 +679,17 @@ VALUES ('20261113194359_TransferDecisions', '10.0.13');
 
 COMMIT;
 
+START TRANSACTION;
+ALTER TABLE notifications DROP CONSTRAINT ck_notifications_type;
+
+ALTER TABLE mentor_requests ADD rejection_reason character varying(2000);
+
+ALTER TABLE notifications ADD CONSTRAINT ck_notifications_type CHECK (type IN ('ApplicationSubmitted', 'MentorRequestSubmitted', 'MentorRequestApproved', 'MentorRequestRejected', 'TraineeDirectlyAssigned'));
+
+ALTER TABLE mentor_requests ADD CONSTRAINT ck_mentor_requests_rejection_reason CHECK (rejection_reason IS NULL OR status = 'Rejected');
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261114105015_DirectAssignment', '10.0.13');
+
+COMMIT;
+

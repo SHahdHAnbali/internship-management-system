@@ -57,15 +57,18 @@ export const notificationRoutes: Route[] = [
         if (cursor.length === 0) throw new DomainError('validation.invalid', 'The page position is not valid.');
       }
 
-      // What the event is about, read from the records themselves (application, or mentor request and its application).
+      // What the event is about, read from the records themselves (the application for a new application or a direct
+      // assignment, AD-67; otherwise the mentor request and its application).
       const { rows } = await c.var.db.query<NotificationRow>(
         `SELECT n.id, n.type, n.entity_id, n.is_read, n.created_at, a.id AS application_id,
                 t.full_name AS trainee_name, f.name AS field_name, e.full_name AS employee_name
            FROM notifications n
-           LEFT JOIN mentor_requests r ON n.type <> 'ApplicationSubmitted' AND r.id = n.entity_id
+           LEFT JOIN mentor_requests r
+                  ON n.type NOT IN ('ApplicationSubmitted', 'TraineeDirectlyAssigned') AND r.id = n.entity_id
            LEFT JOIN employees e ON e.id = r.employee_id
            LEFT JOIN training_applications a
-                  ON a.id = CASE WHEN n.type = 'ApplicationSubmitted' THEN n.entity_id ELSE r.application_id END
+                  ON a.id = CASE WHEN n.type IN ('ApplicationSubmitted', 'TraineeDirectlyAssigned') THEN n.entity_id
+                                 ELSE r.application_id END
            LEFT JOIN trainees t ON t.id = a.trainee_id
            LEFT JOIN fields f ON f.id = a.field_id
           WHERE n.recipient_id = $1 AND n.type = ANY($2)

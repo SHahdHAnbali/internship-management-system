@@ -30,6 +30,7 @@ import { endpointFailure, json, statusProblem } from '../../http/problems';
 import { routeId, type Route } from '../../http/routes';
 import {
   applicationDecisionEmails,
+  directAssignmentEmails,
   mentorRequestDecisionEmails,
   sendEventEmails,
   trainingTransferredEmails,
@@ -102,6 +103,27 @@ const transferAssignmentRequest: RequestSchema = {
     { name: 'Reason', kind: 'string', required: true, maxLength: ASSIGNMENT_END_REASON_MAX_LENGTH },
   ],
 };
+
+// AD-67: the current responsible HR assigns an accepted trainee directly to a mentor, with the training period.
+const directAssignmentRequest: RequestSchema = {
+  typeName: 'Ims.Application.Hr.DirectAssignmentRequest',
+  properties: [
+    { name: 'EmployeeId', kind: 'string', required: true, maxLength: 36 },
+    { name: 'StartDate', kind: 'string', required: true, maxLength: 10 },
+    { name: 'EndDate', kind: 'string', required: true, maxLength: 10 },
+  ],
+};
+
+/** AD-67: the reason kept on every pending mentor request rejected by a direct assignment (both languages). */
+export const DIRECT_ASSIGNMENT_REJECTION_REASON =
+  'أسندت الموارد البشرية المتدرب مباشرةً إلى مدرّب. / HR assigned the trainee directly to a mentor.';
+
+/**
+ * AD-67: whether `hrId` may directly assign this application's trainee now: it is Accepted, has never had an assignment,
+ * and `hrId` is its current responsible HR (AD-64). `a` is the training_applications alias.
+ */
+const CAN_DIRECT_ASSIGN = `(a.status = 'Accepted' AND ${CURRENT_RESPONSIBLE_HR_ID} = $2::uuid
+  AND NOT EXISTS (SELECT 1 FROM assignments s WHERE s.application_id = a.id))`;
 
 // AD-65: the current responsible HR cancels a pending transfer, with a reason.
 const cancelTransferRequest: RequestSchema = {
@@ -227,7 +249,123 @@ export const hrRoutes: Route[] = [
     async handle(c) {
       const a = await application(c, routeId(c));
       const files = await attachmentsOf(c, [a.id]);
-      return json({ ...toApplication(a), attachments: files.get(a.id) ?? [] });
+      // AD-67: computed by the server; the direct-assignment endpoint checks the same itself.
+      const { rows } = await c.var.db.query<{ can: boolean }>(
+        `SELECT ${CAN_DIRECT_ASSIGN} AS can FROM training_applications a WHERE a.id = $1`,
+        [a.id, c.var.user!.id],
+      );
+      return json({ ...toApplication(a), attachments: files.get(a.id) ?? [], canDirectAssign: rows[0]?.can === true });
+    },
+  },
+  {
+    // AD-67 (owner decisions 2026-11-14; PDF §4 HR «تعيين متدرب لموظف مباشرة دون انتظار طلب»): the application's current
+    // responsible HR (AD-64) assigns its trainee directly to a user who holds the Employee role now, with the training
+    // period (planned end on or after the start, as when approving a request), without a request or the mentor's
+    // acceptance. Only an Accepted application that has never had an assignment. One transaction: the Active assignment
+    // (no mentor request), every pending mentor request for the application rejected with the reason (the selected
+    // mentor's included), the mentor's direct-assignment in-app notification and, for every other requester, the
+    // ordinary rejection in-app notification; audited with the HR user as the actor. After the commit: the
+    // direct-assignment e-mails to the mentor and the trainee, and the ordinary rejection e-mail to every other requester
+    // (best effort). The selected mentor and any requester who currently holds the Admin role never get a rejection
+    // notice (their requests are still rejected). The responsible HR does not change.
+    method: 'POST',
+    path: '/api/hr/applications/:id/direct-assignment',
+    policy: 'HR',
+    async handle(c) {
+      const body = await bindJson<{ employeeId: string; startDate: string; endDate: string }>(
+        c.req.raw,
+        directAssignmentRequest,
+        c.var.traceId,
+      );
+      if (!body.ok) return body.response;
+      const id = routeId(c);
+      const hrId = c.var.user!.id;
+      const notResponsibleHr = () =>
+        endpointFailure(
+          403,
+          'direct_assignment.not_responsible',
+          "Only the training application's current responsible HR may assign its trainee directly.",
+        );
+      const { rows } = await c.var.db.query<{ responsible_hr_id: string }>(
+        `SELECT ${CURRENT_RESPONSIBLE_HR_ID} AS responsible_hr_id FROM training_applications a WHERE a.id = $1`,
+        [id],
+      );
+      if (!rows[0]) throw NotFoundError.for('TrainingApplication', id);
+      if (rows[0].responsible_hr_id !== hrId) return notResponsibleHr();
+      const employeeId = parseGuid(body.value.employeeId);
+      if (!employeeId) throw new DomainError('validation.required', 'The mentor is required.');
+      const dates = period(
+        body.value.startDate,
+        body.value.endDate,
+        'The training period',
+        'assignment.invalid_period',
+      );
+
+      const now = c.var.deps.now();
+      const assignmentId = uuidV7(now);
+      const outcome = await c.var.db.transaction(c.var.actor, async (tx) => {
+        // Under a shared lock: an Admin's replacement of the responsible HR waits for this (and vice versa, AD-64).
+        const { rows: locked } = await tx.query<{ status: string; responsible_hr_id: string }>(
+          `SELECT a.status, ${CURRENT_RESPONSIBLE_HR_ID} AS responsible_hr_id FROM training_applications a
+            WHERE a.id = $1 FOR SHARE`,
+          [id],
+        );
+        if (locked[0]?.responsible_hr_id !== hrId) return notResponsibleHr();
+        if (locked[0].status !== 'Accepted') {
+          throw new DomainError('direct_assignment.not_accepted', 'Only an accepted application can be assigned.');
+        }
+        const { rows: history } = await tx.query('SELECT 1 FROM assignments WHERE application_id = $1 LIMIT 1', [id]);
+        if (history.length > 0) {
+          throw new StateConflictError(
+            'direct_assignment.already_assigned',
+            'This trainee already has (or had) a training assignment.',
+          );
+        }
+        if (!(await holdsEmployeeRole(tx, employeeId))) {
+          throw new DomainError(
+            'direct_assignment.mentor_not_employee',
+            'The mentor must currently hold the Employee role.',
+          );
+        }
+        // A concurrent approval or direct assignment of the same application fails on ux_assignments_application_id (409).
+        await tx.query(
+          `INSERT INTO assignments (id, application_id, employee_id, mentor_request_id, start_date, end_date, status, created_at)
+           VALUES ($1, $2, $3, NULL, $4, $5, 'Active', $6)`,
+          [assignmentId, id, employeeId, dates.start, dates.end, now],
+        );
+        const { rows: rejected } = await tx.query<{ id: string; employee_id: string }>(
+          `UPDATE mentor_requests SET status = 'Rejected', decided_at = $2, decided_by_id = $3, rejection_reason = $4
+            WHERE application_id = $1 AND status = 'Pending'
+            RETURNING id, employee_id`,
+          [id, now, hrId, DIRECT_ASSIGNMENT_REJECTION_REASON],
+        );
+        await notifyEmployee(tx, employeeId, 'TraineeDirectlyAssigned', id, now);
+        // Every request above is rejected; only the notices are selective (AD-67). The ordinary rejection notice (in-app
+        // here, e-mail after the commit) goes to every other requester except the chosen mentor (the assigned employee
+        // id; they get only the direct-assignment notices) and anyone who holds the Admin role **now** (read from their
+        // employee row in this transaction, locked so a concurrent role change waits; never the role at request time).
+        const { rows: admins } = await tx.query<{ id: string }>(
+          "SELECT id FROM employees WHERE id = ANY($1::uuid[]) AND role = 'Admin' FOR SHARE",
+          [rejected.map((r) => r.employee_id)],
+        );
+        const currentAdmins = new Set(admins.map((a) => a.id));
+        const othersRejected = rejected.filter(
+          (r) => r.employee_id !== employeeId && !currentAdmins.has(r.employee_id),
+        );
+        for (const r of othersRejected) await notifyEmployee(tx, r.employee_id, 'MentorRequestRejected', r.id, now);
+        return { rejected: rejected.length, othersRejected: othersRejected.map((r) => r.id) };
+      });
+      if (outcome instanceof Response) return outcome;
+      // After the commit (best effort): the direct-assignment e-mails to the mentor and the trainee, and the ordinary
+      // rejection e-mail of each other requester (the same template and channel as HR's own rejection of a request).
+      await sendEventEmails(c, async (q) => [
+        ...(await directAssignmentEmails(q, assignmentId)),
+        ...(await Promise.all(outcome.othersRejected.map((r) => mentorRequestDecisionEmails(q, r)))).flat(),
+      ]);
+      return json(
+        { assignment: (await hrAssignments(c, assignmentId))[0], rejectedMentorRequests: outcome.rejected },
+        201,
+      );
     },
   },
   {
@@ -830,7 +968,7 @@ function historyFilters(c: Context<AppEnv>) {
 }
 
 const MENTOR_REQUEST_SELECT = `
-  SELECT r.id, r.status, r.note, r.requested_at, r.decided_at, r.application_id, r.employee_id,
+  SELECT r.id, r.status, r.note, r.requested_at, r.decided_at, r.rejection_reason, r.application_id, r.employee_id,
          e.full_name AS employee_name, e.email AS employee_email, t.full_name AS trainee_name, f.name AS field_name,
          a.available_from::text, a.available_to::text
     FROM mentor_requests r JOIN employees e ON e.id = r.employee_id
@@ -843,6 +981,7 @@ interface MentorRequestRow {
   note: string;
   requested_at: Date;
   decided_at: Date | null;
+  rejection_reason: string | null;
   application_id: string;
   employee_id: string;
   employee_name: string;
@@ -860,6 +999,7 @@ function toMentorRequest(r: MentorRequestRow) {
     note: r.note,
     requestedAt: r.requested_at,
     decidedAt: r.decided_at,
+    rejectionReason: r.rejection_reason,
     employee: { id: r.employee_id, fullName: r.employee_name, email: r.employee_email },
     application: {
       id: r.application_id,

@@ -421,7 +421,8 @@
           "createdMentorRequestSubmitted": "A notification was created: an employee asked to train a trainee",
           "createdMentorRequestApproved": "A notification was created: a request to train a trainee was approved",
           "createdMentorRequestRejected": "A notification was created: a request to train a trainee was rejected",
-          "read": "A notification was marked as read"
+          "read": "A notification was marked as read",
+          "createdTraineeDirectlyAssigned": "A notification was created: HR assigned a trainee directly"
         },
         "application_attachments": {
           "created": "A file was attached to a training application",
@@ -751,7 +752,8 @@
       "approveExplain": "Approving starts the training with this employee for these dates.",
       "startDate": "Start date",
       "endDate": "End date",
-      "invalidPeriod": "The end date must be on or after the start date."
+      "invalidPeriod": "The end date must be on or after the start date.",
+      "rejectionReason": "Rejection reason"
     },
     "trainings": {
       "title": "Trainings",
@@ -904,6 +906,30 @@
       "add": "Add entry",
       "saved": "Entry saved.",
       "empty": "No contact has been recorded yet."
+    },
+    "directAssign": {
+      "action": "Direct assign",
+      "actionFor": "Assign the trainee {{name}} directly to a mentor",
+      "title": "Assign {{name}} directly to a mentor",
+      "trainee": "Trainee",
+      "mentor": "Mentor",
+      "startDate": "Start date",
+      "endDate": "Planned end date",
+      "reviewIntro": "Check the direct assignment before confirming it.",
+      "pendingWarning": "Confirming will automatically reject every pending mentor request for this trainee, including any request from the chosen mentor.",
+      "note": "The mentor does not need to accept. The trainee and the mentor are notified by e-mail, and the mentor also in the app.",
+      "confirm": "Confirm assignment",
+      "noMentors": "There is no user with the Employee role.",
+      "done": "The trainee was assigned to the mentor.",
+      "errors": {
+        "notResponsible": "Only the trainee’s responsible HR can assign this trainee directly.",
+        "alreadyAssigned": "This trainee already has a training assignment. Nothing was changed.",
+        "notAccepted": "Only an accepted application can be assigned.",
+        "mentorNotEmployee": "The chosen user no longer holds the Employee role. Choose another mentor.",
+        "mentor": "Choose the mentor.",
+        "dates": "Enter the start and planned end dates.",
+        "period": "The planned end date must be on or after the start date."
+      }
     }
   },
   "notifications": {
@@ -917,7 +943,8 @@
       "ApplicationSubmitted": "New training application from {{trainee}} ({{field}})",
       "MentorRequestSubmitted": "{{employee}} asked to train {{trainee}}",
       "MentorRequestApproved": "HR approved your request to train {{trainee}}",
-      "MentorRequestRejected": "HR rejected your request to train {{trainee}}"
+      "MentorRequestRejected": "HR rejected your request to train {{trainee}}",
+      "TraineeDirectlyAssigned": "HR assigned {{trainee}} to you directly"
     }
   },
   "reports": {

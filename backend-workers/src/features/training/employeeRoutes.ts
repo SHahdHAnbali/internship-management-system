@@ -166,10 +166,12 @@ export const employeeRoutes: Route[] = [
         note: string;
         requested_at: Date;
         decided_at: Date | null;
+        rejection_reason: string | null;
         trainee_name: string | null;
         field_name: string;
       }>(
-        `SELECT r.id, r.application_id, r.status, r.note, r.requested_at, r.decided_at, t.full_name AS trainee_name,
+        `SELECT r.id, r.application_id, r.status, r.note, r.requested_at, r.decided_at, r.rejection_reason,
+                t.full_name AS trainee_name,
                 f.name AS field_name
            FROM mentor_requests r JOIN training_applications a ON a.id = r.application_id
            JOIN trainees t ON t.id = a.trainee_id JOIN fields f ON f.id = a.field_id
@@ -184,6 +186,8 @@ export const employeeRoutes: Route[] = [
           note: r.note,
           requestedAt: r.requested_at,
           decidedAt: r.decided_at,
+          // AD-67: set only when the request was rejected because HR assigned the trainee directly.
+          rejectionReason: r.rejection_reason,
           traineeName: r.trainee_name,
           fieldName: r.field_name,
         })),

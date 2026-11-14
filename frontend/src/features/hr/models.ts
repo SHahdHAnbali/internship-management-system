@@ -21,6 +21,11 @@ export interface HrApplication {
   submittedAt: string;
   decidedAt: string | null;
   rejectionReason: string | null;
+  /**
+   * AD-67: Accepted, never assigned, and the signed-in HR is the application's current responsible HR, so they may assign
+   * its trainee directly. Computed by the server, which checks the same on the assignment. Only on the detail.
+   */
+  canDirectAssign?: boolean;
   attachments?: {
     id: string;
     kind: 'Cv' | 'UniversityLetter';
@@ -172,6 +177,8 @@ export interface HrMentorRequest {
   note: string;
   requestedAt: string;
   decidedAt: string | null;
+  /** AD-67: set when the request was rejected because HR assigned the trainee directly. */
+  rejectionReason?: string | null;
   employee: { id: string; fullName: string; email: string };
   application: {
     id: string;

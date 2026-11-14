@@ -10,7 +10,8 @@ import { renderBilingualHtml, renderBilingualText, type EmailSection } from '../
  * Arabic first then English, HTML with the same plain text (AD-60), sender ProGineer. HR e-mails go separately to every
  * user whose current role is HR (NEW-24), except the mentor-request e-mail, which goes only to the application's current
  * responsible HR (AD-64); the trainee's assignment e-mail names the mentor (NEW-30). The incoming mentor of an executed
- * transfer gets one e-mail (AD-65, owner decision 2026-11-13; an approved addition to the PDF §7 table, AD-59).
+ * transfer gets one e-mail (AD-65, owner decision 2026-11-13; an approved addition to the PDF §7 table, AD-59). HR's direct
+ * assignment (AD-67) e-mails the assigned employee and the trainee (with the mentor's name and work e-mail and the dates).
  *
  * Delivery is **best effort only**: the e-mail is sent after the business transaction has committed, in the background
  * (`waitUntil`), so a failure never changes or rolls back the business operation. There is **no delivery record, no
@@ -34,6 +35,21 @@ export type EventEmailContent =
       startDate: string;
       mentorName: string;
       mentorEmail: string;
+    }
+  | {
+      kind: 'TraineeDirectlyAssigned';
+      field: string;
+      traineeName: string | null;
+      startDate: string;
+      plannedEndDate: string;
+    }
+  | {
+      kind: 'DirectAssignmentToTrainee';
+      field: string;
+      mentorName: string;
+      mentorEmail: string;
+      startDate: string;
+      plannedEndDate: string;
     }
   | {
       kind: 'TrainingTransferredToYou';
@@ -220,6 +236,61 @@ function template(content: EventEmailContent, site: string): Template {
             { label: 'Start date:', value: content.startDate },
             { label: 'Mentor:', value: content.mentorName },
             { label: 'Mentor’s e-mail:', value: content.mentorEmail },
+          ],
+          action: myApplications.en,
+        },
+      };
+    case 'TraineeDirectlyAssigned':
+      // AD-67: HR assigned the trainee to this employee directly, without a request from them.
+      return {
+        ar: {
+          heading: 'أسندت إليك الموارد البشرية متدربًا',
+          intro: ['أسندت الموارد البشرية إليك تدريب متدرب مباشرةً، دون طلب منك.'],
+          details: [
+            ...optional('المتدرب:', content.traineeName),
+            { label: 'المجال:', value: content.field },
+            { label: 'تاريخ البداية:', value: content.startDate },
+            { label: 'تاريخ الانتهاء المخطط:', value: content.plannedEndDate },
+          ],
+          action: { lead: 'لعرض متدربيك:', label: 'متدربيني', url: `${site}/employee/trainees` },
+        },
+        en: {
+          heading: 'HR has assigned a trainee to you',
+          intro: ["HR has assigned a trainee's training to you directly, without a request from you."],
+          details: [
+            ...optional('Trainee:', content.traineeName),
+            { label: 'Field:', value: content.field },
+            { label: 'Start date:', value: content.startDate },
+            { label: 'Planned end date:', value: content.plannedEndDate },
+          ],
+          action: { lead: 'To view your trainees:', label: 'My trainees', url: `${site}/employee/trainees` },
+        },
+      };
+    case 'DirectAssignmentToTrainee':
+      // AD-67: the trainee's training with its mentor, assigned directly by HR: the mentor's name and registered work
+      // e-mail and the dates, nothing more.
+      return {
+        ar: {
+          heading: 'تم تحديد مدرّبك',
+          intro: ['حدّدت الموارد البشرية مدرّبك لتدريبك وتاريخي بدايته وانتهائه المخطط.'],
+          details: [
+            { label: 'المجال:', value: content.field },
+            { label: 'المدرّب:', value: content.mentorName },
+            { label: 'البريد الإلكتروني للمدرّب:', value: content.mentorEmail },
+            { label: 'تاريخ البداية:', value: content.startDate },
+            { label: 'تاريخ الانتهاء المخطط:', value: content.plannedEndDate },
+          ],
+          action: myApplications.ar,
+        },
+        en: {
+          heading: 'Your mentor has been assigned',
+          intro: ["HR has assigned your training's mentor and set its start and planned end dates."],
+          details: [
+            { label: 'Field:', value: content.field },
+            { label: 'Mentor:', value: content.mentorName },
+            { label: 'Mentor’s e-mail:', value: content.mentorEmail },
+            { label: 'Start date:', value: content.startDate },
+            { label: 'Planned end date:', value: content.plannedEndDate },
           ],
           action: myApplications.en,
         },
@@ -444,6 +515,63 @@ export async function mentorRequestDecisionEmails(q: Queryable, requestId: strin
     });
   }
   return events;
+}
+
+/**
+ * AD-67: the e-mails of HR's direct assignment, read after the commit: one to the assigned employee and one to the
+ * trainee, at their registered addresses. Nothing for an assignment that came from a mentor request or a transfer.
+ */
+export async function directAssignmentEmails(q: Queryable, assignmentId: string): Promise<EventEmail[]> {
+  const { rows } = await q.query<{
+    employee_id: string;
+    employee_email: string;
+    employee_name: string;
+    trainee_id: string;
+    trainee_email: string;
+    trainee_name: string | null;
+    field: string;
+    start_date: string;
+    end_date: string;
+  }>(
+    `SELECT e.id AS employee_id, e.email AS employee_email, e.full_name AS employee_name, t.id AS trainee_id,
+            t.email AS trainee_email, t.full_name AS trainee_name, f.name AS field, s.start_date::text,
+            s.end_date::text
+       FROM assignments s
+       JOIN employees e ON e.id = s.employee_id
+       JOIN training_applications a ON a.id = s.application_id
+       JOIN trainees t ON t.id = a.trainee_id
+       JOIN fields f ON f.id = a.field_id
+      WHERE s.id = $1 AND s.mentor_request_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM assignment_transfers x WHERE x.to_assignment_id = s.id)`,
+    [assignmentId],
+  );
+  const r = rows[0];
+  if (!r) return [];
+  return [
+    {
+      content: {
+        kind: 'TraineeDirectlyAssigned',
+        field: r.field,
+        traineeName: r.trainee_name,
+        startDate: r.start_date,
+        plannedEndDate: r.end_date,
+      },
+      entityId: assignmentId,
+      recipient: { type: 'Employee', id: r.employee_id, email: r.employee_email },
+    },
+    {
+      content: {
+        kind: 'DirectAssignmentToTrainee',
+        field: r.field,
+        mentorName: r.employee_name,
+        mentorEmail: r.employee_email,
+        startDate: r.start_date,
+        plannedEndDate: r.end_date,
+      },
+      entityId: assignmentId,
+      recipient: { type: 'Trainee', id: r.trainee_id, email: r.trainee_email },
+    },
+  ];
 }
 
 /**

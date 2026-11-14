@@ -61,6 +61,36 @@ public sealed class Assignment : Entity
     }
 
     /// <summary>
+    /// HR's direct assignment of an accepted trainee to a mentor without a request (PDF §4 HR; AD-67): the same training
+    /// period rule as approving a request (the planned end on or after the start), Active, without a mentor request. That
+    /// the caller is the application's current responsible HR, that the application is Accepted and has never had an
+    /// assignment, and that the mentor holds the Employee role are checked by the caller, which reads them.
+    /// </summary>
+    public static Assignment AssignDirectly(
+        Guid applicationId,
+        Guid employeeId,
+        DateOnly startDate,
+        DateOnly endDate,
+        DateTimeOffset now)
+    {
+        if (endDate < startDate)
+        {
+            throw new DomainException("assignment.invalid_period", "The training must end on or after its start date.");
+        }
+
+        return new Assignment
+        {
+            ApplicationId = Guard.NotEmpty(applicationId, "Application"),
+            EmployeeId = Guard.NotEmpty(employeeId, "Employee"),
+            MentorRequestId = null,
+            StartDate = startDate,
+            EndDate = endDate,
+            Status = AssignmentStatus.Active,
+            CreatedAt = Guard.Utc(now),
+        };
+    }
+
+    /// <summary>
     /// Extends an Active training (AD-63 L2, NEW-35): the new planned end date must be strictly later than the current
     /// one (also when the current one has already passed), the reason is mandatory, and there is no limit on the number
     /// of extensions. Returns the extension record to save with this change.

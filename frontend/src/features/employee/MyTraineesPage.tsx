@@ -89,6 +89,11 @@ export function MyTraineesPage() {
                     <td>{date(r.requestedAt)}</td>
                     <td>
                       <span className="ims-badge">{t(`training.requestStatus.${r.status}`)}</span>
+                      {r.rejectionReason && (
+                        <span dir="auto" className="mt-1 block text-small text-muted">
+                          {r.rejectionReason}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

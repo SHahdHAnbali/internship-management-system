@@ -1070,9 +1070,16 @@ describe('HR: running trainings (the list)', () => {
       db.query("UPDATE assignments SET status = 'Completed' WHERE id = $1", [previous.assignmentId]),
     );
 
-    const before = await withDb((db) =>
-      db.query('SELECT id, status, start_date, end_date, xmin::text FROM assignments'),
-    );
+    // This test's own assignments: other test files change theirs at the same time (the scheduled transfers, AD-65).
+    const own = [current.assignmentId, previous.assignmentId];
+    const snapshot = () =>
+      withDb((db) =>
+        db.query(
+          'SELECT id, status, start_date, end_date, xmin::text FROM assignments WHERE id = ANY($1) ORDER BY id',
+          [own],
+        ),
+      );
+    const before = await snapshot();
     const response = await hr.client.get('/api/hr/assignments');
     expect(response.status).toBe(200);
     const list = await body<HrAssignment[]>(response);
@@ -1101,9 +1108,7 @@ describe('HR: running trainings (the list)', () => {
       employee: { id: colleague.user.id },
     });
     // Reading changes nothing.
-    expect(
-      (await withDb((db) => db.query('SELECT id, status, start_date, end_date, xmin::text FROM assignments'))).rows,
-    ).toEqual(before.rows);
+    expect((await snapshot()).rows).toEqual(before.rows);
   });
 
   it('is for HR only; the list itself takes no POST', async () => {

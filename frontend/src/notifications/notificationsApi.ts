@@ -5,7 +5,8 @@ export type NotificationType =
   | 'ApplicationSubmitted'
   | 'MentorRequestSubmitted'
   | 'MentorRequestApproved'
-  | 'MentorRequestRejected';
+  | 'MentorRequestRejected'
+  | 'TraineeDirectlyAssigned';
 
 export interface AppNotification {
   id: string;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router';
 import { Dialog } from '../../components/Dialog';
 import { useToast } from '../../components/toastContext';
@@ -6,11 +6,12 @@ import { useI18n } from '../../i18n/context';
 import { ApiError } from '../../lib/api';
 import { openFileLink } from '../../lib/fileLinks';
 import { hrApi } from './hrApi';
-import type { ContactLogEntry, ContactMethod, HrApplication } from './models';
+import type { ContactLogEntry, ContactMethod, HrApplication, HrMentor } from './models';
 
 /**
  * HR: one application with the trainee's details and files. HR puts it under review, then accepts it or rejects it
  * with a reason (PDF §4; owner decision 2026-10-29: a decision can be made from Submitted or Under Review, and is final).
+ * The application's current responsible HR may then assign its trainee directly to a mentor (AD-67).
  */
 export function ApplicationDetailPage() {
   const { id = '' } = useParams();
@@ -19,6 +20,7 @@ export function ApplicationDetailPage() {
   const [application, setApplication] = useState<HrApplication | null>(null);
   const [failed, setFailed] = useState(false);
   const [rejecting, setRejecting] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(
@@ -29,11 +31,13 @@ export function ApplicationDetailPage() {
     void load();
   }, [load]);
 
-  const act = async (action: () => Promise<HrApplication>) => {
+  const act = async (action: () => Promise<HrApplication>, reload = false) => {
     setBusy(true);
     try {
       setApplication({ ...(await action()), attachments: application?.attachments });
       toast('hr.applications.saved');
+      // After acceptance, the detail also says whether a direct assignment is now possible (AD-67).
+      if (reload) void load();
     } catch (error) {
       toast(
         error instanceof ApiError && error.status === 409
@@ -145,11 +149,38 @@ export function ApplicationDetailPage() {
             type="button"
             className="ims-btn-primary"
             disabled={busy}
-            onClick={() => void act(() => hrApi.accept(a.id))}
+            onClick={() => void act(() => hrApi.accept(a.id), true)}
           >
             {t('hr.applications.accept')}
           </button>
         </div>
+      )}
+
+      {a.canDirectAssign && (
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            className="ims-btn-primary"
+            aria-label={t('hr.directAssign.actionFor', {
+              name: a.trainee.fullName ?? a.trainee.email,
+            })}
+            onClick={() => setAssigning(true)}
+          >
+            {t('hr.directAssign.action')}
+          </button>
+        </div>
+      )}
+
+      {assigning && (
+        <DirectAssignDialog
+          application={a}
+          onClose={() => setAssigning(false)}
+          onDone={(message) => {
+            setAssigning(false);
+            toast(message);
+            void load();
+          }}
+        />
       )}
 
       {rejecting && (
@@ -162,6 +193,232 @@ export function ApplicationDetailPage() {
         />
       )}
     </>
+  );
+}
+
+type DirectAssignProblem = 'mentor' | 'mentorNotEmployee' | 'date' | 'period';
+
+/**
+ * AD-67: the application's current responsible HR assigns its trainee directly to a mentor (a user who holds the Employee
+ * role now; no request or acceptance from them), with the start and planned end dates (end on or after start). Every
+ * pending mentor request for the trainee is rejected in the same change. Reviewed, then confirmed once.
+ */
+function DirectAssignDialog({
+  application: a,
+  onClose,
+  onDone,
+}: {
+  application: HrApplication;
+  onClose: () => void;
+  /** The toast to show; the page reloads. */
+  onDone: (message: string) => void;
+}) {
+  const { t, language } = useI18n();
+  const id = useId();
+  const [mentors, setMentors] = useState<HrMentor[] | null>(null);
+  const [mentorsFailed, setMentorsFailed] = useState(false);
+  const [employeeId, setEmployeeId] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [problems, setProblems] = useState<DirectAssignProblem[]>([]);
+  const [reviewing, setReviewing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const submitting = useRef(false);
+  const date = (value: string) => new Date(value).toLocaleDateString(language);
+  const has = (problem: DirectAssignProblem) => problems.includes(problem);
+  const name = a.trainee.fullName ?? a.trainee.email;
+
+  useEffect(() => {
+    let active = true;
+    hrApi.mentors().then(
+      (all) => active && setMentors(all),
+      () => active && setMentorsFailed(true),
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const chosen = mentors?.find((m) => m.id === employeeId) ?? null;
+
+  const review = (event: FormEvent) => {
+    event.preventDefault();
+    const found: DirectAssignProblem[] = [];
+    if (!chosen) found.push('mentor');
+    if (!startDate || !endDate) found.push('date');
+    else if (endDate < startDate) found.push('period');
+    setProblems(found);
+    setFailed(false);
+    if (found.length === 0) setReviewing(true);
+  };
+
+  const confirm = async () => {
+    if (!chosen || submitting.current) return; // one submission at a time
+    submitting.current = true;
+    setBusy(true);
+    try {
+      await hrApi.directAssign(a.id, chosen.id, startDate, endDate);
+      onDone('hr.directAssign.done');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 403)
+        return onDone('hr.directAssign.errors.notResponsible');
+      if (error instanceof ApiError && error.status === 409)
+        return onDone('hr.directAssign.errors.alreadyAssigned');
+      const code = error instanceof ApiError ? error.code : undefined;
+      if (code === 'direct_assignment.not_accepted')
+        return onDone('hr.directAssign.errors.notAccepted');
+      if (code === 'direct_assignment.mentor_not_employee') setProblems(['mentorNotEmployee']);
+      else if (code === 'assignment.invalid_period') setProblems(['period']);
+      else setFailed(true);
+      setReviewing(false);
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  };
+
+  const mentorProblem = has('mentor') || has('mentorNotEmployee');
+  const dateProblem = has('date') || has('period');
+
+  return (
+    <Dialog open title={t('hr.directAssign.title', { name })} onClose={busy ? () => {} : onClose}>
+      {reviewing && chosen ? (
+        <div className="flex flex-col gap-4">
+          <p className="text-heading">{t('hr.directAssign.reviewIntro')}</p>
+          <dl className="grid gap-x-4 gap-y-2 text-small sm:grid-cols-2">
+            <dt className="text-muted">{t('hr.directAssign.trainee')}</dt>
+            <dd className="text-heading">{name}</dd>
+            <dt className="text-muted">{t('training.fields.field')}</dt>
+            <dd className="text-heading">{a.field.name}</dd>
+            <dt className="text-muted">{t('hr.directAssign.mentor')}</dt>
+            <dd className="text-heading">{chosen.fullName}</dd>
+            <dt className="text-muted">{t('hr.directAssign.startDate')}</dt>
+            <dd className="text-heading">{date(startDate)}</dd>
+            <dt className="text-muted">{t('hr.directAssign.endDate')}</dt>
+            <dd className="text-heading">{date(endDate)}</dd>
+          </dl>
+          <p role="note" className="ims-card text-small text-heading">
+            {t('hr.directAssign.pendingWarning')}
+          </p>
+          <p className="text-small text-muted">{t('hr.directAssign.note')}</p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="ims-btn-text"
+              disabled={busy}
+              onClick={() => setReviewing(false)}
+            >
+              {t('hr.trainings.back')}
+            </button>
+            <button
+              type="button"
+              className="ims-btn-primary"
+              disabled={busy}
+              onClick={() => void confirm()}
+            >
+              {t('hr.directAssign.confirm')}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={review} noValidate className="flex flex-col gap-4">
+          <dl className="grid gap-x-4 gap-y-1 text-small sm:grid-cols-2">
+            <dt className="text-muted">{t('hr.directAssign.trainee')}</dt>
+            <dd className="text-heading">{name}</dd>
+            <dt className="text-muted">{t('training.fields.field')}</dt>
+            <dd className="text-heading">{a.field.name}</dd>
+          </dl>
+          <div className="flex flex-col gap-1">
+            <label className="ims-label" htmlFor={`${id}-mentor`}>
+              {t('hr.directAssign.mentor')}
+            </label>
+            <select
+              id={`${id}-mentor`}
+              className="ims-input"
+              value={employeeId}
+              disabled={mentors === null}
+              aria-invalid={mentorProblem || undefined}
+              aria-describedby={mentorProblem ? `${id}-mentor-error` : undefined}
+              onChange={(e) => setEmployeeId(e.target.value)}
+            >
+              <option value="">{t('hr.trainings.chooseMentor')}</option>
+              {mentors?.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.fullName}
+                </option>
+              ))}
+            </select>
+            {mentors?.length === 0 && (
+              <p className="text-small text-muted">{t('hr.directAssign.noMentors')}</p>
+            )}
+            {mentorsFailed && (
+              <p role="alert" className="ims-error">
+                {t('training.errors.generic')}
+              </p>
+            )}
+            {mentorProblem && (
+              <p id={`${id}-mentor-error`} role="alert" className="ims-error">
+                {t(
+                  has('mentorNotEmployee')
+                    ? 'hr.directAssign.errors.mentorNotEmployee'
+                    : 'hr.directAssign.errors.mentor',
+                )}
+              </p>
+            )}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <label className="ims-label" htmlFor={`${id}-start`}>
+                {t('hr.directAssign.startDate')}
+              </label>
+              <input
+                id={`${id}-start`}
+                type="date"
+                className="ims-input"
+                value={startDate}
+                aria-invalid={dateProblem || undefined}
+                aria-describedby={dateProblem ? `${id}-date-error` : undefined}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="ims-label" htmlFor={`${id}-end`}>
+                {t('hr.directAssign.endDate')}
+              </label>
+              <input
+                id={`${id}-end`}
+                type="date"
+                className="ims-input"
+                min={startDate || undefined}
+                value={endDate}
+                aria-invalid={dateProblem || undefined}
+                aria-describedby={dateProblem ? `${id}-date-error` : undefined}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
+          </div>
+          {dateProblem && (
+            <p id={`${id}-date-error`} role="alert" className="ims-error">
+              {t(has('period') ? 'hr.directAssign.errors.period' : 'hr.directAssign.errors.dates')}
+            </p>
+          )}
+          {failed && (
+            <p role="alert" className="ims-error">
+              {t('training.errors.generic')}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="ims-btn-text" onClick={onClose}>
+              {t('training.cancel')}
+            </button>
+            <button type="submit" className="ims-btn-primary">
+              {t('hr.trainings.review')}
+            </button>
+          </div>
+        </form>
+      )}
+    </Dialog>
   );
 }
 

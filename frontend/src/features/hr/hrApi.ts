@@ -60,6 +60,16 @@ export const hrApi = {
     apiRequest<HrAssignment>('POST', `/hr/transfer-decisions/${decisionId}/cancel`, { reason }),
   /** AD-65: the users who hold the Employee role now (possible incoming mentors). */
   mentors: () => apiRequest<HrMentor[]>('GET', '/hr/mentors'),
+  /**
+   * AD-67: the current responsible HR assigns the application's trainee directly to a mentor (an Employee), with the
+   * training period; every pending mentor request for the trainee is rejected in the same change.
+   */
+  directAssign: (applicationId: string, employeeId: string, startDate: string, endDate: string) =>
+    apiRequest<{ assignment: HrAssignment; rejectedMentorRequests: number }>(
+      'POST',
+      `/hr/applications/${applicationId}/direct-assignment`,
+      { employeeId, startDate, endDate },
+    ),
   trainees: () => apiRequest<HrTrainee[]>('GET', '/hr/trainees'),
   /** One trainee's history; the optional filters narrow its trainings only (period overlap, field). */
   traineeHistory: (

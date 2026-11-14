@@ -697,6 +697,11 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("note");
 
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("rejection_reason");
+
                     b.Property<DateTimeOffset>("RequestedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("requested_at");
@@ -728,6 +733,8 @@ namespace Ims.Infrastructure.Persistence.Migrations
                     b.ToTable("mentor_requests", null, t =>
                         {
                             t.HasCheckConstraint("ck_mentor_requests_decision", "(status IN ('Approved', 'Rejected')) = (decided_at IS NOT NULL AND decided_by_id IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_mentor_requests_rejection_reason", "rejection_reason IS NULL OR status = 'Rejected'");
 
                             t.HasCheckConstraint("ck_mentor_requests_status", "status IN ('Pending', 'Approved', 'Rejected')");
                         });
@@ -919,7 +926,7 @@ namespace Ims.Infrastructure.Persistence.Migrations
 
                     b.ToTable("notifications", null, t =>
                         {
-                            t.HasCheckConstraint("ck_notifications_type", "type IN ('ApplicationSubmitted', 'MentorRequestSubmitted', 'MentorRequestApproved', 'MentorRequestRejected')");
+                            t.HasCheckConstraint("ck_notifications_type", "type IN ('ApplicationSubmitted', 'MentorRequestSubmitted', 'MentorRequestApproved', 'MentorRequestRejected', 'TraineeDirectlyAssigned')");
                         });
                 });
 

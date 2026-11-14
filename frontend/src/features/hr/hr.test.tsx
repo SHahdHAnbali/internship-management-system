@@ -1280,3 +1280,154 @@ describe('HR transfers a training (AD-65)', () => {
       expect(within(dialog).getByLabelText(label)).toBeInTheDocument();
   });
 });
+
+describe('HR direct assignment (AD-67)', () => {
+  const mentors = [
+    { id: 'e1', fullName: 'Mentor One' },
+    { id: 'e2', fullName: 'Mentor Two' },
+  ];
+  const posts = (fetchMock: ReturnType<typeof mockFetch>) =>
+    fetchMock.mock.calls
+      .filter(([, init]) => init?.method === 'POST')
+      .map(([url, init]) => [url, JSON.parse(String(init!.body))]);
+  function setup(post: [number, unknown?], canDirectAssign = true) {
+    let assigned = false;
+    const fetchMock = mockFetch(
+      withLog((method, url) => {
+        if (url === '/api/hr/mentors') return [200, mentors];
+        if (method === 'POST') {
+          if (post[0] < 300) assigned = true;
+          return post;
+        }
+        return [200, { ...application('Accepted'), canDirectAssign: canDirectAssign && !assigned }];
+      }),
+    );
+    return fetchMock;
+  }
+  async function open() {
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'hr.directAssign.actionFor' }));
+    const dialog = await screen.findByRole('dialog');
+    const select = within(dialog).getByLabelText('hr.directAssign.mentor');
+    await waitFor(() => expect(select).toBeEnabled());
+    return { user, dialog, select };
+  }
+  const setDate = (dialog: HTMLElement, label: string, value: string) =>
+    fireEvent.change(within(dialog).getByLabelText(label), { target: { value } });
+
+  it('is offered only where the server allows it (the responsible HR, accepted, never assigned)', async () => {
+    setup([201, {}], false);
+    page();
+    expect(await screen.findByText('Lina Haddad')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'hr.directAssign.actionFor' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('assigns after a review that warns about the pending requests; confirmed once; the page reloads', async () => {
+    const fetchMock = setup([201, { assignment: {}, rejectedMentorRequests: 2 }]);
+    page();
+    const { user, dialog, select } = await open();
+    expect(within(dialog).getByText('Backend')).toBeInTheDocument();
+    await user.selectOptions(select, 'e2');
+    setDate(dialog, 'hr.directAssign.startDate', '2027-02-01');
+    setDate(dialog, 'hr.directAssign.endDate', '2027-04-30');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    expect(within(dialog).getByText('Mentor Two')).toBeInTheDocument();
+    expect(within(dialog).getByText('hr.directAssign.pendingWarning')).toBeInTheDocument();
+    await user.dblClick(within(dialog).getByRole('button', { name: 'hr.directAssign.confirm' }));
+    expect(await screen.findByText('hr.directAssign.done')).toBeInTheDocument();
+    expect(posts(fetchMock)).toEqual([
+      [
+        '/api/hr/applications/a1/direct-assignment',
+        { employeeId: 'e2', startDate: '2027-02-01', endDate: '2027-04-30' },
+      ],
+    ]);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'hr.directAssign.actionFor' }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it('requires a mentor and a valid period before review; nothing is sent', async () => {
+    const fetchMock = setup([201, {}]);
+    page();
+    const { user, dialog, select } = await open();
+    const review = () =>
+      user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    await review();
+    expect(within(dialog).getByText('hr.directAssign.errors.mentor')).toBeInTheDocument();
+    expect(within(dialog).getByText('hr.directAssign.errors.dates')).toBeInTheDocument();
+    await user.selectOptions(select, 'e1');
+    setDate(dialog, 'hr.directAssign.startDate', '2027-05-01');
+    setDate(dialog, 'hr.directAssign.endDate', '2027-04-30');
+    await review();
+    expect(within(dialog).getByText('hr.directAssign.errors.period')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('hr.directAssign.endDate')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(posts(fetchMock)).toEqual([]);
+  });
+
+  it.each([
+    [403, 'direct_assignment.not_responsible', 'hr.directAssign.errors.notResponsible'],
+    [409, 'direct_assignment.already_assigned', 'hr.directAssign.errors.alreadyAssigned'],
+    [400, 'direct_assignment.not_accepted', 'hr.directAssign.errors.notAccepted'],
+  ] as const)('a %i (%s) closes the dialog and says why', async (status, code, message) => {
+    setup([status, { status, code }]);
+    page();
+    const { user, dialog, select } = await open();
+    await user.selectOptions(select, 'e1');
+    setDate(dialog, 'hr.directAssign.startDate', '2027-02-01');
+    setDate(dialog, 'hr.directAssign.endDate', '2027-02-01');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    await user.click(within(dialog).getByRole('button', { name: 'hr.directAssign.confirm' }));
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('a mentor who is no longer an Employee is shown on the mentor field', async () => {
+    setup([400, { status: 400, code: 'direct_assignment.mentor_not_employee' }]);
+    page();
+    const { user, dialog, select } = await open();
+    await user.selectOptions(select, 'e1');
+    setDate(dialog, 'hr.directAssign.startDate', '2027-02-01');
+    setDate(dialog, 'hr.directAssign.endDate', '2027-03-01');
+    await user.click(within(dialog).getByRole('button', { name: 'hr.trainings.review' }));
+    await user.click(within(dialog).getByRole('button', { name: 'hr.directAssign.confirm' }));
+    expect(
+      await within(dialog).findByText('hr.directAssign.errors.mentorNotEmployee'),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      'ar',
+      arMessages,
+      'إسناد المتدرب Lina Haddad مباشرةً إلى مدرّب',
+      'المدرّب',
+      'تاريخ البداية',
+      'تاريخ الانتهاء المخطط',
+    ],
+    [
+      'en',
+      enMessages,
+      'Assign the trainee Lina Haddad directly to a mentor',
+      'Mentor',
+      'Start date',
+      'Planned end date',
+    ],
+  ] as const)('reads in %s', async (language, raw, button, mentor, start, end) => {
+    setup([201, {}]);
+    renderRoutes([{ path: '/hr/applications/:id', element: <ApplicationDetailPage /> }], {
+      url: '/hr/applications/a1',
+      i18n: testI18n(JSON.parse(raw), language),
+    });
+    await userEvent.setup().click(await screen.findByRole('button', { name: button }));
+    const dialog = await screen.findByRole('dialog');
+    for (const label of [mentor, start, end])
+      expect(within(dialog).getByLabelText(label)).toBeInTheDocument();
+  });
+});
