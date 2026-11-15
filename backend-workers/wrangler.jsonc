@@ -47,7 +47,7 @@
     // ever reminded; older ones never are. Set it ONCE, in the release commit, to the moment of that first deployment,
     // and never change or remove it afterwards (every deploy sends this committed value). Empty or invalid: the reminder
     // job does nothing at all (fail closed). See docs/deployment.md.
-    "PENDING_REMINDERS_ACTIVATED_AT": ""
+    "PENDING_REMINDERS_ACTIVATED_AT": "2026-11-15T19:10:00Z"
   },
   // Private file storage for application CVs and university letters (owner decision 2026-10-29). Never public: files are
   // read only through the Worker, after an authorization check, with short-lived links. Locally Wrangler simulates it.
