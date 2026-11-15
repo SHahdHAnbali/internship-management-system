@@ -26,6 +26,8 @@ export default defineConfig({
           SMTP_APP_PASSWORD: '',
           // Event e-mails stay off unless a test enables them for its own API (test/event-emails.test.ts).
           EVENT_EMAILS: 'disabled',
+          // The NEW-05 launch cutoff stays off whatever production pins in wrangler.jsonc; cutoff tests set their own.
+          PENDING_REMINDERS_ACTIVATED_AT: '',
         },
       },
     })),
