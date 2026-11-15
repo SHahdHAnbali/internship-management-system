@@ -1179,11 +1179,48 @@ describe('HR: trainee history (PDF §6)', () => {
       summary: 'Not this trainee.',
     });
 
-    const before = await withDb((db) =>
-      db.query(
-        "SELECT 'a' AS t, id, xmin::text FROM assignments UNION ALL SELECT 'c', id, xmin::text FROM contact_logs ORDER BY 2",
-      ),
-    );
+    // Reading must change nothing. Other test files write to the same tables in parallel, so the check is scoped to this
+    // test's two trainees: their trainee rows, their applications and, through application_id, every assignment, mentor
+    // request and contact-log entry of those applications, with full contents and xmin (an UPDATE changes it; an INSERT
+    // or a removal changes the set). Every write is audited by trigger, so no audit row may appear for any of them.
+    const traineeIds = [trainee.user.id, other.user.id];
+    const scoped = () =>
+      withDb((db) =>
+        db.query<{ t: string; id: string; xmin: string; row: unknown }>(
+          `SELECT 'trainee' AS t, x.id, x.xmin::text AS xmin, to_jsonb(x) AS row
+             FROM trainees x WHERE x.id = ANY($1::uuid[])
+           UNION ALL
+           SELECT 'application', a.id, a.xmin::text, to_jsonb(a)
+             FROM training_applications a WHERE a.trainee_id = ANY($1::uuid[])
+           UNION ALL
+           SELECT 'assignment', x.id, x.xmin::text, to_jsonb(x)
+             FROM assignments x JOIN training_applications a ON a.id = x.application_id WHERE a.trainee_id = ANY($1::uuid[])
+           UNION ALL
+           SELECT 'mentor_request', x.id, x.xmin::text, to_jsonb(x)
+             FROM mentor_requests x JOIN training_applications a ON a.id = x.application_id WHERE a.trainee_id = ANY($1::uuid[])
+           UNION ALL
+           SELECT 'contact_log', x.id, x.xmin::text, to_jsonb(x)
+             FROM contact_logs x JOIN training_applications a ON a.id = x.application_id WHERE a.trainee_id = ANY($1::uuid[])
+           ORDER BY 1, 2`,
+          [traineeIds],
+        ),
+      ).then((r) => r.rows);
+    const before = await scoped();
+    // The scope really holds this test's records (so an empty comparison cannot pass by accident).
+    expect(before.map((r) => r.t).sort()).toEqual([
+      'application',
+      'application',
+      'application', // two of this trainee's, one of the other's
+      'assignment',
+      'contact_log',
+      'contact_log', // this trainee's rejected application, and the other trainee's
+      'mentor_request',
+      'trainee',
+      'trainee',
+    ]);
+    const lastAuditId = await withDb((db) =>
+      db.query<{ id: string | null }>('SELECT max(id)::text AS id FROM audit_logs'),
+    ).then((r) => r.rows[0]!.id ?? '0');
     const response = await hr.client.get(`/api/hr/trainees/${trainee.user.id}/history`);
     expect(response.status).toBe(200);
     const history = await body<History>(response);
@@ -1213,16 +1250,18 @@ describe('HR: trainee history (PDF §6)', () => {
     expect(JSON.stringify(history)).not.toContain('Not this trainee.');
     expect(JSON.stringify(history)).not.toContain(other.applicationId);
 
-    // Reading changes nothing.
+    // Reading changed nothing: the same rows with the same contents and versions, and no audited write to any of them.
+    expect(await scoped()).toEqual(before);
     expect(
       (
         await withDb((db) =>
-          db.query(
-            "SELECT 'a' AS t, id, xmin::text FROM assignments UNION ALL SELECT 'c', id, xmin::text FROM contact_logs ORDER BY 2",
+          db.query<{ n: number }>(
+            'SELECT count(*)::int AS n FROM audit_logs WHERE id > $1::bigint AND entity_id = ANY($2::text[])',
+            [lastAuditId, before.map((r) => r.id)],
           ),
         )
-      ).rows,
-    ).toEqual(before.rows);
+      ).rows[0]!.n,
+    ).toBe(0);
 
     // The trainee list leads to the history. This trainee has a Rejected and an Accepted application: listed once,
     // and the rejected application's contact note above is still part of the report.
