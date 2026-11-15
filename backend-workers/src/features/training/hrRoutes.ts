@@ -314,6 +314,16 @@ export const hrRoutes: Route[] = [
         if (locked[0].status !== 'Accepted') {
           throw new DomainError('direct_assignment.not_accepted', 'Only an accepted application can be assigned.');
         }
+        // Lock order, as everywhere else (the approval of a mentor request locks its request row, then inserts the
+        // assignment): the application (above), then its pending mentor requests (by id), then the assignment. Taking
+        // the request rows before inserting the assignment makes a racing approval and this transaction wait for each
+        // other in one order instead of deadlocking (40P01, which would answer 500); the loser then sees the winner's
+        // committed work and answers 409 (below, or the approval's own Pending check). The history check comes after
+        // the lock so that it sees an assignment committed meanwhile.
+        await tx.query(
+          "SELECT id FROM mentor_requests WHERE application_id = $1 AND status = 'Pending' ORDER BY id FOR UPDATE",
+          [id],
+        );
         const { rows: history } = await tx.query('SELECT 1 FROM assignments WHERE application_id = $1 LIMIT 1', [id]);
         if (history.length > 0) {
           throw new StateConflictError(

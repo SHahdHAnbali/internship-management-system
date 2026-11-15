@@ -1,9 +1,19 @@
+import pg from 'pg';
 import { describe, expect, it } from 'vitest';
 import type { Bindings } from '../src/config';
 import type { EmailMessage } from '../src/email';
 import { calendarDate } from '../src/domain/training';
 import { DIRECT_ASSIGNMENT_REJECTION_REASON } from '../src/features/training/hrRoutes';
-import { body, createTestApi, signInStaff, signInTrainee, type TestApi, type TestClient, withDb } from './helpers';
+import {
+  body,
+  createTestApi,
+  ownerDatabaseUrl,
+  signInStaff,
+  signInTrainee,
+  type TestApi,
+  type TestClient,
+  withDb,
+} from './helpers';
 import { newField, seedAssignment, submitApplication } from './seed';
 
 /**
@@ -350,6 +360,124 @@ describe('HR direct assignment (AD-67)', () => {
         .map((m) => m.subject)
         .sort(),
     ).toEqual([MENTOR_SUBJECT, TRAINEE_SUBJECT, REJECTED_SUBJECT].sort());
+  });
+
+  it('lock order (no deadlock): an approval holding a pending request wins; the direct assignment waits, then answers 409', async () => {
+    // The exact interleaving that deadlocked (40P01, answered 500): an approval has locked its request row and has not
+    // inserted the assignment yet when the direct assignment starts. Played deterministically with a second connection.
+    const t = await accepted();
+    const requestA = await request(t.mentorA.client, t.applicationId);
+    const requestC = await request(t.mentorC.client, t.applicationId);
+    const sent = api.emails.sent.length;
+    const approval = new pg.Client({ connectionString: ownerDatabaseUrl() });
+    approval.on('error', () => undefined); // pg-cloudflare reports its socket shutdown after end() (as withDb)
+    await approval.connect();
+    try {
+      await approval.query('BEGIN');
+      await approval.query("SELECT set_config('ims.actor_type', 'System', true)");
+      const approvalPid = (await approval.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+      await approval.query(
+        `UPDATE mentor_requests SET status = 'Approved', decided_at = now(), decided_by_id = $2
+          WHERE id = $1 AND status = 'Pending'`,
+        [requestA, t.hrB.user.id],
+      );
+      const direct = assign(t.hrA.client, t.applicationId, { employeeId: t.mentorB.user.id, ...period });
+      // Wait until the direct assignment is blocked by the approval's lock.
+      for (let waited = 0; ; waited += 25) {
+        const { rows } = await withDb((db) =>
+          db.query<{ n: number }>(
+            'SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))',
+            [approvalPid],
+          ),
+        );
+        if (rows[0]!.n > 0) break;
+        if (waited > 10_000) throw new Error('The direct assignment never waited for the approval.');
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      // The approval's next step, the one that deadlocked before: inserting its assignment. Then it commits.
+      await approval.query(
+        `INSERT INTO assignments (id, application_id, employee_id, mentor_request_id, start_date, end_date, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'Active', now())`,
+        [crypto.randomUUID(), t.applicationId, t.mentorA.user.id, requestA, period.startDate, period.endDate],
+      );
+      await approval.query('COMMIT');
+
+      const response = await direct;
+      expect(response.status).toBe(409);
+      expect((await body(response)).code).toBe('direct_assignment.already_assigned');
+    } finally {
+      await approval.end();
+    }
+    // Exactly the approval's work; the direct assignment wrote nothing and notified nobody.
+    expect(await assignments(t.applicationId)).toEqual([
+      expect.objectContaining({ employee_id: t.mentorA.user.id, mentor_request_id: requestA, status: 'Active' }),
+    ]);
+    const reqs = await requests(t.applicationId);
+    expect(reqs.find((r) => r.id === requestA)?.status).toBe('Approved');
+    expect(reqs.find((r) => r.id === requestC)).toMatchObject({ status: 'Pending', rejection_reason: null });
+    expect(await notificationsOf(t.mentorB.user.id)).toEqual([]);
+    expect(await notificationsOf(t.mentorC.user.id)).toEqual([]);
+    expect(
+      api.emails.sent.slice(sent).filter((m) => m.subject === MENTOR_SUBJECT || m.subject === TRAINEE_SUBJECT),
+    ).toEqual([]);
+  });
+
+  it('lock order (no deadlock): a direct assignment holding the pending requests wins; the approval waits, then 409', async () => {
+    const t = await accepted();
+    const requestA = await request(t.mentorA.client, t.applicationId);
+    const sent = api.emails.sent.length;
+    const blockedBy = async (pid: number) =>
+      (
+        await withDb((db) =>
+          db.query<{ pid: number }>('SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))', [pid]),
+        )
+      ).rows.map((r) => r.pid);
+    const until = async (condition: () => Promise<number[]>, what: string) => {
+      for (let waited = 0; waited <= 10_000; waited += 25) {
+        const pids = await condition();
+        if (pids.length > 0) return pids;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error(`Timed out waiting: ${what}`);
+    };
+    const blocker = new pg.Client({ connectionString: ownerDatabaseUrl() });
+    blocker.on('error', () => undefined); // pg-cloudflare reports its socket shutdown after end() (as withDb)
+    await blocker.connect();
+    try {
+      // Pause the direct assignment after it has locked the pending requests: its assignment insert checks the chosen
+      // mentor's employee row (foreign key), which this connection holds.
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT id FROM employees WHERE id = $1 FOR UPDATE', [t.mentorB.user.id]);
+      const blockerPid = (await blocker.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+      const direct = assign(t.hrA.client, t.applicationId, { employeeId: t.mentorB.user.id, ...period });
+      const [directPid] = await until(() => blockedBy(blockerPid), 'the direct assignment pauses');
+      // The racing approval must now wait for the direct assignment's lock on its request.
+      const approval = t.hrB.client.post(`/api/hr/mentor-requests/${requestA}/approve`, period);
+      await until(() => blockedBy(directPid!), 'the approval waits for the direct assignment');
+      await blocker.query('COMMIT');
+
+      expect((await direct).status).toBe(201);
+      const approved = await approval;
+      expect(approved.status).toBe(409);
+      expect((await body(approved)).code).toBe('conflict.concurrent_update');
+    } finally {
+      await blocker.end();
+    }
+    expect(await assignments(t.applicationId)).toEqual([
+      expect.objectContaining({ employee_id: t.mentorB.user.id, mentor_request_id: null, status: 'Active' }),
+    ]);
+    expect((await requests(t.applicationId)).map((r) => [r.id, r.status, r.rejection_reason])).toEqual([
+      [requestA, 'Rejected', DIRECT_ASSIGNMENT_REJECTION_REASON],
+    ]);
+    expect(await notificationsOf(t.mentorB.user.id)).toEqual([
+      { type: 'TraineeDirectlyAssigned', entity_id: t.applicationId },
+    ]);
+    expect(await notificationsOf(t.mentorA.user.id)).toEqual([{ type: 'MentorRequestRejected', entity_id: requestA }]);
+    const mails = api.emails.sent
+      .slice(sent)
+      .map((m) => m.subject)
+      .sort();
+    expect(mails).toEqual([MENTOR_SUBJECT, REJECTED_SUBJECT, TRAINEE_SUBJECT].sort()); // once each, no approval mail
   });
 
   it('the chosen mentor: with no pending request, or as the only requester, gets only the direct-assignment notices', async () => {
