@@ -693,3 +693,36 @@ VALUES ('20261114105015_DirectAssignment', '10.0.13');
 
 COMMIT;
 
+START TRANSACTION;
+CREATE TABLE pending_reminders (
+    id uuid NOT NULL,
+    kind character varying(32) NOT NULL,
+    application_id uuid,
+    mentor_request_id uuid,
+    attempted_at timestamp with time zone NOT NULL,
+    recipient_count integer NOT NULL,
+    outcome character varying(32) NOT NULL,
+    accepted_count integer,
+    failed_count integer,
+    completed_at timestamp with time zone,
+    CONSTRAINT pk_pending_reminders PRIMARY KEY (id),
+    CONSTRAINT ck_pending_reminders_kind CHECK (kind IN ('TrainingApplication', 'MentorRequest')),
+    CONSTRAINT ck_pending_reminders_outcome CHECK (outcome IN ('Attempting', 'Accepted', 'PartiallyAccepted', 'Failed')),
+    CONSTRAINT ck_pending_reminders_recipients CHECK (recipient_count >= 1),
+    CONSTRAINT ck_pending_reminders_result CHECK ((outcome = 'Attempting') = (completed_at IS NULL) AND (outcome = 'Attempting') = (accepted_count IS NULL AND failed_count IS NULL) AND (outcome = 'Attempting' OR accepted_count + failed_count = recipient_count)),
+    CONSTRAINT ck_pending_reminders_target CHECK ((kind = 'TrainingApplication' AND application_id IS NOT NULL AND mentor_request_id IS NULL) OR (kind = 'MentorRequest' AND mentor_request_id IS NOT NULL AND application_id IS NULL)),
+    CONSTRAINT fk_pending_reminders_mentor_requests_mentor_request_id FOREIGN KEY (mentor_request_id) REFERENCES mentor_requests (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_pending_reminders_training_applications_application_id FOREIGN KEY (application_id) REFERENCES training_applications (id) ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX ux_pending_reminders_application_id ON pending_reminders (application_id);
+
+CREATE UNIQUE INDEX ux_pending_reminders_mentor_request_id ON pending_reminders (mentor_request_id);
+
+SELECT ims_protect_table('pending_reminders');
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261115103328_PendingReminders', '10.0.13');
+
+COMMIT;
+

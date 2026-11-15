@@ -335,7 +335,8 @@
         "assignment_extensions": "تمديدات التدريب",
         "responsible_hr_changes": "تعيينات مسؤول الموارد البشرية",
         "assignment_transfers": "عمليات نقل التدريب",
-        "transfer_decisions": "قرارات نقل التدريب"
+        "transfer_decisions": "قرارات نقل التدريب",
+        "pending_reminders": "تذكيرات الطلبات المعلّقة"
       },
       "unknownUser": "مستخدم غير معروف",
       "traineeWithoutName": "متدرب (لم يُدخل اسمه بعد)",
@@ -508,6 +509,10 @@
         "transfer_decisions": {
           "created": "تم اتخاذ قرار بنقل تدريب",
           "updated": "تم تنفيذ قرار نقل تدريب أو إلغاؤه أو إبطاله"
+        },
+        "pending_reminders": {
+          "created": "تمت محاولة إرسال تذكير للموارد البشرية بطلب معلّق",
+          "updated": "تم تسجيل نتيجة تذكير بطلب معلّق"
         }
       }
     }

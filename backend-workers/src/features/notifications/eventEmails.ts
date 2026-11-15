@@ -12,6 +12,7 @@ import { renderBilingualHtml, renderBilingualText, type EmailSection } from '../
  * responsible HR (AD-64); the trainee's assignment e-mail names the mentor (NEW-30). The incoming mentor of an executed
  * transfer gets one e-mail (AD-65, owner decision 2026-11-13; an approved addition to the PDF §7 table, AD-59). HR's direct
  * assignment (AD-67) e-mails the assigned employee and the trainee (with the mentor's name and work e-mail and the dates).
+ * The pending-request reminders (NEW-05) use the templates here but are sent by their scheduled job, which records them.
  *
  * Delivery is **best effort only**: the e-mail is sent after the business transaction has committed, in the background
  * (`waitUntil`), so a failure never changes or rolls back the business operation. There is **no delivery record, no
@@ -35,6 +36,23 @@ export type EventEmailContent =
       startDate: string;
       mentorName: string;
       mentorEmail: string;
+    }
+  | {
+      kind: 'PendingApplicationReminder';
+      applicationId: string;
+      field: string;
+      applicantName: string | null;
+      status: 'Submitted' | 'UnderReview';
+      submittedDate: string;
+      thresholdDays: number;
+    }
+  | {
+      kind: 'PendingMentorRequestReminder';
+      field: string;
+      traineeName: string | null;
+      employeeName: string;
+      requestedDate: string;
+      thresholdDays: number;
     }
   | {
       kind: 'TraineeDirectlyAssigned';
@@ -240,6 +258,68 @@ function template(content: EventEmailContent, site: string): Template {
           action: myApplications.en,
         },
       };
+    case 'PendingApplicationReminder': {
+      // NEW-05 (AD-61 items 4–17): one reminder to HR about an application still waiting for a decision.
+      const status = {
+        ar: content.status === 'UnderReview' ? 'قيد المراجعة' : 'مُقدَّم',
+        en: content.status === 'UnderReview' ? 'Under review' : 'Submitted',
+      };
+      const url = `${site}/hr/applications/${content.applicationId}`;
+      return {
+        ar: {
+          heading: 'طلب تدريب معلّق',
+          intro: [`ينتظر طلب تدريب قرار الموارد البشرية منذ أكثر من ${content.thresholdDays} أيام.`],
+          details: [
+            ...optional('المتقدم:', content.applicantName),
+            { label: 'المجال:', value: content.field },
+            { label: 'الحالة:', value: status.ar },
+            { label: 'تاريخ التقديم:', value: content.submittedDate },
+          ],
+          action: { lead: 'لعرض الطلب:', label: 'عرض الطلب', url },
+        },
+        en: {
+          heading: 'Training application pending',
+          intro: [
+            `A training application has been waiting for an HR decision for more than ${content.thresholdDays} days.`,
+          ],
+          details: [
+            ...optional('Applicant:', content.applicantName),
+            { label: 'Field:', value: content.field },
+            { label: 'Status:', value: status.en },
+            { label: 'Submitted on:', value: content.submittedDate },
+          ],
+          action: { lead: 'To view the application:', label: 'View application', url },
+        },
+      };
+    }
+    case 'PendingMentorRequestReminder':
+      // NEW-05 (AD-61 items 4–17): one reminder to the application's responsible HR about a request still pending.
+      return {
+        ar: {
+          heading: 'طلب تدريب متدرب معلّق',
+          intro: [`ينتظر طلب موظف لتدريب متدرب قرار الموارد البشرية منذ أكثر من ${content.thresholdDays} أيام.`],
+          details: [
+            { label: 'الموظف:', value: content.employeeName },
+            ...optional('المتدرب:', content.traineeName),
+            { label: 'المجال:', value: content.field },
+            { label: 'تاريخ الطلب:', value: content.requestedDate },
+          ],
+          action: { lead: 'لعرض طلبات التدريب:', label: 'طلبات التدريب', url: `${site}/hr/mentor-requests` },
+        },
+        en: {
+          heading: 'Request to train a trainee pending',
+          intro: [
+            `An employee's request to train a trainee has been waiting for an HR decision for more than ${content.thresholdDays} days.`,
+          ],
+          details: [
+            { label: 'Employee:', value: content.employeeName },
+            ...optional('Trainee:', content.traineeName),
+            { label: 'Field:', value: content.field },
+            { label: 'Requested on:', value: content.requestedDate },
+          ],
+          action: { lead: 'To view the mentor requests:', label: 'Mentor requests', url: `${site}/hr/mentor-requests` },
+        },
+      };
     case 'TraineeDirectlyAssigned':
       // AD-67: HR assigned the trainee to this employee directly, without a request from them.
       return {
@@ -392,7 +472,7 @@ export async function applicationDecisionEmails(q: Queryable, applicationId: str
 }
 
 /** Every user whose current role is HR, at their registered e-mail address: one separate e-mail each (NEW-24). */
-async function hrRecipients(q: Queryable): Promise<EventEmail['recipient'][]> {
+export async function hrRecipients(q: Queryable): Promise<EventEmail['recipient'][]> {
   const { rows } = await q.query<{ id: string; email: string }>(
     "SELECT id, email FROM employees WHERE role = 'HR' ORDER BY id",
   );

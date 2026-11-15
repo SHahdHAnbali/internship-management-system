@@ -19,6 +19,7 @@ const BUSINESS_TABLES = [
   'mentor_requests',
   'notification_settings',
   'notifications',
+  'pending_reminders',
   'progress_notes',
   'responsible_hr_changes',
   'roles',

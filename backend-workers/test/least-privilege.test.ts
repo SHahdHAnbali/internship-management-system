@@ -54,6 +54,7 @@ const TABLES = [
   'mentor_requests',
   'notification_settings',
   'notifications',
+  'pending_reminders',
   'progress_notes',
   'responsible_hr_changes',
   'roles',
@@ -194,6 +195,32 @@ describe('ims_app: exactly the privileges the Worker needs', () => {
     ]);
   });
 
+  it('may update only the outcome of a pending-request reminder (NEW-05), never which request or when', async () => {
+    const columns = await withDb((db) =>
+      db.query<{ column: string; granted: boolean }>(
+        `SELECT a.attname AS column,
+                has_column_privilege('ims_app', 'public.pending_reminders', a.attname, 'UPDATE') AS granted
+           FROM pg_attribute a
+          WHERE a.attrelid = 'public.pending_reminders'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+          ORDER BY a.attname`,
+      ),
+    );
+    expect(columns.rows.filter((c) => c.granted).map((c) => c.column)).toEqual([
+      'accepted_count',
+      'completed_at',
+      'failed_count',
+      'outcome',
+    ]);
+    expect(columns.rows.filter((c) => !c.granted).map((c) => c.column)).toEqual([
+      'application_id',
+      'attempted_at',
+      'id',
+      'kind',
+      'mentor_request_id',
+      'recipient_count',
+    ]);
+  });
+
   it('cannot create anything: no schema CREATE, no TEMP (also not through PUBLIC), no protect function', async () => {
     const checks = await withDb((db) =>
       db.query(
@@ -229,6 +256,10 @@ describe('ims_app: refused (negative tests, disposable test database only)', () 
     ],
     ['UPDATE an executed transfer link', 'UPDATE assignment_transfers SET to_assignment_id = to_assignment_id'],
     ['DELETE a transfer decision', 'DELETE FROM transfer_decisions'],
+    ["UPDATE a reminder's request", 'UPDATE pending_reminders SET application_id = application_id'],
+    ["UPDATE a reminder's attempt time", 'UPDATE pending_reminders SET attempted_at = attempted_at'],
+    ['DELETE a pending-request reminder', 'DELETE FROM pending_reminders'],
+    ['TRUNCATE pending-request reminders', 'TRUNCATE pending_reminders'],
     ['DELETE FROM audit_logs', 'DELETE FROM audit_logs WHERE id = 1'],
     ['TRUNCATE audit_logs', 'TRUNCATE audit_logs'],
     ['DISABLE an audit trigger', 'ALTER TABLE fields DISABLE TRIGGER audit_row_change'],

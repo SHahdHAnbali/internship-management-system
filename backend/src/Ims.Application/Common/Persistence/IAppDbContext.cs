@@ -33,6 +33,8 @@ public interface IAppDbContext
 
     DbSet<NotificationSettings> NotificationSettings { get; }
 
+    DbSet<PendingRequestReminder> PendingRequestReminders { get; }
+
     DbSet<CertificateTemplate> CertificateTemplates { get; }
 
     DbSet<UserSession> UserSessions { get; }

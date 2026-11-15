@@ -30,6 +30,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
 
+    public DbSet<PendingRequestReminder> PendingRequestReminders => Set<PendingRequestReminder>();
+
     public DbSet<CertificateTemplate> CertificateTemplates => Set<CertificateTemplate>();
 
     public DbSet<UserSession> UserSessions => Set<UserSession>();

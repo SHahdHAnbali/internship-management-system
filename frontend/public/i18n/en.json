@@ -335,7 +335,8 @@
         "assignment_extensions": "Training extensions",
         "responsible_hr_changes": "Responsible HR appointments",
         "assignment_transfers": "Training transfers",
-        "transfer_decisions": "Transfer decisions"
+        "transfer_decisions": "Transfer decisions",
+        "pending_reminders": "Pending-request reminders"
       },
       "unknownUser": "Unknown user",
       "traineeWithoutName": "Trainee (name not entered yet)",
@@ -508,6 +509,10 @@
         "transfer_decisions": {
           "created": "A training transfer was decided",
           "updated": "A training transfer decision was executed, cancelled or voided"
+        },
+        "pending_reminders": {
+          "created": "A pending-request reminder to HR was attempted",
+          "updated": "The result of a pending-request reminder was recorded"
         }
       }
     }

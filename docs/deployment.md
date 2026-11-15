@@ -95,13 +95,33 @@ below). Sign-in e-mails do not depend on it.
   `schedule: 5 3,21,22 * * *`. The `/__scheduled` test route exists only under `wrangler dev --test-scheduled`: in
   production the Worker has no public URL, and that path on the site is the ordinary SPA page.
 - **Local:** `npx wrangler dev --test-scheduled` (from `backend-workers/`), then
-  `curl "http://localhost:<port>/__scheduled?cron=5+22+*+*+*"` runs the job once against the database in `.dev.vars`.
+  `curl "http://localhost:<port>/__scheduled?cron=5+3,21,22+*+*+*"` runs the job once against the database in
+  `.dev.vars`. Since NEW-05 the handler tells the triggers apart by their exact cron expression, so the `cron`
+  parameter must be the configured one (`5 3,21,22 * * *` or `0 6,7 * * *`); any other expression runs nothing.
 - **Release order (when authorized):** Neon backup → migrations `AssignmentTransfers` and `TransferDecisions` → the
   `ims_app` grants for `assignment_transfers` and `transfer_decisions` (`scripts/ims-app-grants.sql`) → Worker (it
   brings the Cron Trigger) → Pages. A Worker without the tables would fail every transfer request and every cron run.
   Cron Triggers are configured on the Worker, not stored in each version: when rolling back to a version without a
   `scheduled` handler, check in the dashboard whether the trigger must also be removed (`wrangler triggers deploy`
   with a configuration without `crons`).
+
+### Scheduled job: pending-request reminders (NEW-05, AD-61 items 4–17): IMPLEMENTED LOCALLY — NOT DEPLOYED
+- A second Cron Trigger in `wrangler.jsonc`: `0 6,7 * * *` (UTC), next to the unchanged `5 3,21,22 * * *`. Only the
+  run at 09:xx Asia/Hebron acts (07:00 UTC in winter, 06:00 UTC in summer, computed from the clock with daylight
+  saving); the other run of the day does nothing. Each check reads `pending_request_alert_days` and reminds each
+  request overdue by N × 24 hours and not yet reminded (old and missed ones included), once
+  (`src/features/notifications/pendingRequestReminders.ts`).
+- Needs `EVENT_EMAILS=enabled`; while it is off nothing is attempted or recorded. E-mails go through the existing SMTP
+  sender, one attempt each, no retry. Logs: one `Pending-request reminders run` line with counts only, and the usual
+  per-e-mail lines (kind and record id only).
+- **Release order (when authorized):** Neon backup → migration `PendingReminders` → the `ims_app` grants for
+  `pending_reminders` (`scripts/ims-app-grants.sql`) → Worker (it brings the new trigger; check that `wrangler deploy`
+  reports both schedules) → Pages (only the Audit log labels). A Worker without the table fails every reminder claim,
+  which is logged and retried by the next daily check. **First run:** every request already overdue is reminded at
+  the first 09:00 check (AD-61 item 13), so the owner should expect one e-mail per overdue application to each HR user.
+  **Rollback:** a Worker version from before NEW-05 runs the transfers job on every trigger, so with the new trigger
+  still configured it would run transfers twice more a day (harmless: idempotent); remove `0 6,7 * * *` with
+  `wrangler triggers deploy` if rolling back.
 
 ### One-time catch-up: the incoming-mentor e-mail of an already-executed transfer (AD-65; run once on 2026-11-13)
 For a transfer executed **before** the incoming-mentor e-mail was deployed, `backend-workers/scripts/transfer-email-catch-up.ts`

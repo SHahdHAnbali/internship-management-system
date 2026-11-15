@@ -968,6 +968,83 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ims.Domain.Notifications.PendingRequestReminder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("AcceptedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("accepted_count");
+
+                    b.Property<Guid?>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<DateTimeOffset>("AttemptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attempted_at");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<int?>("FailedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed_count");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid?>("MentorRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("mentor_request_id");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("outcome");
+
+                    b.Property<int>("RecipientCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("recipient_count");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_pending_reminders");
+
+                    b.HasIndex("ApplicationId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_pending_reminders_application_id");
+
+                    b.HasIndex("MentorRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_pending_reminders_mentor_request_id");
+
+                    b.ToTable("pending_reminders", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_pending_reminders_kind", "kind IN ('TrainingApplication', 'MentorRequest')");
+
+                            t.HasCheckConstraint("ck_pending_reminders_outcome", "outcome IN ('Attempting', 'Accepted', 'PartiallyAccepted', 'Failed')");
+
+                            t.HasCheckConstraint("ck_pending_reminders_recipients", "recipient_count >= 1");
+
+                            t.HasCheckConstraint("ck_pending_reminders_result", "(outcome = 'Attempting') = (completed_at IS NULL) AND (outcome = 'Attempting') = (accepted_count IS NULL AND failed_count IS NULL) AND (outcome = 'Attempting' OR accepted_count + failed_count = recipient_count)");
+
+                            t.HasCheckConstraint("ck_pending_reminders_target", "(kind = 'TrainingApplication' AND application_id IS NOT NULL AND mentor_request_id IS NULL) OR (kind = 'MentorRequest' AND mentor_request_id IS NOT NULL AND application_id IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Ims.Domain.Roles.Role", b =>
                 {
                     b.Property<string>("Code")
@@ -1479,6 +1556,21 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_notifications_employees_recipient_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Notifications.PendingRequestReminder", b =>
+                {
+                    b.HasOne("Ims.Domain.Applications.TrainingApplication", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_pending_reminders_training_applications_application_id");
+
+                    b.HasOne("Ims.Domain.Mentoring.MentorRequest", null)
+                        .WithMany()
+                        .HasForeignKey("MentorRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_pending_reminders_mentor_requests_mentor_request_id");
                 });
 
             modelBuilder.Entity("Ims.Domain.Sessions.UserSession", b =>

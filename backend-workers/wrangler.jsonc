@@ -15,7 +15,9 @@
   // Scheduled jobs (src/scheduled.ts), in UTC: 21:05 and 22:05 (00:05 Asia/Hebron in summer and winter) execute the
   // transfers due that day (AD-65); 03:05 is a catch-up run. Due decisions are computed from the Asia/Hebron date, not
   // from the run time, so a missed run is caught up by the next.
-  "triggers": { "crons": ["5 3,21,22 * * *"] },
+  // 06:00 and 07:00 UTC: the daily pending-request reminder check (NEW-05) acts only on the run at 09:xx Asia/Hebron
+  // (UTC+3 in summer, UTC+2 in winter); src/scheduled.ts tells the two triggers apart by their cron expression.
+  "triggers": { "crons": ["5 3,21,22 * * *", "0 6,7 * * *"] },
   "vars": {
     "ENVIRONMENT": "production",
     // Public OAuth Web client id (not a secret). Its authorized JavaScript origins must include the site URL.

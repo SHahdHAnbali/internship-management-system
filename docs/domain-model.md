@@ -37,6 +37,7 @@ AuditLog — covers every table
 | `Certificate` | public code, published flag, issue date, revoked flag | Linked to the application. Revocation keeps the page and marks it invalid. |
 | `ContactLog` | application, author, date, method `Phone / Meeting / Email`, summary | Records verbal agreements. |
 | `Notification` | recipient, type, read flag, email status | |
+| `PendingRequestReminder` | kind (application or mentor request), the request, attempt time, recipient count, outcome `Attempting / Accepted / PartiallyAccepted / Failed`, accepted and failed counts, completion time | The one e-mail reminder to HR about a request pending longer than `pending_request_alert_days` (AD-61 items 4–17, NEW-05): at most one per request; recorded only when attempted; the outcome is the SMTP server's answer, never "delivered". Implemented locally, not deployed. |
 | `AuditLog` | user, action, entity, value before/after, timestamp | Covers every table. Written automatically. |
 
 ## Cross-cutting rules

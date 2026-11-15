@@ -33,14 +33,15 @@ GRANT SELECT ON
     application_attachments, assignment_extensions, assignment_transfers, assignments, audit_logs, certificate_templates,
     contact_logs, employees, evaluation_criteria, fields, mentor_requests, notification_settings, notifications,
     progress_notes, responsible_hr_changes, trainee_sign_in_codes, trainees, training_applications, transfer_decisions,
-    user_sessions
+    pending_reminders, user_sessions
 TO ims_app;
 
 -- Inserts (`audit_logs` only through the audit trigger, see above).
 GRANT INSERT ON
     application_attachments, assignment_extensions, assignment_transfers, assignments, audit_logs, certificate_templates,
     contact_logs, employees, evaluation_criteria, fields, mentor_requests, notifications, progress_notes,
-    responsible_hr_changes, trainee_sign_in_codes, trainees, training_applications, transfer_decisions, user_sessions
+    responsible_hr_changes, trainee_sign_in_codes, trainees, training_applications, transfer_decisions, pending_reminders,
+    user_sessions
 TO ims_app;
 
 -- Updates (no UPDATE on contact logs, progress notes, attachments or audit_logs: the Worker has none).
@@ -61,6 +62,10 @@ GRANT UPDATE (status, end_date, end_reason) ON assignments TO ims_app;
 -- executed transfer closes the outgoing assignment through the column grant above and inserts the incoming one. A
 -- transfer decision only ever leaves Pending (executed, cancelled or void), so only its resolution columns are updatable.
 GRANT UPDATE (status, resolved_at, resolved_by_id, resolution_code, resolution_reason) ON transfer_decisions TO ims_app;
+
+-- Pending-request reminders (NEW-05, AD-61 items 4–17): one row per reminded request (unique); only its outcome, written
+-- once after the e-mails were attempted, is updatable; what was reminded and when never changes.
+GRANT UPDATE (outcome, accepted_count, failed_count, completed_at) ON pending_reminders TO ims_app;
 
 -- Only the schema owner sets up audit protection on a table.
 REVOKE EXECUTE ON FUNCTION ims_protect_table(regclass) FROM PUBLIC;
