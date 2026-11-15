@@ -9,6 +9,7 @@ import {
   isOverdue,
   isPendingReminderRun,
   officialHour,
+  parseActivationCutoff,
   PENDING_REMINDER_CRON,
   pendingRequestAlertDays,
   remindPendingRequests,
@@ -34,6 +35,8 @@ const DAY = 24 * HOUR;
 const APPLICATION_SUBJECT = 'طلب تدريب معلّق / Training application pending';
 const MENTOR_REQUEST_SUBJECT = 'طلب تدريب متدرب معلّق / Request to train a trainee pending';
 const HR_SQL = "SELECT id, email FROM employees WHERE role = 'HR' ORDER BY id";
+/** A launch cutoff before every request these tests create (the cutoff itself is tested in its own suite). */
+const EARLY_CUTOFF = new Date('2000-01-01T00:00:00Z');
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -58,10 +61,19 @@ function smtp(options: { failFor?: string[]; failAll?: boolean } = {}) {
  * different Admin threshold (`alertDays`): the shared test database cannot be emptied of HR users, and the shared
  * setting is not changed under other test files.
  */
-function jobDatabase(db: Database, options: { noHr?: boolean; alertDays?: number }): TransactionalDatabase {
+function jobDatabase(
+  db: Database,
+  options: { noHr?: boolean; alertDays?: number; extraCandidates?: { kind: string; id: string }[] },
+): TransactionalDatabase {
   const wrap = (inner: Queryable): Queryable => ({
     query: async (sql, params) => {
       if (options.noHr && sql === HR_SQL) return { rows: [], rowCount: 0 };
+      if (options.extraCandidates && sql.includes('UNION ALL')) {
+        // A stale or concurrent candidate list: the claim's own check under the row lock must still refuse these.
+        const result = await inner.query(sql, params);
+        const rows = [...result.rows, ...options.extraCandidates] as never[];
+        return { rows, rowCount: rows.length };
+      }
       if (options.alertDays !== undefined && sql.includes('pending_request_alert_days AS days')) {
         return { rows: [{ days: options.alertDays } as never], rowCount: 1 };
       }
@@ -78,6 +90,8 @@ async function run(
     mail?: ReturnType<typeof smtp>;
     noHr?: boolean;
     alertDays?: number;
+    activatedAt?: Date | null;
+    extraCandidates?: { kind: string; id: string }[];
   } = {},
 ) {
   const mail = options.mail ?? smtp();
@@ -86,6 +100,7 @@ async function run(
     const summary = await remindPendingRequests(jobDatabase(db, options), {
       now: options.now ?? new Date(),
       eventEmails: options.enabled ?? true,
+      activatedAt: options.activatedAt === undefined ? EARLY_CUTOFF : options.activatedAt,
       sender: () => mail.sender,
       siteBaseUrl: SITE,
     });
@@ -243,9 +258,14 @@ describe('pending training applications (to every HR user)', () => {
   it('a Submitted application overdue: one e-mail to each HR user, none to the Admin, an employee or the trainee', async () => {
     const p = await people();
     await backdate('training_applications', p.applicationId, ago(30 * DAY));
-    const hrUsers = await withDb((db) => db.query<{ email: string }>(HR_SQL)).then((r) => r.rows.map((u) => u.email));
+    // Other test files promote and demote staff in parallel, so the HR population is observed on both sides of the run:
+    // whoever is HR before and after must have been HR at the check and must get exactly one e-mail; nobody who was not
+    // HR at either observation may get one.
+    const hrEmails = () => withDb((db) => db.query<{ email: string }>(HR_SQL)).then((r) => r.rows.map((u) => u.email));
+    const hrBefore = await hrEmails();
 
     const { mail } = await run();
+    const hrAfter = await hrEmails();
 
     const mine = aboutApplication(mail.accepted, p.applicationId);
     const [row] = await applicationReminders(p.applicationId);
@@ -255,7 +275,8 @@ describe('pending training applications (to every HR user)', () => {
     const to = mine.map((m) => m.to);
     expect(new Set(to).size).toBe(to.length); // one each
     expect(to).toEqual(expect.arrayContaining([p.hrA.email, p.hrB.email]));
-    for (const email of to) expect(hrUsers).toContain(email);
+    for (const email of hrBefore.filter((e) => hrAfter.includes(e))) expect(to).toContain(email);
+    for (const email of to) expect([...hrBefore, ...hrAfter]).toContain(email);
     for (const email of [p.admin.email, p.employee.email, p.trainee.email]) expect(to).not.toContain(email);
     expect(mine[0]!.textBody).toContain(p.field.name);
     expect(mine[0]!.textBody).toContain('مُقدَّم');
@@ -597,15 +618,21 @@ describe('e-mail settings and SMTP failures', () => {
   it('every e-mail failing: Failed with every count, and no in-app notification is ever written', async () => {
     const p = await pendingRequest();
     await backdate('mentor_requests', p.requestId, ago(30 * DAY));
-    const before = await withDb((db) =>
-      db.query<{ n: number }>('SELECT count(*)::int AS n FROM notifications WHERE recipient_id = $1', [p.hrA.user.id]),
-    ).then((r) => r.rows[0]!.n);
+    // Every HR user gets an in-app "new application" notice whenever any test file submits one, so those are left out,
+    // as in transfer.test.ts; every other notification of the recipient, and any about this request, must not change.
+    const notifications = () =>
+      withDb((db) =>
+        db.query<{ n: number; about: number }>(
+          `SELECT count(*) FILTER (WHERE recipient_id = $1 AND type <> 'ApplicationSubmitted')::int AS n,
+                  count(*) FILTER (WHERE entity_id IN ($2, $3))::int AS about
+             FROM notifications`,
+          [p.hrA.user.id, p.requestId, p.applicationId],
+        ),
+      ).then((r) => r.rows[0]!);
+    const before = await notifications();
     await run({ mail: smtp({ failAll: true }) });
     expect((await requestReminders(p.requestId))[0]).toMatchObject({ outcome: 'Failed', failed_count: 1 });
-    const after = await withDb((db) =>
-      db.query<{ n: number }>('SELECT count(*)::int AS n FROM notifications WHERE recipient_id = $1', [p.hrA.user.id]),
-    ).then((r) => r.rows[0]!.n);
-    expect(after).toBe(before);
+    expect(await notifications()).toEqual(before);
   });
 });
 
@@ -616,12 +643,16 @@ describe('the Cron Trigger (0 6,7 * * *) and the transfers trigger', () => {
   const SUMMER = { acts: new Date('2020-07-15T06:00:00Z'), idle: new Date('2020-07-15T07:00:00Z') }; // UTC+3
   const LONG_AGO = new Date('2019-01-01T08:00:00Z');
 
-  async function cron(expression: string, at: Date, options: { enabled?: boolean } = {}) {
+  async function cron(expression: string, at: Date, options: { enabled?: boolean; activatedAt?: string } = {}) {
     const mail = smtp();
     const ctx = createExecutionContext();
     createScheduledHandler({ now: () => at, emailSender: () => mail.sender })(
       createScheduledController({ scheduledTime: at.getTime(), cron: expression }),
-      { ...(env as unknown as Bindings), EVENT_EMAILS: options.enabled === false ? 'disabled' : 'enabled' },
+      {
+        ...(env as unknown as Bindings),
+        EVENT_EMAILS: options.enabled === false ? 'disabled' : 'enabled',
+        PENDING_REMINDERS_ACTIVATED_AT: options.activatedAt ?? '2018-06-01T00:00:00Z',
+      },
       ctx,
     );
     await waitOnExecutionContext(ctx);
@@ -672,5 +703,178 @@ describe('the Cron Trigger (0 6,7 * * *) and the transfers trigger', () => {
     expect(lines.some((l) => l.includes('Scheduled transfers run'))).toBe(false);
     expect(lines.some((l) => l.includes('Pending-request reminders run'))).toBe(true);
     expect(await requestReminders(p.requestId)).toHaveLength(1);
+  });
+
+  it('launch cutoff missing, empty or invalid: fails closed (nothing claimed or sent, logged); valid: runs', async () => {
+    const p = await pendingRequest();
+    await backdate('mentor_requests', p.requestId, LONG_AGO);
+    const errors = vi.spyOn(console, 'error');
+    const db = vi.spyOn(Database.prototype, 'query');
+    // wrangler.jsonc ships it empty: the committed default is "off" until the release sets it.
+    expect((env as unknown as Bindings).PENDING_REMINDERS_ACTIVATED_AT ?? '').toBe('');
+    for (const activatedAt of [
+      '',
+      '   ',
+      'not-a-date',
+      '2018-06-01',
+      '2018-06-01T00:00:00',
+      '2018-06-01T02:00:00+02:00',
+      '2018-02-30T00:00:00Z',
+    ]) {
+      expect((await cron(PENDING_REMINDER_CRON, WINTER.acts, { activatedAt })).attempted, activatedAt).toEqual([]);
+    }
+    expect(db).not.toHaveBeenCalled(); // not even the candidate query
+    expect(await requestReminders(p.requestId)).toEqual([]);
+    expect(
+      errors.mock.calls.filter((c) => String(c[0]).includes('PENDING_REMINDERS_ACTIVATED_AT is missing or invalid')),
+    ).toHaveLength(7);
+
+    db.mockRestore();
+    const mail = await cron(PENDING_REMINDER_CRON, WINTER.acts, { activatedAt: '2018-06-01T00:00:00Z' });
+    expect(aboutRequest(mail.accepted, p.field.name).map((m) => m.to)).toEqual([p.hrA.email]);
+  });
+});
+
+describe('launch cutoff: only requests created at or after the first activation (AD-61 item 18)', () => {
+  it('parses only an exact UTC timestamp; anything else is refused', () => {
+    expect(parseActivationCutoff('2026-11-20T10:15:00Z')?.toISOString()).toBe('2026-11-20T10:15:00.000Z');
+    expect(parseActivationCutoff(' 2026-11-20T10:15:00.123Z ')?.toISOString()).toBe('2026-11-20T10:15:00.123Z');
+    for (const value of [
+      undefined,
+      null,
+      '',
+      '2026-11-20',
+      '2026-11-20T10:15:00',
+      '2026-11-20T10:15Z',
+      '2026-11-20 10:15:00Z',
+      '2026-11-20T12:15:00+02:00',
+      '2026-02-30T00:00:00Z',
+      '2026-11-20T24:00:00Z',
+      '2026-13-01T00:00:00Z',
+      '2026-11-20T10:15:00.1Z',
+      'Fri, 20 Nov 2026 10:15:00 GMT',
+    ]) {
+      expect(parseActivationCutoff(value), String(value)).toBeNull();
+    }
+  });
+
+  it('applications: before the cutoff never; exactly at it and after it, once overdue; the exact instant, not the day', async () => {
+    const activatedAt = new Date(Date.now() - 20 * DAY);
+    const before = await people();
+    const at = await people();
+    const after = await people();
+    const sameDayEarlier = await people();
+    await backdate('training_applications', before.applicationId, new Date(activatedAt.getTime() - 1));
+    await backdate('training_applications', at.applicationId, activatedAt);
+    await backdate('training_applications', after.applicationId, new Date(activatedAt.getTime() + HOUR));
+    // Earlier on the same UTC day as the cutoff (or the day before when the cutoff is just after midnight).
+    await backdate('training_applications', sameDayEarlier.applicationId, new Date(activatedAt.getTime() - 60_000));
+
+    const { mail, summary } = await run({ activatedAt, alertDays: 5 });
+
+    expect(summary!.activatedAt).toBe(activatedAt.toISOString());
+    for (const p of [before, sameDayEarlier]) {
+      expect(aboutApplication(mail.accepted, p.applicationId)).toEqual([]);
+      expect(await applicationReminders(p.applicationId)).toEqual([]);
+    }
+    for (const p of [at, after]) {
+      expect(aboutApplication(mail.accepted, p.applicationId).map((m) => m.to)).toContain(p.hrA.email);
+      expect(await applicationReminders(p.applicationId)).toHaveLength(1);
+    }
+    // Never later either, whatever the threshold.
+    for (const alertDays of [1, 5, 30]) {
+      expect(aboutApplication((await run({ activatedAt, alertDays })).mail.accepted, before.applicationId)).toEqual([]);
+    }
+  });
+
+  it('Under Review: an old application moved to review after the cutoff stays excluded; a new one is reminded', async () => {
+    const activatedAt = new Date(Date.now() - 20 * DAY);
+    const old = await people();
+    const fresh = await people();
+    await backdate('training_applications', old.applicationId, new Date(activatedAt.getTime() - DAY));
+    await backdate('training_applications', fresh.applicationId, new Date(activatedAt.getTime() + 60_000));
+    for (const p of [old, fresh]) {
+      expect((await p.hrA.client.post(`/api/hr/applications/${p.applicationId}/review`)).status).toBe(200);
+    }
+
+    const { mail } = await run({ activatedAt, alertDays: 5 });
+
+    expect(aboutApplication(mail.accepted, old.applicationId)).toEqual([]);
+    expect(await applicationReminders(old.applicationId)).toEqual([]);
+    expect(aboutApplication(mail.accepted, fresh.applicationId)[0]!.textBody).toContain('Under review');
+  });
+
+  it("mentor requests: by their own requested_at, never the application's submitted_at", async () => {
+    const activatedAt = new Date(Date.now() - 20 * DAY);
+    // An application from before the cutoff (accepted), with an old request and, on another, a new request.
+    const oldRequest = await pendingRequest();
+    const newRequest = await pendingRequest();
+    await backdate('training_applications', oldRequest.applicationId, new Date(activatedAt.getTime() - 30 * DAY));
+    await backdate('training_applications', newRequest.applicationId, new Date(activatedAt.getTime() - 30 * DAY));
+    await backdate('mentor_requests', oldRequest.requestId, new Date(activatedAt.getTime() - 1));
+    await backdate('mentor_requests', newRequest.requestId, activatedAt); // exactly at the cutoff
+
+    const { mail } = await run({ activatedAt, alertDays: 5 });
+
+    expect(aboutRequest(mail.accepted, oldRequest.field.name)).toEqual([]);
+    expect(await requestReminders(oldRequest.requestId)).toEqual([]);
+    expect(aboutRequest(mail.accepted, newRequest.field.name).map((m) => m.to)).toEqual([newRequest.hrA.email]);
+    expect(await requestReminders(newRequest.requestId)).toHaveLength(1);
+  });
+
+  it('the claim re-checks the cutoff under the row lock: an old request in a stale candidate list is refused', async () => {
+    const activatedAt = new Date(Date.now() - 20 * DAY);
+    const app = await people();
+    const request = await pendingRequest();
+    await backdate('training_applications', app.applicationId, new Date(activatedAt.getTime() - DAY));
+    await backdate('mentor_requests', request.requestId, new Date(activatedAt.getTime() - DAY));
+
+    const { mail, summary } = await run({
+      activatedAt,
+      alertDays: 5,
+      extraCandidates: [
+        { kind: 'TrainingApplication', id: app.applicationId },
+        { kind: 'MentorRequest', id: request.requestId },
+      ],
+    });
+
+    expect(summary!.skipped).toBeGreaterThanOrEqual(2);
+    expect(aboutApplication(mail.accepted, app.applicationId)).toEqual([]);
+    expect(aboutRequest(mail.accepted, request.field.name)).toEqual([]);
+    expect(await applicationReminders(app.applicationId)).toEqual([]);
+    expect(await requestReminders(request.requestId)).toEqual([]);
+  });
+
+  it('no cutoff passed to the job: nothing read, claimed or sent', async () => {
+    const p = await people();
+    await backdate('training_applications', p.applicationId, ago(30 * DAY));
+    const db = vi.spyOn(Database.prototype, 'query');
+    for (const activatedAt of [null, new Date('invalid')]) {
+      const { summary, mail } = await run({ activatedAt });
+      expect(summary).toBeNull();
+      expect(mail.attempted).toEqual([]);
+    }
+    expect(db).not.toHaveBeenCalled();
+    db.mockRestore();
+    expect(await applicationReminders(p.applicationId)).toEqual([]);
+  });
+
+  it('the cutoff is the configured one, never the run time; existing reminders are kept and never resent', async () => {
+    const activatedAt = new Date(Date.now() - 20 * DAY);
+    const p = await people();
+    await backdate('training_applications', p.applicationId, new Date(activatedAt.getTime() + HOUR));
+    const first = await run({ activatedAt, alertDays: 5 });
+    expect(aboutApplication(first.mail.accepted, p.applicationId).length).toBeGreaterThanOrEqual(1);
+    const [row] = await applicationReminders(p.applicationId);
+
+    // Later runs ("after a restart or redeploy") with the same configured cutoff: the cutoff does not move with them.
+    for (const now of [new Date(), new Date(Date.now() + 3 * DAY)]) {
+      const again = await run({ activatedAt, alertDays: 5, now });
+      expect(again.summary!.activatedAt).toBe(activatedAt.toISOString());
+      expect(aboutApplication(again.mail.accepted, p.applicationId)).toEqual([]);
+    }
+    // Even a later cutoff never touches or resends an existing reminder.
+    await run({ activatedAt: new Date(), alertDays: 5 });
+    expect(await applicationReminders(p.applicationId)).toEqual([row]);
   });
 });

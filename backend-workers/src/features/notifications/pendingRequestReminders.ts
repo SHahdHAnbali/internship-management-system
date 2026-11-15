@@ -16,10 +16,18 @@ import { hrRecipients, renderEventEmail, type EventEmail } from './eventEmails';
  *   and only while that user holds the HR role (item 10, rule 7 of AD-64).
  * Accepted, Rejected and Approved requests (including AD-67's automatic rejections) are never reminded (items 8, 11).
  *
+ * Launch cutoff (AD-61 item 18, owner revision 2026-11-15, supersedes the inclusion of pre-launch requests in item 13):
+ * only a request created at or after NEW-05's first production activation can be reminded: an application whose
+ * `submitted_at` and a mentor request whose own `requested_at` is `>=` the activation instant (one cutoff for both;
+ * an older application moved to Under Review later stays excluded). The instant is the Worker variable
+ * `PENDING_REMINDERS_ACTIVATED_AT` (a UTC timestamp, set once at the first activation and never changed); when it is
+ * missing or invalid nothing is read, claimed or sent (fail closed). It is checked in the candidate query and again
+ * under the row lock of the claim.
+ *
  * Exactly once (items 5, 7, 13): `pending_reminders` holds at most one row per request (unique). A row is written only
  * when the reminder is actually attempted: event e-mails enabled (item 16) and at least one eligible recipient (item
  * 15). So a request with nobody to remind, or checked while e-mails are off, stays eligible and is caught up by a later
- * check, as is every request a missed run did not reach (item 13). Nobody else is ever reminded instead.
+ * check, as is every post-launch request a missed run did not reach (item 13). Nobody else is ever reminded instead.
  *
  * Each request is claimed in its own short transaction (System actor, audited): the request row is locked, its status,
  * age and the absence of a reminder are checked again, the recipients are read, and the reminder is recorded as
@@ -63,6 +71,21 @@ export function isOverdue(startedAt: Date, now: Date, thresholdDays: number): bo
   return now.getTime() - startedAt.getTime() >= thresholdDays * DAY_MS;
 }
 
+/**
+ * The launch cutoff (AD-61 item 18) from `PENDING_REMINDERS_ACTIVATED_AT`: a UTC timestamp written exactly as
+ * `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DDTHH:MM:SS.sssZ`, a real calendar instant. Anything else (missing, empty, another
+ * format or time zone, an impossible date) is null, and the job then does nothing.
+ */
+export function parseActivationCutoff(value: string | undefined | null): Date | null {
+  const text = value?.trim() ?? '';
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d{3})?Z$/.exec(text);
+  if (!match) return null;
+  const instant = new Date(text);
+  if (Number.isNaN(instant.getTime())) return null;
+  // Refuses dates the parser would roll over (2026-02-30) or clamp: the instant must print back as written.
+  return instant.toISOString() === `${match[1]}${match[2] ?? '.000'}Z` ? instant : null;
+}
+
 /** The current Admin setting `pending_request_alert_days` (seeded by the AdminModule migration). */
 export async function pendingRequestAlertDays(q: Queryable): Promise<number> {
   const { rows } = await q.query<{ days: number }>(
@@ -75,6 +98,8 @@ export async function pendingRequestAlertDays(q: Queryable): Promise<number> {
 
 export interface PendingReminderSummary {
   thresholdDays: number;
+  /** The launch cutoff applied (AD-61 item 18). */
+  activatedAt: string;
   /** Overdue requests not yet reminded, as first selected. */
   candidates: number;
   /** Reminders claimed and attempted by this run. */
@@ -94,31 +119,41 @@ type Candidate = { kind: 'TrainingApplication' | 'MentorRequest'; id: string };
 
 /**
  * The daily check. `eventEmails` is the EVENT_EMAILS setting: when it is off nothing is read, attempted or recorded
- * (item 16), and the overdue requests are caught up once it is on. Never sends twice for one request.
+ * (item 16), and the overdue requests are caught up once it is on. `activatedAt` is the launch cutoff (item 18): when it
+ * is not a valid instant nothing is read, attempted or recorded either. Never sends twice for one request.
  */
 export async function remindPendingRequests(
   db: TransactionalDatabase,
-  options: { now: Date; eventEmails: boolean; sender: () => EmailSender; siteBaseUrl: string },
+  options: {
+    now: Date;
+    eventEmails: boolean;
+    activatedAt: Date | null;
+    sender: () => EmailSender;
+    siteBaseUrl: string;
+  },
 ): Promise<PendingReminderSummary | null> {
   if (!options.eventEmails) return null;
+  const activatedAt = options.activatedAt;
+  if (!(activatedAt instanceof Date) || Number.isNaN(activatedAt.getTime())) return null; // fail closed
   const { now } = options;
   const thresholdDays = await pendingRequestAlertDays(db);
   const cutoff = new Date(now.getTime() - thresholdDays * DAY_MS);
   const { rows: candidates } = await db.query<Candidate>(
     `SELECT 'TrainingApplication' AS kind, a.id, a.submitted_at AS started_at
        FROM training_applications a
-      WHERE a.status IN ('Submitted', 'UnderReview') AND a.submitted_at <= $1
+      WHERE a.status IN ('Submitted', 'UnderReview') AND a.submitted_at <= $1 AND a.submitted_at >= $2
         AND NOT EXISTS (SELECT 1 FROM pending_reminders p WHERE p.application_id = a.id)
      UNION ALL
      SELECT 'MentorRequest' AS kind, r.id, r.requested_at AS started_at
        FROM mentor_requests r
-      WHERE r.status = 'Pending' AND r.requested_at <= $1
+      WHERE r.status = 'Pending' AND r.requested_at <= $1 AND r.requested_at >= $2
         AND NOT EXISTS (SELECT 1 FROM pending_reminders p WHERE p.mentor_request_id = r.id)
      ORDER BY started_at, id`,
-    [cutoff],
+    [cutoff, activatedAt],
   );
   const summary: PendingReminderSummary = {
     thresholdDays,
+    activatedAt: activatedAt.toISOString(),
     candidates: candidates.length,
     attempted: 0,
     noRecipient: 0,
@@ -131,7 +166,9 @@ export async function remindPendingRequests(
   for (const candidate of candidates) {
     let claim: Claim;
     try {
-      claim = await db.transaction(SCHEDULER_ACTOR, (tx) => claimReminder(tx, candidate, now, thresholdDays));
+      claim = await db.transaction(SCHEDULER_ACTOR, (tx) =>
+        claimReminder(tx, candidate, now, thresholdDays, activatedAt),
+      );
     } catch (error) {
       summary.failed += 1;
       console.error(
@@ -226,11 +263,17 @@ type Claim =
   | { result: 'claimed'; reminderId: string; emails: EventEmail[] };
 
 /** One request, in the claim transaction: re-checked under its row lock, then recorded as Attempting with its e-mails. */
-async function claimReminder(tx: Queryable, candidate: Candidate, now: Date, thresholdDays: number): Promise<Claim> {
+async function claimReminder(
+  tx: Queryable,
+  candidate: Candidate,
+  now: Date,
+  thresholdDays: number,
+  activatedAt: Date,
+): Promise<Claim> {
   const emails =
     candidate.kind === 'TrainingApplication'
-      ? await applicationReminder(tx, candidate.id, now, thresholdDays)
-      : await mentorRequestReminder(tx, candidate.id, now, thresholdDays);
+      ? await applicationReminder(tx, candidate.id, now, thresholdDays, activatedAt)
+      : await mentorRequestReminder(tx, candidate.id, now, thresholdDays, activatedAt);
   if (emails === null) return { result: 'skipped' };
   if (emails.length === 0) return { result: 'no_recipient' };
   const reminderId = uuidV7(now);
@@ -256,6 +299,7 @@ async function applicationReminder(
   applicationId: string,
   now: Date,
   thresholdDays: number,
+  activatedAt: Date,
 ): Promise<EventEmail[] | null> {
   const { rows } = await tx.query<{
     status: 'Submitted' | 'UnderReview';
@@ -273,7 +317,8 @@ async function applicationReminder(
   );
   const r = rows[0];
   if (!r || r.reminded || !['Submitted', 'UnderReview'].includes(r.status)) return null;
-  if (!isOverdue(new Date(r.submitted_at), now, thresholdDays)) return null;
+  const submittedAt = new Date(r.submitted_at);
+  if (submittedAt < activatedAt || !isOverdue(submittedAt, now, thresholdDays)) return null; // item 18, item 12
   return (await hrRecipients(tx)).map((recipient) => ({
     content: {
       kind: 'PendingApplicationReminder',
@@ -295,6 +340,7 @@ async function mentorRequestReminder(
   requestId: string,
   now: Date,
   thresholdDays: number,
+  activatedAt: Date,
 ): Promise<EventEmail[] | null> {
   const { rows } = await tx.query<{
     status: string;
@@ -321,7 +367,8 @@ async function mentorRequestReminder(
   );
   const r = rows[0];
   if (!r || r.reminded || r.status !== 'Pending') return null;
-  if (!isOverdue(new Date(r.requested_at), now, thresholdDays)) return null;
+  const requestedAt = new Date(r.requested_at);
+  if (requestedAt < activatedAt || !isOverdue(requestedAt, now, thresholdDays)) return null; // item 18, item 12
   if (!r.hr_id || !r.hr_email) return [];
   return [
     {

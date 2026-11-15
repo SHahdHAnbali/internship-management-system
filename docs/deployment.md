@@ -105,23 +105,42 @@ below). Sign-in e-mails do not depend on it.
   `scheduled` handler, check in the dashboard whether the trigger must also be removed (`wrangler triggers deploy`
   with a configuration without `crons`).
 
-### Scheduled job: pending-request reminders (NEW-05, AD-61 items 4–17): IMPLEMENTED LOCALLY — NOT DEPLOYED
+### Scheduled job: pending-request reminders (NEW-05, AD-61 items 4–18): IMPLEMENTED LOCALLY — NOT DEPLOYED
 - A second Cron Trigger in `wrangler.jsonc`: `0 6,7 * * *` (UTC), next to the unchanged `5 3,21,22 * * *`. Only the
   run at 09:xx Asia/Hebron acts (07:00 UTC in winter, 06:00 UTC in summer, computed from the clock with daylight
   saving); the other run of the day does nothing. Each check reads `pending_request_alert_days` and reminds each
-  request overdue by N × 24 hours and not yet reminded (old and missed ones included), once
-  (`src/features/notifications/pendingRequestReminders.ts`).
+  request overdue by N × 24 hours and not yet reminded (missed runs included), once
+  (`src/features/notifications/pendingRequestReminders.ts`), but **only requests created at or after the launch
+  cutoff** (AD-61 item 18): `submitted_at` / the mentor request's own `requested_at` `>=` `PENDING_REMINDERS_ACTIVATED_AT`.
+- **Launch cutoff `PENDING_REMINDERS_ACTIVATED_AT`** (`wrangler.jsonc` `vars`, not a secret): the UTC instant of the
+  **first** production activation, written `YYYY-MM-DDTHH:MM:SSZ`. It is committed **empty**: a Worker deployed with
+  it empty or invalid runs the trigger but does nothing (one error line `PENDING_REMINDERS_ACTIVATED_AT is missing or
+  invalid`, no database access, nothing claimed or sent). **Set it once**, in the release commit, to the UTC time at
+  which that release is deployed (taken immediately before `wrangler deploy` and recorded in the release notes), and
+  **never change or remove it afterwards**: every later `wrangler deploy` re-sends the committed value, so redeploys
+  and restarts keep it. Never set it with `--var`, the dashboard or a secret, which the next deploy would not keep.
+  Requests created before it are never reminded.
 - Needs `EVENT_EMAILS=enabled`; while it is off nothing is attempted or recorded. E-mails go through the existing SMTP
   sender, one attempt each, no retry. Logs: one `Pending-request reminders run` line with counts only, and the usual
   per-e-mail lines (kind and record id only).
 - **Release order (when authorized):** Neon backup → migration `PendingReminders` → the `ims_app` grants for
   `pending_reminders` (`scripts/ims-app-grants.sql`) → Worker (it brings the new trigger; check that `wrangler deploy`
-  reports both schedules) → Pages (only the Audit log labels). A Worker without the table fails every reminder claim,
-  which is logged and retried by the next daily check. **First run:** every request already overdue is reminded at
-  the first 09:00 check (AD-61 item 13), so the owner should expect one e-mail per overdue application to each HR user.
+  reports both schedules and that the deployed version shows `PENDING_REMINDERS_ACTIVATED_AT` with the committed
+  value) → Pages (only the Audit log labels). A Worker without the table fails every reminder claim, which is logged
+  and retried by the next daily check. **First run:** because of the launch cutoff, requests created before the
+  activation instant are never reminded, so the first runs send **nothing** until a request created after activation
+  has been pending for N × 24 hours (5 days by default). The six Submitted applications found overdue in production on
+  2026-11-15 (read-only first-run audit) were all created before any activation and are **excluded**: they must not
+  be reminded because NEW-05 is deployed. Recalculate the first-run impact at release time with the cutoff applied
+  (read-only: `submitted_at` / `requested_at` `>= <cutoff>` and older than N × 24 hours; expected 0 for at least the
+  first N days). To confirm in production: the first `Pending-request reminders run` log line shows `activatedAt` equal
+  to the committed value and `candidates: 0`, and `pending_reminders` stays empty.
   **Rollback:** a Worker version from before NEW-05 runs the transfers job on every trigger, so with the new trigger
   still configured it would run transfers twice more a day (harmless: idempotent); remove `0 6,7 * * *` with
-  `wrangler triggers deploy` if rolling back.
+  `wrangler triggers deploy` if rolling back. The rollback target is the version deployed just before NEW-05 (today
+  `950d83d5`); the migration can stay (the old Worker never reads `pending_reminders`) and its `Down` must never be
+  run (it would drop the reminder history). Re-deploying NEW-05 later must keep the **original**
+  `PENDING_REMINDERS_ACTIVATED_AT`, never a new time.
 
 ### One-time catch-up: the incoming-mentor e-mail of an already-executed transfer (AD-65; run once on 2026-11-13)
 For a transfer executed **before** the incoming-mentor e-mail was deployed, `backend-workers/scripts/transfer-email-catch-up.ts`

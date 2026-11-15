@@ -45,6 +45,12 @@ export interface Bindings {
    * e-mails do not depend on it.
    */
   EVENT_EMAILS?: string;
+  /**
+   * The pending-request reminder's launch cutoff (NEW-05, AD-61 item 18): the UTC instant of its first production
+   * activation, e.g. `2026-11-20T10:15:00Z`. Only requests created at or after it are reminded. Set once in
+   * wrangler.jsonc and never changed; empty, missing or invalid: the reminder job does nothing (fail closed).
+   */
+  PENDING_REMINDERS_ACTIVATED_AT?: string;
   /** Private R2 bucket for application attachments (CVs, university letters). */
   FILES?: R2Bucket;
   /** Workers Rate Limiting binding for the trainee sign-in endpoints (limit and period are set in wrangler.jsonc). */

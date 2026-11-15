@@ -5,6 +5,7 @@ import { Database } from './db';
 import { deliverEventEmails, trainingTransferredEmails } from './features/notifications/eventEmails';
 import {
   isPendingReminderRun,
+  parseActivationCutoff,
   PENDING_REMINDER_CRON,
   remindPendingRequests,
 } from './features/notifications/pendingRequestReminders';
@@ -112,11 +113,26 @@ async function runPendingReminders(
     );
     return;
   }
+  const activatedAt = parseActivationCutoff(env.PENDING_REMINDERS_ACTIVATED_AT);
+  if (!activatedAt) {
+    // AD-61 item 18: without the launch cutoff no request can be told apart from a pre-launch one, so fail closed:
+    // no database access, nothing claimed or sent. Set it once (wrangler.jsonc) at the first production activation.
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        message:
+          'Pending-request reminders skipped: PENDING_REMINDERS_ACTIVATED_AT is missing or invalid (a UTC timestamp such as 2026-11-20T10:15:00Z); nothing was claimed or sent',
+        cron: controller.cron,
+      }),
+    );
+    return;
+  }
   const db = new Database(settings.databaseUrl);
   try {
     const summary = await remindPendingRequests(db, {
       now,
       eventEmails: settings.eventEmails,
+      activatedAt,
       sender: () => dependencies.emailSender(settings),
       siteBaseUrl: settings.trainee.signInLinkBaseUrl,
     });
