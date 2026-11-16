@@ -9,27 +9,29 @@ filter): `main` @ `eaf01fe`, Worker `92b6c658`, Pages `528f0cb3` (database uncha
 (AD-56): `main` @ `316f6ac`, Worker `6900a9e2`, Pages `0551650d` (database unchanged). Updated for the audit log
 descriptions (AD-57): `main` @ `cb2b215`, Worker `61ea9041`, Pages `94081d2f` (database unchanged). Updated for Gmail SMTP (AD-58):
 `main` @ `65355e6`, Worker `273dc51a` (Pages and database unchanged); trainee e-mail sign-in verified in production by the
-owner on 2026-11-10. The earlier snapshot
+owner on 2026-11-10. Aligned on 2026-11-16 with the approved decisions and production: `main` @ `c583140`, Worker `c007ee03`, Pages `b516b290`, Neon `ims_db` with 14 migrations (read-only checks). The earlier snapshot
 (2026-10-27) is in Git history.
 
 **Status:** ✅ Complete · 🟡 Partial (part of the required behaviour is missing) · ❌ Not implemented · ⏸ Deferred by
-the owner · 🔒 Blocked by an external dependency (built where possible). "Prod" = in production. Question IDs are in
+the owner · 🔒 Blocked by an external dependency (built where possible) · ➖ Out of scope (owner decision). "Prod" = in production. Question IDs are in
 [decisions.md](decisions.md) §C–D; `D-xx` in [deferred-features.md](deferred-features.md).
 
 ## Summary
 
 | Status | Count |
 |---|---|
-| ✅ Complete | 30 |
-| 🟡 Partial | 10 |
-| ❌ Not implemented | 17 |
-| ⏸ Deferred by the owner | 3 |
+| ✅ Complete | 31 |
+| 🟡 Partial | 13 |
+| ❌ Not implemented | 13 |
+| ⏸ Deferred by the owner | 2 |
 | 🔒 Blocked by an external dependency | 1 |
+| ➖ Out of scope (owner decision) | 1 |
 | **Total** | **61** |
 
 The core of PDF §3 (apply → review and contact → accept/reject → available → mentor request → assignment → progress
-notes) is complete and in production. The final evaluation, certificates, the running-training actions, the hiring
-report, scheduled reminders and the event e-mails are not, almost all because of open owner decisions. Trainee e-mail
+notes) is complete and in production. In production as well: the running-training actions except the return to Active (AD-63, AD-65), the event e-mails of the
+existing workflows, and the pending-request reminder (NEW-05). Not built: the final evaluation (decided, AD-66), certificates,
+the hiring report, the other scheduled reminders and the weekly summary. Trainee e-mail
 sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 
 ## Authentication, roles, isolation
@@ -47,12 +49,12 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R06 | Fields: add, edit, activate/deactivate (p.2, p.4) | ✅ | Yes | |
-| R07 | Evaluation criteria and weights (p.2, p.4) | ✅ | Yes | Configuration only; the real list is open (Q3); retiring a criterion (Q31) |
+| R07 | Evaluation criteria and weights (p.2, p.4) | 🟡 | Yes | In production with **weights** (the model before AD-66). The approved AD-66 model (Arabic and English names, order, active flag, **no weights**: every active criterion counts equally) is **not implemented**; the real list stays the Admin's (Q3 answered by AD-66) |
 | R08 | Users and roles (p.2) | ✅ | Yes | Admin governance (AD-56): no self-change of role, never zero Admins, safe under simultaneous changes |
 | R09 | Certificate template (p.2) | ✅ | Yes | Settings (AD-43); certificates are not built |
-| R10 | Admin-changeable 7/3/5-day intervals (p.4) | ✅ | Yes | Stored; used by no reminder yet (R47) |
+| R10 | Admin-changeable 7/3/5-day intervals (p.4) | ✅ | Yes | Stored and changeable. The 5-day setting is used by the pending-request reminder (NEW-05, in production since 2026-11-15); the 7- and 3-day settings by no job yet (R47) |
 | R11 | The Admin sees the accepted trainees (p.1) | ✅ | Yes | No e-mail, phone or CV (C5) |
-| R12 | Admin reports «الكل» (p.1) vs the §6 table | 🟡 | Yes | Monthly and fields only (NEW-02) |
+| R12 | Admin reports «الكل» (p.1) vs the §6 table | ✅ | Yes | NEW-02 answered (owner, 2026-11-16): the Admin sees only the monthly and fields reports; production matches |
 
 ## Trainee
 
@@ -70,7 +72,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | R17 | Inbox, review and contact log (date, method, summary) (p.2) | ✅ | Yes | Editing open (Q37) |
 | R18 | Accept, or reject with a reason; rejected kept (p.2) | ✅ | Yes | The trainee sees the reason on the status page (AD-61, Q36; deployed 2026-11-10; production visual verification pending a legitimate rejected application); not in an e-mail yet (R46) |
 | R19 | Mentor requests: approve with dates, or reject (the trainee returns to the list) (p.2) | ✅ | Yes | Other pending requests (Q38) |
-| R20 | Direct assignment (p.2) | ✅ | Yes | In production since 2026-11-14 and tested by the owner in Production (AD-67; commit `6650090`, Worker `950d83d5`, Pages `b516b290`, migration `DirectAssignment`): the current responsible HR assigns an accepted, never-assigned trainee to an Employee with the start and planned end dates; every pending request for the trainee is rejected with a reason in the same transaction; the chosen mentor e-mail + in-app (never a rejection notice), the other requesters the ordinary rejection notices (none for a current Admin), the trainee e-mail |
+| R20 | Direct assignment (p.2) | ✅ | Yes The deadlock between a direct assignment and a racing approval (500) is fixed by one lock order (commit `a90bad4`, in production since 2026-11-15, Worker `c007ee03`; the loser answers 409). | In production since 2026-11-14 and tested by the owner in Production (AD-67; commit `6650090`, Worker `950d83d5`, Pages `b516b290`, migration `DirectAssignment`): the current responsible HR assigns an accepted, never-assigned trainee to an Employee with the start and planned end dates; every pending request for the trainee is rejected with a reason in the same transaction; the chosen mentor e-mail + in-app (never a rejection notice), the other requesters the ordinary rejection notices (none for a current Admin), the trainee e-mail |
 | R21 | Running training: extend, end early, transfer, withdraw, with a reason (p.2) | 🟡 | Yes | In production since 2026-11-12 (Worker `ca7ec2a0`, Pages `7272d5d9`; AD-63, NEW-32): HR ends a training as Completed, Ended early (reason) or Withdrawn (reason) with the actual end date; manually tested by the owner locally, no real Production action yet. Extension in production since 2026-11-12 (Worker `422b35e8`, Pages `54722aca`; NEW-35): HR extends an Active training to a later planned end date with a mandatory reason, any number of times, every extension kept and visible to HR. Transfer in production since 2026-11-13 (Worker `beaf2d36`, Pages `0ac20f21`; AD-65, revised 2026-11-13; manually tested by the owner locally, no real Production transfer yet): the trainee's responsible HR transfers an Active training to another Employee today (at once) or schedules it for a later date (executed automatically on that date), never a past date, with a reason, and may cancel a scheduled transfer with a reason; the outgoing assignment ends the day before and stays (Transferred), the incoming one keeps the planned end date as it is on execution; every decision is kept; the latest mentor reads the earlier notes. Missing in production: return to Active (NEW-34). The final evaluation and certificate follow the ending (D1), not built |
 | R22 | Trainings list, current and previous (read-only, supports p.2) | ✅ | Yes | |
 
@@ -81,8 +83,8 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | R24 | Available trainees filtered by field, university and period, with the CV (p.2) | ✅ | Yes | |
 | R25 | "I want to train them" request with a note (p.2) | ✅ | Yes | Cap per employee (Q5) |
 | R26 | My trainees, current and previous, with periodic notes (p.2) | 🟡 | Yes | B2, B5, B7, B8, Q37, Q40, L5 |
-| R27 | Final evaluation: score per criterion, comment, hiring recommendation; total and grade (p.2, p.4) | ❌ | — | Q3, N1–N7, Q11, Q13, L6 |
-| R28 | Automatic evaluation reminder (p.2 step 8) | ❌ | — | L1, N3, NEW-06; scheduler; e-mail |
+| R27 | Final evaluation: score per criterion, comment, hiring recommendation; total and grade (p.2, p.4) | ❌ | — | **Rules decided (AD-66, owner, 2026-11-14)**: one evaluation per application by the final mentor or the current responsible HR, Admin criteria in Arabic and English without weights, scores 1–5, mandatory comment and hiring recommendation, five grades, shared draft, frozen at first submission, audited corrections, trainee sees the grade only; the latest mentor keeps the right for that application whatever their later role (NEW-38). Not built |
+| R28 | Automatic evaluation reminder (p.2 step 8) | ❌ | — | **Rules decided (AD-66)**: e-mail + in-app request when HR completes or ends early; e-mail reminders every `late_evaluation_reminder_days` at 09:00 Asia/Hebron, the responsible HR from the third, catch-up limits; measured from the recorded ending, an interval change applies from the last reminder sent (NEW-37). Not built |
 
 ## Certificates (p.3)
 
@@ -108,9 +110,9 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R38 | Monthly report (HR, Admin) | ✅ | Yes | Month, field, employee filters |
-| R39 | Fields report (HR, Admin) | 🟡 | Yes | No completed count (L1); filters NEW-12 |
-| R40 | Mentor profile (HR; each employee for themself) | 🟡 | Yes | HR employee filter (RN-1, 2026-11-04). No average (N2, Q11, NEW-03), no "over time" (NEW-13) |
-| R41 | Hiring pipeline (HR) | ❌ | — | Needs evaluations; NEW-03 |
+| R39 | Fields report (HR, Admin) | 🟡 | Yes | No completed count: L1 is answered (AD-63) but the counting rule is open (NEW-39); filters NEW-12 |
+| R40 | Mentor profile (HR; each employee for themself) | 🟡 | Yes | HR employee filter (RN-1, 2026-11-04). No average: the final evaluation is not built (AD-66) and the mentor-profile average is open (NEW-03, mentor-profile part); no "over time" (NEW-13). No Admin access (NEW-02 answered) |
+| R41 | Hiring pipeline (HR) | ❌ | — | Needs the final evaluation (AD-66, not built). Ranking basis answered (NEW-03, owner 2026-11-16): the trainee's most recent final evaluation, its AD-66 mean |
 | R42 | Trainee history (HR) | ✅ | Yes | Period and field filters; employee filter NEW-14 |
 | R43 | Every report filtered by period, field and employee | 🟡 | Yes | Where the meaning is defined (mentor profile: employee, HR, 2026-11-04) |
 | R44 | Export every report to Excel or PDF | ✅ | Yes | Excel and PDF for the four built reports (AD-55); deployed 2026-11-04 and verified in production by the owner. The hiring pipeline (R41) is not built yet; its export comes with it |
@@ -120,8 +122,8 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R45 | In-app notifications | 🟡 | Yes | 4 of the in-app events (AD-50), and a fifth, the direct assignment to the mentor, in production since 2026-11-14 (AD-67); Q14, lifecycle, scheduler |
-| R46 | E-mail events and bilingual templates | 🟡 | Yes | The direct-assignment e-mails to the mentor and the trainee (AD-67) are in production since 2026-11-14 (Worker `950d83d5`). The incoming-mentor e-mail of an executed transfer (AD-65, owner decision 2026-11-13) is in production since 2026-11-13 (Worker `839ed022`); the one earlier transfer got it through an authorized one-time catch-up (accepted by Gmail, SMTP 250). The eight event e-mails of the existing workflows are in production since 2026-11-11 (Worker `55570602`, commit `098279f`; manually tested by the owner locally): new application and mentor request to every HR user (NEW-24; since 2026-11-13 the mentor request only to the application's current responsible HR, AD-64, Worker `e7913829`); received, accepted, rejected with its reason, and the mentor assignment with the mentor's name and work e-mail (NEW-30) to the trainee; mentor request approved or rejected to the employee. Bilingual HTML and plain text, Arabic first, sender ProGineer (AD-60). Missing: the reminders, weekly summary, training-ended, late-evaluation and certificate e-mails (their features are not built), and delivery tracking, retries and the failed-e-mail page (Phase 3, 4); open NEW-19 to NEW-23, NEW-24 for the pending reminder only, NEW-26 to NEW-29, NEW-31 (NEW-25 and NEW-30 answered) |
-| R47 | Timed reminders (7 days, late evaluation every 3 days, pending > 5 days) | ❌ | — | Other reminders: NEW-06, NEW-09, L1, N3. Pending > 5 days fully decided 2026-11-14 and 2026-11-15 (AD-61 items 4–17, NEW-24, NEW-26, NEW-31), **IMPLEMENTED LOCALLY — NOT DEPLOYED** (2026-11-15; Cron Trigger `0 6,7 * * *`, 09:00 Asia/Hebron; **launch cutoff** (AD-61 item 18, owner 2026-11-15: only requests created at or after the first production activation are reminded)) |
+| R46 | E-mail events and bilingual templates | 🟡 | Yes The two pending-request reminder e-mails (NEW-05) are in production since 2026-11-15 (Worker `c007ee03`); none has been sent yet (no eligible request). | The direct-assignment e-mails to the mentor and the trainee (AD-67) are in production since 2026-11-14 (Worker `950d83d5`). The incoming-mentor e-mail of an executed transfer (AD-65, owner decision 2026-11-13) is in production since 2026-11-13 (Worker `839ed022`); the one earlier transfer got it through an authorized one-time catch-up (accepted by Gmail, SMTP 250). The eight event e-mails of the existing workflows are in production since 2026-11-11 (Worker `55570602`, commit `098279f`; manually tested by the owner locally): new application and mentor request to every HR user (NEW-24; since 2026-11-13 the mentor request only to the application's current responsible HR, AD-64, Worker `e7913829`); received, accepted, rejected with its reason, and the mentor assignment with the mentor's name and work e-mail (NEW-30) to the trainee; mentor request approved or rejected to the employee. Bilingual HTML and plain text, Arabic first, sender ProGineer (AD-60). Missing: the reminders, weekly summary, training-ended, late-evaluation and certificate e-mails (their features are not built), and delivery tracking, retries and the failed-e-mail page (Phase 3, 4); open NEW-19 to NEW-23, NEW-24 for the pending reminder only, NEW-26 to NEW-29, NEW-31 (NEW-25 and NEW-30 answered) |
+| R47 | Timed reminders (7 days, late evaluation every 3 days, pending > 5 days) | 🟡 | Yes | Pending > 5 days **in production since 2026-11-15** (AD-61 items 4–18; Worker `c007ee03`; Cron Trigger `0 6,7 * * *`, 09:00 Asia/Hebron; one e-mail per request and recipient, once, no batching; **launch cutoff** `2026-11-15T19:10:00Z`: requests created before it are never reminded); first production run 2026-11-16 at about 09:01 Asia/Hebron: `candidates: 0`, `failed: 0`, `emailsFailed: 0`, no Cloudflare errors; `pending_reminders` empty; no eligible request yet, so the production e-mail delivery path has not been exercised. Late evaluation and approaching end decided (AD-66, NEW-37, NEW-38), **not implemented** |
 | R48 | Weekly summary to HR | ❌ | — | NEW-04; e-mail |
 | R50 | Notification "email status" field (p.4) | ❌ | — | Needs the event e-mails (D-50); Q42 answered 2026-11-10 (AD-59) |
 
@@ -134,8 +136,8 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | R53 | A trainee reaches only their own data (p.5) | ✅ | Yes | |
 | R54 | Private files served through temporary links (p.5) | ✅ | Yes | R2, 5-minute signed links (AD-48) |
 | R55 | Rate limiting on the application form (p.5) | ✅ | Yes | Also on trainee sign-in; the 429 says `Retry-After: 60` |
-| R56 | CAPTCHA on the application form (p.5) | ❌ | — | Q22; provider keys |
-| R57 | Scheduled jobs (p.5) | ❌ | — | Needed by R28, R47, R48. The first scheduled job (due transfers, AD-65; Cron Trigger 21:05, 22:05 and 03:05 UTC) is in production since 2026-11-13 (Worker `beaf2d36`) |
+| R56 | CAPTCHA on the application form (p.5) | ➖ | — | **Out of scope** (owner decision 2026-11-16, Q22): CAPTCHA is no longer required; rate limiting stays (R55) |
+| R57 | Scheduled jobs (p.5) | 🟡 | Yes | Two jobs in production: the due transfers (AD-65, since 2026-11-13) and the pending-request reminder (NEW-05, since 2026-11-15, Worker `c007ee03`). Still needed by R28, the other reminders of R47, and R48 |
 | R58 | Daily database backup (p.5) | ⏸ | — | Deferred until development is complete (AD-54); Neon restore window 6 hours |
 | R59 | Domain and system name (p.6, Q10) | 🔒 | — | Hosting decided (Cloudflare); domain and DNS open |
 | R60 | Attendance or hours tracking (p.6, Q6) | ⏸ | — | Paused |

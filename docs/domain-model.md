@@ -11,8 +11,8 @@ Trainee 1───* TrainingApplication *───1 Field
                      ├──* MentorRequest *───1 Employee
                      │        └─ on approval ─► Assignment
                      ├──* Assignment *───1 Employee
-                     │        ├──* ProgressNote
-                     │        └──0..1 Evaluation ──* EvaluationScore *──1 EvaluationCriterion
+                     │        └──* ProgressNote
+                     ├──0..1 Evaluation ──* EvaluationScore *──1 EvaluationCriterion   (one per application, AD-66)
                      └──0..1 Certificate         (generated from the evaluation)
 
 Employee (staff user: Employee / HR / Admin)
@@ -32,12 +32,12 @@ AuditLog — covers every table
 | `TransferDecision` | application, outgoing assignment, incoming mentor, effective date, reason, deciding HR, decision time, status `Pending / Executed / Cancelled / Void`, resolution (time, cancelling HR and reason, or void code) | The current responsible HR's decision to transfer a training (AD-65): for today it is executed at once; for a later date it stays Pending and the scheduled job executes it on that date. Cancelled by the current responsible HR with a reason, or voided when it can no longer be executed (`training_ended`, `mentor_not_employee`). At most one Pending per application. Never deleted; only the status and resolution change. |
 | `AssignmentTransfer` | decision, outgoing assignment, incoming assignment, deciding HR, execution time | An executed transfer (AD-65): the outgoing assignment becomes `Transferred` (ends the day before the effective date, keeps the reason), the incoming one starts on the effective date with the planned end date as it is then. The execution time is the actual one, the effective date is the incoming start date. Insert-only; each assignment is transferred at most once, so the links form the chain of mentors. |
 | `ProgressNote` | assignment, author, date, text | |
-| `EvaluationCriterion` | name, weight, order | Defined by Admin. |
-| `Evaluation` | assignment, score per criterion, total, grade, comment, hiring recommendation `Yes / Maybe / No` | Generates the certificate. Numeric detail stays internal. |
+| `EvaluationCriterion` | Arabic name, English name, order, active flag | Defined by Admin; never deleted, deactivated instead. **No weights** (AD-66 supersedes the PDF's weights; today's `weight` column is from before that decision and is not used by evaluations). |
+| `Evaluation` | application, final assignment, status `Draft / Submitted`, score per active criterion (1–5), mean, grade `Excellent / Very Good / Good / Pass / Poor`, comment, hiring recommendation `Yes / Maybe / No`, first submitter and time | **One per training application** (AD-66; supersedes one per assignment), by the final mentor or the current responsible HR, after `Completed` or `EndedEarly`. One shared draft; the criteria and scores are frozen at the first submission; corrections audited. Comment-only (no mean or grade) when no criterion is active. The trainee sees only the grade. Generates the certificate (separate feature). |
 | `Certificate` | public code, published flag, issue date, revoked flag | Linked to the application. Revocation keeps the page and marks it invalid. |
 | `ContactLog` | application, author, date, method `Phone / Meeting / Email`, summary | Records verbal agreements. |
 | `Notification` | recipient, type, read flag, email status | |
-| `PendingRequestReminder` | kind (application or mentor request), the request, attempt time, recipient count, outcome `Attempting / Accepted / PartiallyAccepted / Failed`, accepted and failed counts, completion time | The one e-mail reminder to HR about a request pending longer than `pending_request_alert_days` (AD-61 items 4–17, NEW-05): at most one per request; recorded only when attempted; the outcome is the SMTP server's answer, never "delivered". Implemented locally, not deployed. |
+| `PendingRequestReminder` | kind (application or mentor request), the request, attempt time, recipient count, outcome `Attempting / Accepted / PartiallyAccepted / Failed`, accepted and failed counts, completion time | The one e-mail reminder to HR about a request pending longer than `pending_request_alert_days` (AD-61 items 4–17, NEW-05): at most one per request; recorded only when attempted; the outcome is the SMTP server's answer, never "delivered". In production since 2026-11-15 (table in Neon `ims_db`, empty so far). |
 | `AuditLog` | user, action, entity, value before/after, timestamp | Covers every table. Written automatically. |
 
 ## Cross-cutting rules

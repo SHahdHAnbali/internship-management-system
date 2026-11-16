@@ -51,6 +51,8 @@ Trainees never see each other.
 | Reports | | own reports only | all | all |
 | Manage fields, evaluation criteria, users | | | | ✔ |
 
+*Owner decision (2026-11-16, NEW-02):* for the Admin, «الكل» in the "Reports" row means the monthly and fields reports only.
+
 Staff sign-in is limited to the company's Google domain. Any new account from that domain is created automatically with the **Employee** role. Admin grants higher roles.
 
 ## 4. Trainee lifecycle (PDF §3)
@@ -165,11 +167,11 @@ See [domain-model.md](domain-model.md).
 
 **Security**: a trainee can access only their own data. Files are served through temporary links. The application form is protected with rate limiting and CAPTCHA.
 
-*As built (2026-11-04; the table above is the PDF's proposal, unchanged):* React instead of Angular (AD-34); the
+*As built (updated 2026-11-16; the table above is the PDF's proposal, unchanged):* React instead of Angular (AD-34); the
 production API is TypeScript + Hono on Cloudflare Workers (AD-38), the ASP.NET Core solution keeps the schema
-migrations; Neon PostgreSQL; files in Cloudflare R2 (AD-48); e-mail: SendGrid selected, not operational (AD-53);
-hosting on Cloudflare (Q10: domain and name still open); scheduled jobs, PDF and QR not built; daily backup deferred
-(AD-54); CAPTCHA not built (Q22). Status of every requirement: [requirements-progress.md](requirements-progress.md).
+migrations; Neon PostgreSQL; files in Cloudflare R2 (AD-48); e-mail: Gmail SMTP with Nodemailer (AD-58, replacing SendGrid, AD-53);
+hosting on Cloudflare (Q10: domain and name still open); scheduled jobs: Cloudflare Cron Triggers (due transfers, AD-65; pending-request reminders, NEW-05); PDF and QR not built; daily backup deferred
+(AD-54); CAPTCHA out of scope by owner decision (2026-11-16, Q22; rate limiting stays). Status of every requirement: [requirements-progress.md](requirements-progress.md).
 
 ## 11. Delivery phases (PDF §10)
 

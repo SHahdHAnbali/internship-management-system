@@ -72,9 +72,9 @@ below). Sign-in e-mails do not depend on it.
   A request from a foreign `Origin` gets no `Access-Control-*` headers (`CORS_ALLOWED_ORIGINS` is empty: same origin).
 
 ### Scheduled jobs: Cron Triggers (AD-65, in production since 2026-11-13)
-- `wrangler.jsonc` `triggers.crons`: `5 3,21,22 * * *` (UTC). The only job (`src/scheduled.ts`) executes the **due
-  transfer decisions** (scheduled trainee transfers, AD-65). It is not the 09:00 reminder schedule of AD-62, which is
-  not built.
+- `wrangler.jsonc` `triggers.crons`: `5 3,21,22 * * *` (UTC) runs the **due transfer decisions** (scheduled trainee
+  transfers, AD-65; `src/scheduled.ts`). Since 2026-11-15 a second trigger, `0 6,7 * * *`, runs the pending-request
+  reminders (next section). The weekly summary of AD-62 is not built.
 - **Timing and daylight saving:** Cron Triggers run in UTC; Asia/Hebron is UTC+2 in winter and UTC+3 in summer. 21:05
   UTC is 00:05 Asia/Hebron in summer and 22:05 UTC is 00:05 in winter, so a transfer dated D normally executes about
   five minutes after D starts in Palestine; the other of the two runs finds nothing new or retries. 03:05 UTC (05:05 or
@@ -89,7 +89,7 @@ below). Sign-in e-mails do not depend on it.
   actual time in `assignment_transfers.transferred_at`. Concurrent or repeated runs are harmless (row locks, the
   Pending status check and the unique links). Each run logs one line `Scheduled transfers run` with counts only
   (`due`, `executed`, `voided`, `skipped`, `failed`); a failed decision logs its id and error name, never personal data.
-- **Free plan:** three Cron invocations a day (each one short query when nothing is due), far below the limits; each
+- **Free plan:** five Cron invocations a day since 2026-11-15 (three for transfers, two for the reminder check) (each one short query when nothing is due), far below the limits; each
   run wakes the Neon compute briefly.
 - **Production:** deployed with Worker `beaf2d36-e98b-4978-9415-495d3e2d56bb` (2026-11-13); `wrangler deploy` reported
   `schedule: 5 3,21,22 * * *`. The `/__scheduled` test route exists only under `wrangler dev --test-scheduled`: in
@@ -105,7 +105,7 @@ below). Sign-in e-mails do not depend on it.
   `scheduled` handler, check in the dashboard whether the trigger must also be removed (`wrangler triggers deploy`
   with a configuration without `crons`).
 
-### Scheduled job: pending-request reminders (NEW-05, AD-61 items 4–18): IMPLEMENTED LOCALLY — NOT DEPLOYED
+### Scheduled job: pending-request reminders (NEW-05, AD-61 items 4–18): in production since 2026-11-15
 - A second Cron Trigger in `wrangler.jsonc`: `0 6,7 * * *` (UTC), next to the unchanged `5 3,21,22 * * *`. Only the
   run at 09:xx Asia/Hebron acts (07:00 UTC in winter, 06:00 UTC in summer, computed from the clock with daylight
   saving); the other run of the day does nothing. Each check reads `pending_request_alert_days` and reminds each
@@ -123,7 +123,7 @@ below). Sign-in e-mails do not depend on it.
 - Needs `EVENT_EMAILS=enabled`; while it is off nothing is attempted or recorded. E-mails go through the existing SMTP
   sender, one attempt each, no retry. Logs: one `Pending-request reminders run` line with counts only, and the usual
   per-e-mail lines (kind and record id only).
-- **Release order (when authorized):** Neon backup → migration `PendingReminders` → the `ims_app` grants for
+- **Release order (followed on 2026-11-15):** Neon backup → migration `PendingReminders` → the `ims_app` grants for
   `pending_reminders` (`scripts/ims-app-grants.sql`) → Worker (it brings the new trigger; check that `wrangler deploy`
   reports both schedules and that the deployed version shows `PENDING_REMINDERS_ACTIVATED_AT` with the committed
   value) → Pages (only the Audit log labels). A Worker without the table fails every reminder claim, which is logged
@@ -141,6 +141,15 @@ below). Sign-in e-mails do not depend on it.
   `950d83d5`); the migration can stay (the old Worker never reads `pending_reminders`) and its `Down` must never be
   run (it would drop the reminder history). Re-deploying NEW-05 later must keep the **original**
   `PENDING_REMINDERS_ACTIVATED_AT`, never a new time.
+- **Production release (2026-11-15):** backup `pg_dump` 18:33:02 UTC (`IMS-backups/neon-2026-11-15-new05-release`, outside the
+  repository, SHA-256 `0c48c926…`); migration `PendingReminders` 18:33:28 UTC and the `ims_app` grants 18:33:39 UTC on Neon
+  `ims_db` (schema `public`; 14 migrations; existing data unchanged); test fix `7196336` and release commit `c583140`
+  (`PENDING_REMINDERS_ACTIVATED_AT=2026-11-15T19:10:00Z`, 21:10 Asia/Hebron); Worker `ims-api` version
+  `c007ee03-2316-4ae1-83d1-9ccdf69b4ca4` created 18:55:05 UTC, before the cutoff, reporting both schedules; it also
+  carries the AD-67 deadlock fix (`a90bad4`). Pages not redeployed (`b516b290`; only the Audit log labels for
+  `pending_reminders` are missing there). **First run (2026-11-16, about 09:01 Asia/Hebron):** `Pending-request
+  reminders run` with `candidates: 0`, `failed: 0`, `emailsFailed: 0`; no Cloudflare errors; `pending_reminders` empty.
+  No eligible request yet: the production e-mail delivery path has not been exercised.
 
 ### One-time catch-up: the incoming-mentor e-mail of an already-executed transfer (AD-65; run once on 2026-11-13)
 For a transfer executed **before** the incoming-mentor e-mail was deployed, `backend-workers/scripts/transfer-email-catch-up.ts`
@@ -172,7 +181,12 @@ node node_modules/.cache/ims-ops/transfer-email-catch-up.mjs --transfer <transfe
 unset CATCH_UP_DATABASE
 ```
 
-### Current deployment (2026-11-14, HR direct assignment, AD-67)
+### Current deployment (2026-11-15, pending-request reminders NEW-05 and the AD-67 deadlock fix)
+- Worker `ims-api` version `c007ee03-2316-4ae1-83d1-9ccdf69b4ca4` (`main` @ `c583140`), Cron Triggers `5 3,21,22 * * *` and
+  `0 6,7 * * *`; Pages unchanged (`b516b290`, commit `6650090`); Neon `ims_db` with 14 migrations. Details in the NEW-05
+  section above. Rollback: see *Rollback* below (Worker `950d83d5`, and remove `0 6,7 * * *`).
+
+### Previous deployment (2026-11-14, HR direct assignment, AD-67)
 - Worker `ims-api` version `950d83d5-c860-4ee9-bf12-f8decd9c3865` and Pages production deployment
   `b516b290-b828-4953-ad3b-817ce57b8aa1` (commit `6650090`, https://progineer-ims.pages.dev). **Order: migration, then
   Worker, then Pages** (the new Worker reads `mentor_requests.rejection_reason` in the existing mentor-request lists).
@@ -482,7 +496,11 @@ Items of the read-only security assessment of 2026-11-04 (its own labels, not th
 ### Rollback
 - **Site:** Cloudflare dashboard → Pages → progineer-ims → Deployments → the previous deployment (`0ac20f21-698f-49d9-8bf8-694924565a35`, commit `bffc706`, before the direct assignment: no Direct assign action; roll back the Worker to `839ed022` with it; earlier: `b8d97853-bea0-426a-a0d3-f67ab9ca6a2d`, commit `d0b193d`, before the transfer: HR › Trainings has no Transfer action; roll back the Worker to `e7913829` with it; earlier: `54722aca-948c-4ec6-9c91-36983dfa0e31`, commit `a0a9977`, before the responsible HR: the Admin page then has no responsible HR column; roll back the Worker with it, and never leave this site version behind the older Worker; earlier: `eb43ce16-2927-49be-88c9-ad44bf337454`, commit `74eaf72`, before the training extension: no Extend action or extension history; `7272d5d9-3ade-4802-9150-b04f3a9ca230`, commit `958578d`, before the Google trainee sign-in and the homepage cleanup; `ff7586bf-1ef5-4b6e-aeb8-e190b485ea72`, commit `a8955c6`, before the lifecycle actions; `94081d2f-cf15-41fb-a862-a5a5e7e3a176`, commit `cb2b215`, before the rejection reason; `0551650d…`) → *Rollback*, or redeploy that commit.
 - **Worker database role:** put the owner's pooled connection string back as the secret (`npx wrangler secret put DATABASE_URL`, in `backend-workers/`; built from `ConnectionStrings:Neon` with the `-pooler` host and `sslmode=verify-full`). This is the verified path; a `wrangler rollback` is not relied on to restore an earlier secret value. The `ims_app` role and its grants are inert and stay.
-- **Worker code:** `npx wrangler rollback 839ed022-ca2c-4a3d-9caf-41b1789a63a9` (in `backend-workers/`; before the direct
+- **Worker code:** `npx wrangler rollback 950d83d5-c860-4ee9-bf12-f8decd9c3865` (in `backend-workers/`; before NEW-05 and the
+  AD-67 deadlock fix: the pending-request reminders stop; then remove `0 6,7 * * *` with `wrangler triggers deploy`, as the
+  old version runs the transfers job on every trigger; never run the `PendingReminders` migration's `Down`; a later
+  NEW-05 redeploy keeps `PENDING_REMINDERS_ACTIVATED_AT=2026-11-15T19:10:00Z`; the site needs no rollback), or
+  `839ed022-ca2c-4a3d-9caf-41b1789a63a9` (before the direct
   assignment: the endpoint is gone and the mentor-request lists no longer return the rejection reason; it works with
   the new schema, which is additive: the `rejection_reason` column and the widened notification check stay, and
   `TraineeDirectlyAssigned` notifications are then simply not listed; **roll back the site to `0ac20f21` with it**;
