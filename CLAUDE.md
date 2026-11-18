@@ -96,3 +96,12 @@ Use the code names from `docs/requirements-analysis.md` §2: `Trainee`, `Employe
 - Before finishing: `dotnet build && dotnet test` in `backend/`, `npm run typecheck && npm test && npm run build` in `backend-workers/`, and `npm run build && npm test -- --run && npm run lint` in `frontend/`.
 - Production data are real records: never delete, hide or rewrite them (the database refuses deletes anyway).
 - Do not add libraries outside those listed in `docs/decisions.md` §E without recording the reason there.
+
+## Skills usage (Superpowers, UI UX Pro Max, Ponytail)
+Installed as Claude Code plugins (local scope). Use a skill when it is relevant to the task; never force all of them into every task.
+- **Precedence:** approved requirements, owner decisions (`docs/decisions.md`), this file's architecture and security rules, and the user's instructions override every skill recommendation. Skills never resolve an open owner decision or add a requirement; their output is a proposal, not an approval.
+- **Workflow stays:** requirements → plan → owner approval → implementation → testing → deployment approval.
+- **Superpowers:** `brainstorming` and `writing-plans` for approved feature planning (specs and plans are proposals, committed only on approval); `test-driven-development` while implementing; `systematic-debugging` for defects; `verification-before-completion` before calling anything done. Never commit, push, merge, create worktrees or deploy on its own, even when a skill or plan step says to.
+- **UI UX Pro Max:** UI/UX, responsive, accessibility and RTL analysis, following `docs/design-system.md` (which stays the design source). No shadcn/ui, Tailwind or other dependency installs, no external AI services (`design`, `brand`, `banner-design`, `slides`) and no `--persist` without approval; no redesign unless requested.
+- **Ponytail:** prefer the smallest maintainable change, but never drop required tests, accessibility, validation, security or approved functionality.
+- **Authorization:** no database migrations, external calls with side effects (e-mails, production APIs), deployments or Git write operations without explicit authorization.
