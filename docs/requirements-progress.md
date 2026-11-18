@@ -9,7 +9,7 @@ filter): `main` @ `eaf01fe`, Worker `92b6c658`, Pages `528f0cb3` (database uncha
 (AD-56): `main` @ `316f6ac`, Worker `6900a9e2`, Pages `0551650d` (database unchanged). Updated for the audit log
 descriptions (AD-57): `main` @ `cb2b215`, Worker `61ea9041`, Pages `94081d2f` (database unchanged). Updated for Gmail SMTP (AD-58):
 `main` @ `65355e6`, Worker `273dc51a` (Pages and database unchanged); trainee e-mail sign-in verified in production by the
-owner on 2026-11-10. Aligned on 2026-11-16 with the approved decisions and production: `main` @ `c583140`, Worker `c007ee03`, Pages `b516b290`, Neon `ims_db` with 14 migrations (read-only checks). The earlier snapshot
+owner on 2026-11-10. Aligned on 2026-11-16 with the approved decisions and production: `main` @ `c583140`, Worker `c007ee03`, Pages `b516b290`, Neon `ims_db` with 14 migrations (read-only checks). Updated for S1 (R07 evaluation criteria, 2026-11-18): `main` @ `09bab76`, Worker `15915bde`, Pages `f572ac59`, Neon `ims_db` with 17 migrations; accepted by the owner in production. The earlier snapshot
 (2026-10-27) is in Git history.
 
 **Status:** ✅ Complete · 🟡 Partial (part of the required behaviour is missing) · ❌ Not implemented · ⏸ Deferred by
@@ -20,8 +20,8 @@ the owner · 🔒 Blocked by an external dependency (built where possible) · �
 
 | Status | Count |
 |---|---|
-| ✅ Complete | 31 |
-| 🟡 Partial | 13 |
+| ✅ Complete | 32 |
+| 🟡 Partial | 12 |
 | ❌ Not implemented | 13 |
 | ⏸ Deferred by the owner | 2 |
 | 🔒 Blocked by an external dependency | 1 |
@@ -49,7 +49,7 @@ sign-in works in production through Gmail SMTP (AD-58, verified 2026-11-10).
 | # | Requirement (PDF) | Status | Prod | Notes |
 |---|---|---|---|---|
 | R06 | Fields: add, edit, activate/deactivate (p.2, p.4) | ✅ | Yes | |
-| R07 | Evaluation criteria and weights (p.2, p.4) | 🟡 | Yes | In production with **weights** (the model before AD-66). The approved AD-66 model (Arabic and English names, order, active flag, **no weights**: every active criterion counts equally) is **implemented and verified locally only** (2026-11-18: migration `EvaluationCriteriaBilingual`, which gives the three production criteria the owner's English names, AD-68 G1; rehearsed on a disposable database; order assigned automatically and never changed, AD-68 G7, migrations `EvaluationCriteriaSortOrderPositive` and `EvaluationCriteriaAutomaticOrder`), **not deployed**: production is unchanged; the real list stays the Admin's (Q3 answered by AD-66) |
+| R07 | Evaluation criteria and weights (p.2, p.4) | ✅ | Yes | **In production since 2026-11-18 and accepted by the owner** (S1, release `09bab76`): the AD-66 model, with an Arabic and an English name (both required), an order assigned automatically at creation and never changed (AD-68 G7; no manual ordering), an active flag and **no weights** (every active criterion counts equally; AD-66 supersedes the PDF's weights). Neon migrations `EvaluationCriteriaBilingual`, `EvaluationCriteriaSortOrderPositive` and `EvaluationCriteriaAutomaticOrder` (14 → 17): the three production criteria kept their ids and Arabic names, received the owner's English names (AD-68 G1) and the orders Punctuality 1, Timely Task Completion 2, Attendance and Absence 3. Worker `15915bde`, Pages `f572ac59`. The real list stays the Admin's (Q3 answered by AD-66) |
 | R08 | Users and roles (p.2) | ✅ | Yes | Admin governance (AD-56): no self-change of role, never zero Admins, safe under simultaneous changes |
 | R09 | Certificate template (p.2) | ✅ | Yes | Settings (AD-43); certificates are not built |
 | R10 | Admin-changeable 7/3/5-day intervals (p.4) | ✅ | Yes | Stored and changeable. The 5-day setting is used by the pending-request reminder (NEW-05, in production since 2026-11-15); the 7- and 3-day settings by no job yet (R47) |

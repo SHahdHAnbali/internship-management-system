@@ -181,12 +181,39 @@ node node_modules/.cache/ims-ops/transfer-email-catch-up.mjs --transfer <transfe
 unset CATCH_UP_DATABASE
 ```
 
-### Current deployment (2026-11-15, pending-request reminders NEW-05 and the AD-67 deadlock fix)
+### Current deployment (2026-11-18, S1: R07 evaluation criteria, AD-66, AD-68 G1 and G7)
+- `main` @ `09bab76` (S1 commits `7450c64` and `09bab76`, pushed before the release; no CI and no Pages Git integration,
+  so the push deployed nothing). **Order: migration, then Worker, then Pages**, in one window (22:16–22:19 UTC, outside
+  the Cron Trigger times), with an operational freeze on criteria writes confirmed by the owner for both Admin accounts;
+  the freeze was lifted by the owner after the acceptance checks.
+- **Recovery point:** a read-only `pg_dump` of `ims_db` taken immediately before (`ims_db-before-S1-20261118T213548Z.dump`,
+  kept outside the repository in the local backups folder `neon-2026-11-18-s1`, SHA-256 recorded there); verified by
+  restoring it into a disposable PostgreSQL and comparing it with production (identical: every table's data, the
+  migration history, schema, triggers, functions, indexes and the `ims_app` grants). Not used.
+- **Neon:** the guarded apply script (`apply-S1.sql` in the same folder, SHA-256 `3ca0ba95…31b6aa92`; rehearsed on
+  disposable databases: data preserved, re-runs refused, a failure rolls back all three migrations) applied
+  `EvaluationCriteriaBilingual`, `EvaluationCriteriaSortOrderPositive` and `EvaluationCriteriaAutomaticOrder` in one
+  transaction as the schema owner: 14 → 17 migrations; the three criteria kept their ids and Arabic names and received
+  the G1 English names and the orders Punctuality 1, Timely Task Completion 2, Attendance and Absence 3; exactly five
+  audit rows (actor Database: three for the new columns, two for the renumbering); no other table changed; staff, training
+  records, reminders and notifications unchanged. No `ims_app` grant change.
+- **Worker** `ims-api` version `15915bde-8f89-4748-8b16-ea20468cefbb` (was `c007ee03`); the same four secrets; Cron
+  Triggers `5 3,21,22 * * *` and `0 6,7 * * *` re-applied unchanged. `/health` Healthy; signed out, the criteria API is 401.
+- **Pages** production deployment `f572ac59-cb8e-469e-a86b-fb69d9227c44` (was `b516b290`), https://progineer-ims.pages.dev;
+  the served Criteria bundle is identical to the build (no order field) and the served translations include the NEW-05
+  audit labels of `f381fde`.
+- **Accepted by the owner in production** (2026-11-18): six checks, all passed; local acceptance before it: eight checks;
+  automated tests at release: 1,042 passing (C# 111, Worker 547, frontend 384).
+- **Rollback:** fix forward. The previous Worker (`c007ee03`) still reads the criteria after these migrations but cannot
+  create one and cannot change an order (the database refuses it); never run the migrations' `Down` in production; the
+  recovery point is for data damage only.
+
+### Previous deployment (2026-11-15, pending-request reminders NEW-05 and the AD-67 deadlock fix)
 - Worker `ims-api` version `c007ee03-2316-4ae1-83d1-9ccdf69b4ca4` (`main` @ `c583140`), Cron Triggers `5 3,21,22 * * *` and
   `0 6,7 * * *`; Pages unchanged (`b516b290`, commit `6650090`); Neon `ims_db` with 14 migrations. Details in the NEW-05
   section above. Rollback: see *Rollback* below (Worker `950d83d5`, and remove `0 6,7 * * *`).
 
-### Previous deployment (2026-11-14, HR direct assignment, AD-67)
+### Earlier deployment (2026-11-14, HR direct assignment, AD-67)
 - Worker `ims-api` version `950d83d5-c860-4ee9-bf12-f8decd9c3865` and Pages production deployment
   `b516b290-b828-4953-ad3b-817ce57b8aa1` (commit `6650090`, https://progineer-ims.pages.dev). **Order: migration, then
   Worker, then Pages** (the new Worker reads `mentor_requests.rejection_reason` in the existing mentor-request lists).
