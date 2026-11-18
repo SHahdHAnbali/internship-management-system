@@ -30,12 +30,11 @@ describe('audit: Admin configuration', () => {
     const admin = await signInStaff(api, 'Admin');
     const nameAr = unique('معيار');
     const created = await body<{ id: string }>(
-      await admin.client.post('/api/admin/evaluation-criteria', { nameAr, nameEn: 'Criterion', sortOrder: 1 }),
+      await admin.client.post('/api/admin/evaluation-criteria', { nameAr, nameEn: 'Criterion' }),
     );
     const updated = await admin.client.put(`/api/admin/evaluation-criteria/${created.id}`, {
       nameAr,
       nameEn: 'Criterion B',
-      sortOrder: 3,
       isActive: true,
     });
     expect(updated.status).toBe(200);
@@ -46,10 +45,10 @@ describe('audit: Admin configuration', () => {
       ['UPDATE', 'Staff', admin.user.id],
     ]);
     const update = rows[1]!;
-    // Only what changed (the Arabic name and the active flag did not).
-    expect(Object.keys(update.new_values).sort()).toEqual(['name_en', 'sort_order']);
-    expect(update.old_values).toEqual({ name_en: 'Criterion', sort_order: 1 });
-    expect(update.new_values).toEqual({ name_en: 'Criterion B', sort_order: 3 });
+    // Only what changed (the Arabic name, the active flag and, always, the order did not).
+    expect(Object.keys(update.new_values).sort()).toEqual(['name_en']);
+    expect(update.old_values).toEqual({ name_en: 'Criterion' });
+    expect(update.new_values).toEqual({ name_en: 'Criterion B' });
   });
 });
 

@@ -25,24 +25,20 @@ export function fieldValues(name: string | null, description: string | null, isA
   };
 }
 
-/** An evaluation criterion (AD-66): Arabic and English names, display order, active flag; no weights. */
+/**
+ * The values an Admin sets on an evaluation criterion (AD-66): Arabic and English names and the active flag; no weights.
+ * Its order is assigned by the database at creation and never changes (AD-68 G7).
+ */
 export interface CriterionValues {
   nameAr: string;
   nameEn: string;
-  sortOrder: number;
   isActive: boolean;
 }
 
-export function criterionValues(
-  nameAr: string | null,
-  nameEn: string | null,
-  sortOrder: number,
-  isActive: boolean,
-): CriterionValues {
+export function criterionValues(nameAr: string | null, nameEn: string | null, isActive: boolean): CriterionValues {
   return {
     nameAr: required(nameAr, 'Arabic name', CRITERION_NAME_MAX_LENGTH),
     nameEn: required(nameEn, 'English name', CRITERION_NAME_MAX_LENGTH),
-    sortOrder,
     isActive,
   };
 }

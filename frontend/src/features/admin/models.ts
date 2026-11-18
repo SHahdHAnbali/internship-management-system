@@ -28,9 +28,12 @@ export interface EvaluationCriterion {
   isActive: boolean;
 }
 
-/** A new criterion is active. */
-export type CreateEvaluationCriterionRequest = Omit<EvaluationCriterion, 'id' | 'isActive'>;
-export type UpdateEvaluationCriterionRequest = Omit<EvaluationCriterion, 'id'>;
+/** A new criterion is active; its order is assigned by the API and never sent (AD-68 G7). */
+export type CreateEvaluationCriterionRequest = Pick<EvaluationCriterion, 'nameAr' | 'nameEn'>;
+export type UpdateEvaluationCriterionRequest = Pick<
+  EvaluationCriterion,
+  'nameAr' | 'nameEn' | 'isActive'
+>;
 
 /** Staff hold Employee, HR or Admin (PDF §8). */
 export const STAFF_ROLES: readonly UserRole[] = ['Employee', 'HR', 'Admin'];

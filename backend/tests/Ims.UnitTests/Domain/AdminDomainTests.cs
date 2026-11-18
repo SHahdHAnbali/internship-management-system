@@ -63,21 +63,22 @@ public sealed class AdminDomainTests
     }
 
     [Fact]
-    public void A_new_criterion_has_both_names_its_order_and_is_active()
+    public void A_new_criterion_has_both_names_is_active_and_gets_its_order_from_the_database()
     {
-        var criterion = EvaluationCriterion.Create(" العمل الجماعي ", " Teamwork ", 3);
+        var criterion = EvaluationCriterion.Create(" العمل الجماعي ", " Teamwork ");
 
-        Assert.Equal(("العمل الجماعي", "Teamwork", 3, true), (criterion.NameAr, criterion.NameEn, criterion.SortOrder, criterion.IsActive));
+        // 0 until saved: the database assigns the next order (migration EvaluationCriteriaAutomaticOrder).
+        Assert.Equal(("العمل الجماعي", "Teamwork", 0, true), (criterion.NameAr, criterion.NameEn, criterion.SortOrder, criterion.IsActive));
     }
 
     [Fact]
-    public void A_criterion_update_changes_names_order_and_active_flag()
+    public void A_criterion_update_changes_names_and_active_flag_never_its_order()
     {
-        var criterion = EvaluationCriterion.Create("العمل الجماعي", "Teamwork", 3);
+        var criterion = EvaluationCriterion.Create("العمل الجماعي", "Teamwork");
 
-        criterion.Update("التواصل", "Communication", 1, isActive: false);
+        criterion.Update("التواصل", "Communication", isActive: false);
 
-        Assert.Equal(("التواصل", "Communication", 1, false), (criterion.NameAr, criterion.NameEn, criterion.SortOrder, criterion.IsActive));
+        Assert.Equal(("التواصل", "Communication", 0, false), (criterion.NameAr, criterion.NameEn, criterion.SortOrder, criterion.IsActive));
     }
 
     [Theory]
@@ -85,7 +86,7 @@ public sealed class AdminDomainTests
     [InlineData("العمل الجماعي", "")]
     public void A_criterion_needs_an_arabic_and_an_english_name(string nameAr, string nameEn)
     {
-        var error = Assert.Throws<DomainException>(() => EvaluationCriterion.Create(nameAr, nameEn, 1));
+        var error = Assert.Throws<DomainException>(() => EvaluationCriterion.Create(nameAr, nameEn));
 
         Assert.Equal("validation.required", error.Code);
     }
@@ -93,8 +94,8 @@ public sealed class AdminDomainTests
     [Fact]
     public void A_criterion_name_is_at_most_200_characters()
     {
-        Assert.Throws<DomainException>(() => EvaluationCriterion.Create(new string('a', 201), "Teamwork", 1));
-        Assert.Throws<DomainException>(() => EvaluationCriterion.Create("العمل الجماعي", new string('a', 201), 1));
+        Assert.Throws<DomainException>(() => EvaluationCriterion.Create(new string('a', 201), "Teamwork"));
+        Assert.Throws<DomainException>(() => EvaluationCriterion.Create("العمل الجماعي", new string('a', 201)));
     }
 
     [Fact]

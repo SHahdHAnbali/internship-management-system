@@ -336,30 +336,27 @@ describe('audit descriptions: every real writer, read back through the viewer', 
       'signInCode.used',
     ]);
 
-    // Evaluation criteria (AD-66): added, then the English name, order and active flag changed; then the Arabic name,
+    // Evaluation criteria (AD-66): added, then the English name and active flag changed; then the Arabic name,
     // which the legacy `name` column follows and is not listed separately.
     const criterion = await body<{ id: string }>(
       await admin.client.post('/api/admin/evaluation-criteria', {
         nameAr: 'MARKER-CRITERION-AR',
         nameEn: 'MARKER-CRITERION',
-        sortOrder: 1,
       }),
     );
     await admin.client.put(`/api/admin/evaluation-criteria/${criterion.id}`, {
       nameAr: 'MARKER-CRITERION-AR',
       nameEn: 'MARKER-CRITERION-2',
-      sortOrder: 5,
       isActive: false,
     });
     await admin.client.put(`/api/admin/evaluation-criteria/${criterion.id}`, {
       nameAr: 'MARKER-CRITERION-AR-2',
       nameEn: 'MARKER-CRITERION-2',
-      sortOrder: 5,
       isActive: false,
     });
     expect(await ofRecord(admin.client, 'evaluation_criteria', criterion.id)).toEqual([
       { event: 'evaluation_criteria.created' },
-      { event: 'criterion.changed', params: { changes: ['criterion.active', 'criterion.nameEn', 'criterion.order'] } },
+      { event: 'criterion.changed', params: { changes: ['criterion.active', 'criterion.nameEn'] } },
       { event: 'criterion.changed', params: { changes: ['criterion.nameAr'] } },
     ]);
   });

@@ -61,33 +61,46 @@ describe('AdminPreviewStore (Admin Preview Mode mock)', () => {
     });
   });
 
-  it('manages criteria like the real API: both names, a new one active, deactivation kept (AD-66)', async () => {
+  it('manages criteria like the real API: both names, a new one active and numbered next, its order kept (AD-66, G7)', async () => {
+    const before = (await send('GET', '/api/admin/evaluation-criteria')).body as {
+      sortOrder: number;
+    }[];
     const created = await send('POST', '/api/admin/evaluation-criteria', {
       nameAr: ' الانضباط ',
       nameEn: ' Discipline ',
-      sortOrder: 9,
     });
     expect(created.status).toBe(201);
-    const criterion = created.body as { id: string };
+    const criterion = created.body as { id: string; sortOrder: number };
     expect(created.body).toEqual({
       id: criterion.id,
       nameAr: 'الانضباط',
       nameEn: 'Discipline',
-      sortOrder: 9,
+      sortOrder: Math.max(...before.map((c) => c.sortOrder)) + 1,
       isActive: true,
     });
 
     const updated = await send('PUT', `/api/admin/evaluation-criteria/${criterion.id}`, {
       nameAr: 'الانضباط',
       nameEn: 'Discipline',
-      sortOrder: 9,
       isActive: false,
     });
-    expect(updated.body).toMatchObject({ isActive: false });
+    expect(updated.body).toEqual({ ...criterion, isActive: false });
     const list = (await send('GET', '/api/admin/evaluation-criteria')).body as { id: string }[];
     expect(list.find((c) => c.id === criterion.id)).toEqual(updated.body);
     expect(list.every((c) => !('weight' in c))).toBe(true);
   });
+
+  it.each([1, 0, null, '2'])(
+    'refuses a request that sets the order (%s), like the real API',
+    async (sortOrder) => {
+      const body = { nameAr: 'الترتيب', nameEn: 'Order', sortOrder };
+      expect((await send('POST', '/api/admin/evaluation-criteria', body)).status).toBe(400);
+      expect(
+        (await send('PUT', '/api/admin/evaluation-criteria/pv-crit-1', { ...body, isActive: true }))
+          .status,
+      ).toBe(400);
+    },
+  );
 
   it('validates like the real API and forgets everything on reset', async () => {
     expect((await send('POST', '/api/admin/fields', { name: 'Mobile' })).status).toBe(201);
@@ -96,7 +109,6 @@ describe('AdminPreviewStore (Admin Preview Mode mock)', () => {
       (
         await send('POST', '/api/admin/evaluation-criteria', {
           nameAr: 'الانضباط',
-          sortOrder: 1,
         })
       ).status,
     ).toBe(400);

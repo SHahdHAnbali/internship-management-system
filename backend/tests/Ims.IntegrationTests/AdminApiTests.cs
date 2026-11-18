@@ -100,32 +100,49 @@ public sealed class AdminApiTests(ImsApiFactory factory) : IClassFixture<ImsApiF
     // ── Evaluation criteria ──────────────────────────────────────────────────
 
     [Fact]
-    public async Task Admin_manages_bilingual_evaluation_criteria_in_order()
+    public async Task Admin_manages_bilingual_criteria_numbered_automatically_in_creation_order()
     {
         using var admin = factory.CreateClient("Admin");
-        var second = await ReadAsync<EvaluationCriterionDto>(
-            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest(Unique("العمل الجماعي"), Unique("Teamwork"), 2), _ct), HttpStatusCode.Created);
         var first = await ReadAsync<EvaluationCriterionDto>(
-            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest(Unique("المهارات التقنية"), Unique("Technical"), 1), _ct), HttpStatusCode.Created);
-        Assert.True(second.IsActive);
+            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest(Unique("العمل الجماعي"), Unique("Teamwork")), _ct), HttpStatusCode.Created);
+        var second = await ReadAsync<EvaluationCriterionDto>(
+            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest(Unique("المهارات التقنية"), Unique("Technical")), _ct), HttpStatusCode.Created);
+        Assert.True(first.IsActive);
+        Assert.True(first.SortOrder >= 1);
+        Assert.True(second.SortOrder > first.SortOrder);
 
+        // Renaming and deactivating keep the order; so does reactivating.
         var updated = await ReadAsync<EvaluationCriterionDto>(
-            await admin.PutAsJsonAsync($"/api/admin/evaluation-criteria/{second.Id}", new UpdateEvaluationCriterionRequest(second.NameAr, "Team work", 2, false), _ct));
-        Assert.Equal(("Team work", false), (updated.NameEn, updated.IsActive));
+            await admin.PutAsJsonAsync($"/api/admin/evaluation-criteria/{first.Id}", new UpdateEvaluationCriterionRequest(first.NameAr, "Team work", false), _ct));
+        Assert.Equal(first with { NameEn = "Team work", IsActive = false }, updated);
+        var reactivated = await ReadAsync<EvaluationCriterionDto>(
+            await admin.PutAsJsonAsync($"/api/admin/evaluation-criteria/{first.Id}", new UpdateEvaluationCriterionRequest(first.NameAr, "Team work", true), _ct));
+        Assert.Equal(first.SortOrder, reactivated.SortOrder);
 
         var list = (await admin.GetFromJsonAsync<List<EvaluationCriterionDto>>("/api/admin/evaluation-criteria", Json, _ct))!;
         Assert.True(list.FindIndex(c => c.Id == first.Id) < list.FindIndex(c => c.Id == second.Id));
     }
 
+    [Fact]
+    public async Task Concurrent_creates_get_distinct_orders()
+    {
+        using var admin = factory.CreateClient("Admin");
+
+        var created = await Task.WhenAll(Enumerable.Range(1, 10).Select(async i => await ReadAsync<EvaluationCriterionDto>(
+            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest($"معيار {i}", Unique("Parallel")), _ct), HttpStatusCode.Created)));
+
+        Assert.Equal(10, created.Select(c => c.SortOrder).Distinct().Count());
+    }
+
     [Theory]
-    [InlineData("""{"nameAr":"الدقة","nameEn":"Changed","sortOrder":2}""")]
-    [InlineData("""{"nameAr":"الدقة","nameEn":"Changed","sortOrder":2,"isActive":null}""")]
-    [InlineData("""{"nameAr":"الدقة","nameEn":"Changed","sortOrder":2,"isActive":"true"}""")]
+    [InlineData("""{"nameAr":"الدقة","nameEn":"Changed"}""")]
+    [InlineData("""{"nameAr":"الدقة","nameEn":"Changed","isActive":null}""")]
+    [InlineData("""{"nameAr":"الدقة","nameEn":"Changed","isActive":"true"}""")]
     public async Task A_criterion_update_without_a_boolean_isActive_is_refused_and_changes_nothing(string json)
     {
         using var admin = factory.CreateClient("Admin");
         var created = await ReadAsync<EvaluationCriterionDto>(
-            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest("الدقة", Unique("Accuracy"), 1), _ct), HttpStatusCode.Created);
+            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest("الدقة", Unique("Accuracy")), _ct), HttpStatusCode.Created);
 
         var response = await admin.PutAsync(
             $"/api/admin/evaluation-criteria/{created.Id}", new StringContent(json, System.Text.Encoding.UTF8, "application/json"), _ct);
@@ -135,12 +152,40 @@ public sealed class AdminApiTests(ImsApiFactory factory) : IClassFixture<ImsApiF
         Assert.Equal(created, list.Single(c => c.Id == created.Id));
     }
 
+    [Theory]
+    [InlineData("1")]
+    [InlineData("2")]
+    [InlineData("0")]
+    [InlineData("null")]
+    [InlineData("\"3\"")]
+    [InlineData("CURRENT")] // the criterion's own, unchanged order
+    public async Task A_request_that_sets_the_order_is_refused_and_changes_nothing(string sortOrder)
+    {
+        using var admin = factory.CreateClient("Admin");
+        var created = await ReadAsync<EvaluationCriterionDto>(
+            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest("الترتيب", Unique("Order")), _ct), HttpStatusCode.Created);
+        var order = sortOrder == "CURRENT" ? created.SortOrder.ToString(System.Globalization.CultureInfo.InvariantCulture) : sortOrder;
+        var refusedName = Unique("Refused");
+        var names = $"\"nameAr\":\"الترتيب\",\"nameEn\":\"{refusedName}\",\"sortOrder\":{order}";
+
+        var post = await admin.PostAsync(
+            "/api/admin/evaluation-criteria", new StringContent($"{{{names}}}", System.Text.Encoding.UTF8, "application/json"), _ct);
+        var put = await admin.PutAsync(
+            $"/api/admin/evaluation-criteria/{created.Id}", new StringContent($"{{{names},\"isActive\":true}}", System.Text.Encoding.UTF8, "application/json"), _ct);
+
+        Assert.Equal((HttpStatusCode.BadRequest, HttpStatusCode.BadRequest), (post.StatusCode, put.StatusCode));
+        var list = (await admin.GetFromJsonAsync<List<EvaluationCriterionDto>>("/api/admin/evaluation-criteria", Json, _ct))!;
+        Assert.Equal(created, list.Single(c => c.Id == created.Id));
+        Assert.DoesNotContain(list, c => c.NameEn == refusedName);
+        Assert.False(await factory.WithDbAsync(db => db.AuditLogs.AnyAsync(a => a.TableName == "evaluation_criteria" && a.EntityId == created.Id.ToString() && a.Operation == "UPDATE", _ct)));
+    }
+
     [Fact]
     public async Task A_criterion_needs_an_english_name()
     {
         using var admin = factory.CreateClient("Admin");
 
-        var response = await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new { nameAr = "الانضباط", sortOrder = 1 }, _ct);
+        var response = await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new { nameAr = "الانضباط" }, _ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -228,7 +273,7 @@ public sealed class AdminApiTests(ImsApiFactory factory) : IClassFixture<ImsApiF
         await SeedEmployeeAsync();
         using var admin = factory.CreateClient("Admin");
         await admin.PostAsJsonAsync("/api/admin/fields", new CreateFieldRequest(Unique("Seed"), null), _ct);
-        await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest(Unique("بذرة"), Unique("Seed"), 1), _ct);
+        await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest(Unique("بذرة"), Unique("Seed")), _ct);
         await using var connection = new NpgsqlConnection(factory.ConnectionString);
         await connection.OpenAsync(_ct);
         await using var command = new NpgsqlCommand(sql, connection);

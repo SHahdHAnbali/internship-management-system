@@ -183,3 +183,67 @@ public sealed class EvaluationCriteriaMigrationConstraintTests(PendingRemindersB
         });
     }
 }
+
+/// <summary>A database at EvaluationCriteriaBilingual (S1), with the three criteria as that migration leaves them.</summary>
+public sealed class EvaluationCriteriaBilingualBaselineFactory : ImsApiFactory
+{
+    protected override string? InitialMigration => "20261118181152_EvaluationCriteriaBilingual";
+}
+
+/// <summary>
+/// Follow-up migration EvaluationCriteriaSortOrderPositive (owner decision, 2026-11-18): the database refuses an order below 1;
+/// existing criteria, their ids, names, orders and audit entries are unchanged.
+/// </summary>
+public sealed class EvaluationCriteriaSortOrderMigrationTests(EvaluationCriteriaBilingualBaselineFactory factory)
+    : IClassFixture<EvaluationCriteriaBilingualBaselineFactory>
+{
+    private const string Target = "EvaluationCriteriaSortOrderPositive";
+
+    private readonly CancellationToken _ct = TestContext.Current.CancellationToken;
+
+    [Fact]
+    public async Task Migration_keeps_every_criterion_and_the_database_then_refuses_an_order_below_one()
+    {
+        await using var connection = new NpgsqlConnection(factory.ConnectionString);
+        await connection.OpenAsync(_ct);
+        await Execute(connection, """
+            INSERT INTO evaluation_criteria (id, name_ar, name_en, sort_order, is_active, name, weight) VALUES
+              ('01900000-0000-7000-8000-000000000001', 'التزام بالمواعيد', 'Punctuality', 1, true, 'التزام بالمواعيد', 1),
+              ('01900000-0000-7000-8000-000000000002', 'التزام بالوقت (تنفيذ المهام)', 'Timely Task Completion', 1, true, 'التزام بالوقت (تنفيذ المهام)', 1),
+              ('01900000-0000-7000-8000-000000000003', 'حضور وغياب', 'Attendance and Absence', 2147483647, false, 'حضور وغياب', 1)
+            """);
+        const string Rows = "SELECT string_agg(c::text, '|' ORDER BY id) FROM evaluation_criteria c";
+        const string Audit = "SELECT count(*) || ':' || md5(coalesce(string_agg(a::text, '|' ORDER BY id), '')) FROM audit_logs a";
+        var rowsBefore = await Scalar(connection, Rows);
+        var auditBefore = await Scalar(connection, Audit);
+
+        var applied = await factory.WithDbAsync(async db =>
+        {
+            var target = db.Database.GetMigrations().Single(m => m.EndsWith(Target, StringComparison.Ordinal));
+            await db.Database.MigrateAsync(target, _ct);
+            return await db.Database.GetAppliedMigrationsAsync(_ct);
+        });
+
+        Assert.EndsWith(Target, applied.Last(), StringComparison.Ordinal);
+        Assert.Equal(rowsBefore, await Scalar(connection, Rows));
+        Assert.Equal(auditBefore, await Scalar(connection, Audit));
+        foreach (var order in new[] { 0, -1 })
+        {
+            var error = await Assert.ThrowsAsync<PostgresException>(() => Execute(
+                connection, $"INSERT INTO evaluation_criteria (id, name_ar, name_en, sort_order, is_active) VALUES (gen_random_uuid(), 'س', 'X', {order}, true)"));
+            Assert.Equal((PostgresErrorCodes.CheckViolation, "ck_evaluation_criteria_sort_order"), (error.SqlState, error.ConstraintName));
+        }
+    }
+
+    private async Task Execute(NpgsqlConnection connection, string sql)
+    {
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync(_ct);
+    }
+
+    private async Task<string?> Scalar(NpgsqlConnection connection, string sql)
+    {
+        await using var command = new NpgsqlCommand(sql, connection);
+        return (await command.ExecuteScalarAsync(_ct))?.ToString();
+    }
+}

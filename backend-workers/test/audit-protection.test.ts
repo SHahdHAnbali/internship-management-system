@@ -64,6 +64,23 @@ const AUDIT = {
   events: ['INSERT', 'UPDATE'],
   fn: 'ims_audit_row_change',
 };
+/**
+ * Deliberate extra triggers, by table (names sort between audit_row_change and no_delete). evaluation_criteria: the
+ * database assigns each new criterion its order and refuses any later change of it (AD-68 G7).
+ */
+const EXTRA_TRIGGERS: Record<string, object[]> = {
+  evaluation_criteria: [
+    {
+      name: 'evaluation_criteria_order',
+      enabled: true,
+      timing: 'BEFORE',
+      level: 'ROW',
+      events: ['INSERT', 'UPDATE'],
+      fn: 'ims_evaluation_criteria_order',
+    },
+  ],
+};
+
 const NO_DELETE = {
   name: 'no_delete',
   enabled: true,
@@ -110,7 +127,8 @@ describe('audit and no-delete protection (database catalog)', () => {
     const business = tables.filter((t) => t !== 'audit_logs');
     // Every table found, including any added later, must carry the three protections.
     for (const table of business) {
-      expect(byTable.get(table), table).toEqual([AUDIT, NO_DELETE, NO_TRUNCATE]);
+      const extra = EXTRA_TRIGGERS[table] ?? [];
+      expect(byTable.get(table), table).toEqual([AUDIT, ...extra, NO_DELETE, NO_TRUNCATE]);
     }
     // The known tables, so that a new one is a deliberate change here too.
     expect(business).toEqual(BUSINESS_TABLES);

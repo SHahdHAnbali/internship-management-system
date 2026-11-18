@@ -114,72 +114,60 @@ describe('fields', () => {
   });
 });
 
-describe('evaluation criteria (AD-66: Arabic and English names, order, active flag; no weights)', () => {
-  it('Admin manages bilingual criteria in order; a new criterion is active', async () => {
+describe('evaluation criteria (AD-66; AD-68 G7: order assigned automatically and never changed)', () => {
+  const create = (client: Awaited<ReturnType<typeof signInStaff>>['client'], nameEn = unique('Criterion')) =>
+    client.post('/api/admin/evaluation-criteria', { nameAr: unique('معيار'), nameEn });
+
+  it('Admin creates bilingual criteria numbered automatically; a new criterion is active', async () => {
     const { client } = await signInStaff(api, 'Admin');
-    const secondResponse = await client.post('/api/admin/evaluation-criteria', {
-      nameAr: unique('العمل الجماعي'),
-      nameEn: unique('Teamwork'),
-      sortOrder: 2,
-    });
-    expect(secondResponse.status).toBe(201);
-    const second = await body(secondResponse);
-    expect(second).toEqual({
+    const firstResponse = await create(client);
+    expect(firstResponse.status).toBe(201);
+    const first = await body(firstResponse);
+    expect(first).toEqual({
       id: expect.any(String),
-      nameAr: second.nameAr,
-      nameEn: second.nameEn,
-      sortOrder: 2,
+      nameAr: first.nameAr,
+      nameEn: first.nameEn,
+      sortOrder: expect.any(Number),
       isActive: true,
     });
-    const first = await body(
-      await client.post('/api/admin/evaluation-criteria', {
-        nameAr: unique('المهارات التقنية'),
-        nameEn: unique('Technical'),
-        sortOrder: 1,
-      }),
-    );
+    const second = await body<{ sortOrder: number }>(await create(client));
+    expect(second.sortOrder).toBeGreaterThan(first.sortOrder as number);
 
-    const list = await body<{ id: string }[]>(await client.get('/api/admin/evaluation-criteria'));
-    expect(list.findIndex((c) => c.id === first.id)).toBeLessThan(list.findIndex((c) => c.id === second.id));
-    expect(list.find((c) => c.id === second.id)).toEqual(second);
+    const list = await body<{ id: string; sortOrder: number }[]>(await client.get('/api/admin/evaluation-criteria'));
+    expect(list.find((c) => c.id === first.id)).toEqual(first);
+    expect(list.map((c) => c.sortOrder)).toEqual([...list.map((c) => c.sortOrder)].sort((a, b) => a - b));
+    expect(new Set(list.map((c) => c.sortOrder)).size).toBe(list.length);
   });
 
-  it('a criterion is renamed, deactivated and reactivated', async () => {
+  it('renaming, deactivating and reactivating keep the order', async () => {
     const { client } = await signInStaff(api, 'Admin');
-    const created = await body(
-      await client.post('/api/admin/evaluation-criteria', {
-        nameAr: unique('التواصل'),
-        nameEn: unique('Comms'),
-        sortOrder: 3,
-      }),
-    );
+    const created = await body(await create(client));
     const path = `/api/admin/evaluation-criteria/${created.id}`;
 
-    const deactivated = await body(
-      await client.put(path, { nameAr: created.nameAr, nameEn: 'Communication', sortOrder: 3, isActive: false }),
-    );
-    expect(deactivated).toEqual({ ...created, nameEn: 'Communication', isActive: false });
+    const renamed = await body(await client.put(path, { nameAr: 'التواصل', nameEn: 'Communication', isActive: false }));
+    expect(renamed).toEqual({ ...created, nameAr: 'التواصل', nameEn: 'Communication', isActive: false });
     const reactivated = await body(
-      await client.put(path, { nameAr: created.nameAr, nameEn: 'Communication', sortOrder: 3, isActive: true }),
+      await client.put(path, { nameAr: 'التواصل', nameEn: 'Communication', isActive: true }),
     );
-    expect(reactivated.isActive).toBe(true);
+    expect(reactivated.sortOrder).toBe(created.sortOrder);
     const list = await body<{ id: string }[]>(await client.get('/api/admin/evaluation-criteria'));
     expect(list.find((c) => c.id === created.id)).toEqual(reactivated);
   });
 
+  it('concurrent creates get distinct orders', async () => {
+    const { client } = await signInStaff(api, 'Admin');
+    const responses = await Promise.all(Array.from({ length: 12 }, () => create(client)));
+    expect(responses.map((r) => r.status)).toEqual(Array(12).fill(201));
+    const orders = await Promise.all(responses.map(async (r) => (await body<{ sortOrder: number }>(r)).sortOrder));
+    expect(new Set(orders).size).toBe(12);
+  });
+
   it('the legacy name column follows the Arabic name, and the weight is no longer written (rollback compatibility)', async () => {
     const { client } = await signInStaff(api, 'Admin');
-    const created = await body(
-      await client.post('/api/admin/evaluation-criteria', {
-        nameAr: unique('الدقة'),
-        nameEn: unique('Accuracy'),
-        sortOrder: 1,
-      }),
-    );
+    const created = await body(await create(client));
     await client.put(`/api/admin/evaluation-criteria/${created.id}`, {
       nameAr: 'الدقة في العمل',
       nameEn: created.nameEn,
-      sortOrder: 1,
       isActive: true,
     });
 
@@ -191,15 +179,11 @@ describe('evaluation criteria (AD-66: Arabic and English names, order, active fl
 
   it('both names are required (400), with the C# validation messages', async () => {
     const { client } = await signInStaff(api, 'Admin');
-    const response = await client.post('/api/admin/evaluation-criteria', { nameAr: 'الانضباط', sortOrder: 1 });
+    const response = await client.post('/api/admin/evaluation-criteria', { nameAr: 'الانضباط' });
     expect(response.status).toBe(400);
     expect((await body(response)).errors).toEqual({ NameEn: ['The NameEn field is required.'] });
 
-    const blank = await client.post('/api/admin/evaluation-criteria', {
-      nameAr: '  ',
-      nameEn: 'Discipline',
-      sortOrder: 1,
-    });
+    const blank = await client.post('/api/admin/evaluation-criteria', { nameAr: '  ', nameEn: 'Discipline' });
     expect(blank.status).toBe(400);
   });
 
@@ -218,18 +202,11 @@ describe('evaluation criteria (AD-66: Arabic and English names, order, active fl
     ],
   ])('an update with isActive %s is refused (400) and changes nothing', async (_case, flag, errors) => {
     const { client } = await signInStaff(api, 'Admin');
-    const created = await body(
-      await client.post('/api/admin/evaluation-criteria', {
-        nameAr: unique('الدقة'),
-        nameEn: unique('Accuracy'),
-        sortOrder: 1,
-      }),
-    );
+    const created = await body(await create(client));
 
     const response = await client.put(`/api/admin/evaluation-criteria/${created.id}`, {
       nameAr: created.nameAr,
       nameEn: 'Changed',
-      sortOrder: 2,
       ...flag,
     });
 
@@ -239,28 +216,74 @@ describe('evaluation criteria (AD-66: Arabic and English names, order, active fl
     expect(list.find((c) => c.id === created.id)).toEqual(created);
   });
 
+  const unmapped = (key: string, type: 'Create' | 'Update') => ({
+    request: ['The request field is required.'],
+    [`$.${key}`]: [
+      `The JSON property '${key}' could not be mapped to any .NET member contained in type 'Ims.Application.Admin.EvaluationCriteria.${type}EvaluationCriterionRequest'.`,
+    ],
+  });
+  it.each([
+    ['1', 'sortOrder', 1],
+    ['0', 'sortOrder', 0],
+    ['null', 'sortOrder', null],
+    ['a numeric string', 'sortOrder', '3'],
+    ['written SortOrder', 'SortOrder', 2],
+    ['equal to the stored order', 'sortOrder', 'CURRENT'],
+  ])(
+    'a request that sets the order (%s) is refused (400) on create and update, and nothing is written',
+    async (_case, key, value) => {
+      const { client } = await signInStaff(api, 'Admin');
+      const created = await body(await create(client));
+      const order = { [key]: value === 'CURRENT' ? created.sortOrder : value };
+      const refusedName = unique('Refused');
+
+      const post = await client.post('/api/admin/evaluation-criteria', {
+        nameAr: 'مرفوض',
+        nameEn: refusedName,
+        ...order,
+      });
+      const put = await client.put(`/api/admin/evaluation-criteria/${created.id}`, {
+        nameAr: created.nameAr,
+        nameEn: refusedName,
+        isActive: true,
+        ...order,
+      });
+
+      expect([post.status, put.status]).toEqual([400, 400]);
+      expect((await body(post)).errors).toEqual(unmapped(key, 'Create'));
+      expect((await body(put)).errors).toEqual(unmapped(key, 'Update'));
+      const list = await body<{ id: string; nameEn: string }[]>(await client.get('/api/admin/evaluation-criteria'));
+      expect(list.find((c) => c.id === created.id)).toEqual(created);
+      expect(list.some((c) => c.nameEn === refusedName)).toBe(false);
+      // Nothing audited: the criterion still has only its creation, and no row anywhere holds the refused name.
+      const { rows } = await withDb((db) =>
+        db.query(
+          `SELECT operation FROM audit_logs
+          WHERE (table_name = 'evaluation_criteria' AND entity_id = $1) OR new_values ->> 'name_en' = $2`,
+          [created.id, refusedName],
+        ),
+      );
+      expect(rows.map((r) => r.operation)).toEqual(['INSERT']);
+    },
+  );
+
   it('a body with only the legacy name and weight is rejected (400)', async () => {
     const { client } = await signInStaff(api, 'Admin');
-    const response = await client.post('/api/admin/evaluation-criteria', { name: 'Legacy', weight: 1, sortOrder: 1 });
+    const response = await client.post('/api/admin/evaluation-criteria', { name: 'Legacy', weight: 1 });
     expect(response.status).toBe(400);
+    expect((await body(response)).errors).toEqual(unmapped('name', 'Create'));
   });
 
   it('an unchanged save writes nothing', async () => {
     const { client } = await signInStaff(api, 'Admin');
-    const created = await body(
-      await client.post('/api/admin/evaluation-criteria', {
-        nameAr: unique('الثبات'),
-        nameEn: unique('Steady'),
-        sortOrder: 1,
-      }),
-    );
+    const created = await body(await create(client));
     const response = await client.put(`/api/admin/evaluation-criteria/${created.id}`, {
       nameAr: created.nameAr,
       nameEn: created.nameEn,
-      sortOrder: 1,
       isActive: true,
     });
     expect(response.status).toBe(200);
+    expect(await body(response)).toEqual(created);
 
     const { rows } = await withDb((db) =>
       db.query("SELECT operation FROM audit_logs WHERE table_name = 'evaluation_criteria' AND entity_id = $1", [
@@ -268,17 +291,6 @@ describe('evaluation criteria (AD-66: Arabic and English names, order, active fl
       ]),
     );
     expect(rows.map((r) => r.operation)).toEqual(['INSERT']);
-  });
-
-  it('numbers may be sent as strings (System.Text.Json web defaults)', async () => {
-    const { client } = await signInStaff(api, 'Admin');
-    const response = await client.post('/api/admin/evaluation-criteria', {
-      nameAr: unique('سلاسل'),
-      nameEn: unique('Strings'),
-      sortOrder: '4',
-    });
-    expect(response.status).toBe(201);
-    expect(await body(response)).toMatchObject({ sortOrder: 4, isActive: true });
   });
 });
 
@@ -431,7 +443,6 @@ describe('database integrity (PDF §6, §8): roles, audit log, no hard deletes',
     await client.post('/api/admin/evaluation-criteria', {
       nameAr: unique('بذرة'),
       nameEn: unique('Seed'),
-      sortOrder: 1,
     });
 
     const error = await withDb((db) =>

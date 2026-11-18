@@ -19,7 +19,7 @@ public sealed class EvaluationCriterionManagement(IAppDbContext db)
     public async Task<EvaluationCriterionDto> CreateAsync(CreateEvaluationCriterionRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var criterion = EvaluationCriterion.Create(request.NameAr, request.NameEn, request.SortOrder);
+        var criterion = EvaluationCriterion.Create(request.NameAr, request.NameEn);
         db.EvaluationCriteria.Add(criterion);
         await db.SaveChangesAsync(cancellationToken);
         return ToDto(criterion);
@@ -30,7 +30,7 @@ public sealed class EvaluationCriterionManagement(IAppDbContext db)
         ArgumentNullException.ThrowIfNull(request);
         var criterion = await db.EvaluationCriteria.SingleOrDefaultAsync(c => c.Id == id, cancellationToken)
             ?? throw NotFoundException.For<EvaluationCriterion>(id);
-        criterion.Update(request.NameAr, request.NameEn, request.SortOrder, request.IsActive!.Value);
+        criterion.Update(request.NameAr, request.NameEn, request.IsActive!.Value);
         await db.SaveChangesAsync(cancellationToken);
         return ToDto(criterion);
     }

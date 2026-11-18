@@ -42,7 +42,6 @@
     },
     "validation": {
       "required": "This field is required",
-      "integer": "The value must be a whole number",
       "days": "Enter a number of days between 1 and 365"
     },
     "fields": {

@@ -3,7 +3,7 @@ import { Dialog } from '../../components/Dialog';
 import { useI18n } from '../../i18n/context';
 import type { CreateEvaluationCriterionRequest, EvaluationCriterion } from './models';
 
-/** Create or edit an evaluation criterion (AD-66): Arabic and English names and order; no weights. */
+/** Create or edit an evaluation criterion (AD-66): Arabic and English names; no weights; the order is automatic (AD-68 G7). */
 export function CriterionDialog({
   criterion,
   onSave,
@@ -16,20 +16,18 @@ export function CriterionDialog({
   const { t } = useI18n();
   const [nameAr, setNameAr] = useState(criterion?.nameAr ?? '');
   const [nameEn, setNameEn] = useState(criterion?.nameEn ?? '');
-  const [sortOrder, setSortOrder] = useState(String(criterion?.sortOrder ?? 1));
   const [touched, setTouched] = useState(false);
 
   const errors = {
     nameAr: nameAr.trim() ? null : 'admin.validation.required',
     nameEn: nameEn.trim() ? null : 'admin.validation.required',
-    sortOrder: /^-?\d+$/.test(sortOrder.trim()) ? null : 'admin.validation.integer',
   };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setTouched(true);
-    if (errors.nameAr || errors.nameEn || errors.sortOrder) return;
-    onSave({ nameAr: nameAr.trim(), nameEn: nameEn.trim(), sortOrder: Number(sortOrder) });
+    if (errors.nameAr || errors.nameEn) return;
+    onSave({ nameAr: nameAr.trim(), nameEn: nameEn.trim() });
   };
 
   const field = (id: keyof typeof errors, label: string, input: React.ReactNode) => (
@@ -85,20 +83,6 @@ export function CriterionDialog({
             maxLength={200}
             {...invalid('nameEn')}
             onChange={(e) => setNameEn(e.target.value)}
-          />,
-        )}
-        {field(
-          'sortOrder',
-          t('admin.criteria.order'),
-          <input
-            id="criterion-sortOrder"
-            className="ims-input"
-            type="number"
-            step="1"
-            dir="ltr"
-            value={sortOrder}
-            {...invalid('sortOrder')}
-            onChange={(e) => setSortOrder(e.target.value)}
           />,
         )}
         <div className="mt-2 flex justify-end gap-2">

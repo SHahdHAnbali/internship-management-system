@@ -169,7 +169,6 @@ describe('audit log viewer: filters and pages', () => {
       await admin.client.post('/api/admin/evaluation-criteria', {
         nameAr: unique('معيار'),
         nameEn: unique('Criterion'),
-        sortOrder: 1,
       }),
     );
     await newField(otherAdmin.client);

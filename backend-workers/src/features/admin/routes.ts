@@ -34,18 +34,21 @@ const updateFieldRequest: RequestSchema = {
   properties: [...createFieldRequest.properties, { name: 'IsActive', kind: 'bool' }],
 };
 
+// The order is assigned by the database and never changes (AD-68 G7): a request that sends one (or any other unknown
+// property) is refused, as by [JsonUnmappedMemberHandling(Disallow)] on the C# request types.
 const createCriterionRequest: RequestSchema = {
   typeName: 'Ims.Application.Admin.EvaluationCriteria.CreateEvaluationCriterionRequest',
   properties: [
     { name: 'NameAr', kind: 'string', required: true, maxLength: CRITERION_NAME_MAX_LENGTH },
     { name: 'NameEn', kind: 'string', required: true, maxLength: CRITERION_NAME_MAX_LENGTH },
-    { name: 'SortOrder', kind: 'int' },
   ],
+  rejectUnmapped: true,
 };
 
 const updateCriterionRequest: RequestSchema = {
   typeName: 'Ims.Application.Admin.EvaluationCriteria.UpdateEvaluationCriterionRequest',
   properties: [...createCriterionRequest.properties, { name: 'IsActive', kind: 'bool', required: true }],
+  rejectUnmapped: true,
 };
 
 const changeRoleRequest: RequestSchema = {
@@ -172,7 +175,7 @@ export const adminRoutes: Route[] = [
     },
   },
 
-  // ── Evaluation criteria (AD-66): Arabic and English names, order, active flag; no weights ──
+  // ── Evaluation criteria (AD-66): Arabic and English names, active flag; order assigned by the database (AD-68 G7) ──
   // shortcut: the legacy `name` column is kept equal to the Arabic name and `weight` is no longer written, so a rollback
   // to the Worker before AD-66 still shows the current names; stop writing `name` once that rollback is no longer needed.
   {
@@ -191,25 +194,21 @@ export const adminRoutes: Route[] = [
     path: '/api/admin/evaluation-criteria',
     policy: 'Admin',
     async handle(c) {
-      const body = await bindJson<{ nameAr: string; nameEn: string; sortOrder: number }>(
-        c.req.raw,
-        createCriterionRequest,
-        c.var.traceId,
-      );
+      const body = await bindJson<{ nameAr: string; nameEn: string }>(c.req.raw, createCriterionRequest, c.var.traceId);
       if (!body.ok) return body.response;
 
-      const criterion = {
-        id: uuidV7(c.var.deps.now()),
-        ...criterionValues(body.value.nameAr, body.value.nameEn, body.value.sortOrder, true),
-      };
-      await c.var.db.transaction(c.var.actor, (tx) =>
-        tx.query(
-          `INSERT INTO evaluation_criteria (id, name_ar, name_en, sort_order, is_active, name)
-           VALUES ($1, $2, $3, $4, $5, $2)`,
-          [criterion.id, criterion.nameAr, criterion.nameEn, criterion.sortOrder, criterion.isActive],
+      const id = uuidV7(c.var.deps.now());
+      const values = criterionValues(body.value.nameAr, body.value.nameEn, true);
+      // The database gives the next order (trigger ims_evaluation_criteria_order) and returns it.
+      const { rows } = await c.var.db.transaction(c.var.actor, (tx) =>
+        tx.query<CriterionRow>(
+          `INSERT INTO evaluation_criteria (id, name_ar, name_en, is_active, name)
+           VALUES ($1, $2, $3, $4, $2)
+           RETURNING id, name_ar, name_en, sort_order, is_active`,
+          [id, values.nameAr, values.nameEn, values.isActive],
         ),
       );
-      return json(criterion, 201, { Location: `/api/admin/evaluation-criteria/${criterion.id}` });
+      return json(criterionJson(rows[0]!), 201, { Location: `/api/admin/evaluation-criteria/${id}` });
     },
   },
   {
@@ -218,7 +217,7 @@ export const adminRoutes: Route[] = [
     policy: 'Admin',
     async handle(c) {
       const id = routeId(c);
-      const body = await bindJson<{ nameAr: string; nameEn: string; sortOrder: number; isActive: boolean }>(
+      const body = await bindJson<{ nameAr: string; nameEn: string; isActive: boolean }>(
         c.req.raw,
         updateCriterionRequest,
         c.var.traceId,
@@ -232,25 +231,21 @@ export const adminRoutes: Route[] = [
         id,
         'EvaluationCriterion',
       );
-      const values = criterionValues(body.value.nameAr, body.value.nameEn, body.value.sortOrder, body.value.isActive);
+      const values = criterionValues(body.value.nameAr, body.value.nameEn, body.value.isActive);
       const stored = criterionJson(current);
-      if (
-        values.nameAr !== stored.nameAr ||
-        values.nameEn !== stored.nameEn ||
-        values.sortOrder !== stored.sortOrder ||
-        values.isActive !== stored.isActive
-      ) {
+      if (values.nameAr !== stored.nameAr || values.nameEn !== stored.nameEn || values.isActive !== stored.isActive) {
+        // The order is never written: it stays as the database assigned it.
         await c.var.db.transaction(c.var.actor, (tx) =>
           updateOrConflict(
             tx,
-            `UPDATE evaluation_criteria SET name_ar = $1, name_en = $2, sort_order = $3, is_active = $4, name = $1
-              WHERE id = $5 AND xmin = $6::xid`,
-            [values.nameAr, values.nameEn, values.sortOrder, values.isActive, id, current.version],
+            `UPDATE evaluation_criteria SET name_ar = $1, name_en = $2, is_active = $3, name = $1
+              WHERE id = $4 AND xmin = $5::xid`,
+            [values.nameAr, values.nameEn, values.isActive, id, current.version],
           ),
         );
       }
 
-      return json({ id, ...values });
+      return json({ ...stored, ...values });
     },
   },
 

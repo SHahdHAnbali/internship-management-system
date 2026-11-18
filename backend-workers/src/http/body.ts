@@ -29,6 +29,11 @@ export interface RequestSchema {
   /** Full .NET type name, used in conversion error messages. */
   typeName: string;
   properties: PropertySpec[];
+  /**
+   * [JsonUnmappedMemberHandling(Disallow)]: a property the type does not have is refused (400) instead of ignored. As in
+   * System.Text.Json, the body is read in order and the first problem (unknown property or unconvertible value) is reported.
+   */
+  rejectUnmapped?: boolean;
 }
 
 /** A role sent as a name (any case) or as the enum's number; numbers that are not a role stay as `invalid`. */
@@ -72,16 +77,23 @@ export async function bindJson<T>(request: Request, schema: RequestSchema, trace
     supplied.set(key.toLowerCase(), { key, value });
   }
 
+  if (schema.rejectUnmapped) {
+    for (const [key, value] of Object.entries(root)) {
+      const property = schema.properties.find((p) => p.name.toLowerCase() === key.toLowerCase());
+      if (!property) {
+        const message = `The JSON property '${key}' could not be mapped to any .NET member contained in type '${schema.typeName}'.`;
+        return fail({ request: [REQUEST_REQUIRED], [`$.${key}`]: [message] }, traceId);
+      }
+      if (bindValue(property, { key, value }) === CONVERSION_FAILED) {
+        return fail({ request: [REQUEST_REQUIRED], [`$.${key}`]: [conversionMessage(schema, `$.${key}`)] }, traceId);
+      }
+    }
+  }
+
   const bound: Bound = {};
   for (const property of schema.properties) {
     const entry = supplied.get(property.name.toLowerCase());
-    const requiredBool = property.required && property.kind === 'bool';
-    const converted =
-      entry === undefined || (requiredBool && entry.value === null)
-        ? requiredBool
-          ? null
-          : defaultValue(property.kind)
-        : convert(property.kind, entry.value);
+    const converted = bindValue(property, entry);
     if (converted === CONVERSION_FAILED) {
       const path = `$.${entry!.key}`;
       return fail({ request: [REQUEST_REQUIRED], [path]: [conversionMessage(schema, path)] }, traceId);
@@ -97,6 +109,15 @@ export async function bindJson<T>(request: Request, schema: RequestSchema, trace
   }
 
   return Object.keys(errors).length > 0 ? fail(errors, traceId) : { ok: true, value: bound as T };
+}
+
+/** The value bound for a property: its default when absent; a required bool is C#'s `bool?` (missing or null is null). */
+function bindValue(property: PropertySpec, entry: { key: string; value: unknown } | undefined) {
+  const requiredBool = property.required && property.kind === 'bool';
+  if (entry === undefined || (requiredBool && entry.value === null)) {
+    return requiredBool ? null : defaultValue(property.kind);
+  }
+  return convert(property.kind, entry.value);
 }
 
 function fail(errors: Record<string, string[]>, traceId: string): { ok: false; response: Response } {

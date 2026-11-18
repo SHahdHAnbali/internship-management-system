@@ -96,20 +96,15 @@ export class AdminPreviewStore {
     const text = (key: string) => (typeof body[key] === 'string' ? body[key].trim() : '');
     const nameAr = text('nameAr');
     const nameEn = text('nameEn');
-    const sortOrder = Number(body['sortOrder']);
-    if (
-      !nameAr ||
-      !nameEn ||
-      nameAr.length > 200 ||
-      nameEn.length > 200 ||
-      !Number.isInteger(sortOrder)
-    )
+    // As the API: the order is assigned (the highest + 1) and never changes; a request that sets one is refused.
+    const setsOrder = Object.keys(body).some((key) => key.toLowerCase() === 'sortorder');
+    if (setsOrder || !nameAr || !nameEn || nameAr.length > 200 || nameEn.length > 200)
       return this.error(400);
 
     if (id) {
       const existing = this.data.criteria.find((c) => c.id === id);
       if (!existing) return this.error(404);
-      Object.assign(existing, { nameAr, nameEn, sortOrder, isActive: body['isActive'] === true });
+      Object.assign(existing, { nameAr, nameEn, isActive: body['isActive'] === true });
       return this.ok(existing);
     }
 
@@ -117,7 +112,7 @@ export class AdminPreviewStore {
       id: `pv-crit-${crypto.randomUUID()}`,
       nameAr,
       nameEn,
-      sortOrder,
+      sortOrder: Math.max(0, ...this.data.criteria.map((c) => c.sortOrder)) + 1,
       isActive: true,
     };
     this.data.criteria.push(criterion);

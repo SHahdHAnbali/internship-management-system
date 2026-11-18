@@ -760,3 +760,42 @@ VALUES ('20261118181152_EvaluationCriteriaBilingual', '10.0.13');
 
 COMMIT;
 
+START TRANSACTION;
+ALTER TABLE evaluation_criteria ADD CONSTRAINT ck_evaluation_criteria_sort_order CHECK (sort_order >= 1);
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261118194650_EvaluationCriteriaSortOrderPositive', '10.0.13');
+
+COMMIT;
+
+START TRANSACTION;
+UPDATE evaluation_criteria c
+   SET sort_order = n.position
+  FROM (SELECT id, row_number() OVER (ORDER BY sort_order, name_ar, id)::int AS position
+          FROM evaluation_criteria) n
+ WHERE c.id = n.id AND c.sort_order <> n.position;
+
+CREATE UNIQUE INDEX ux_evaluation_criteria_sort_order ON evaluation_criteria (sort_order);
+
+CREATE FUNCTION ims_evaluation_criteria_order() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        PERFORM pg_advisory_xact_lock(hashtext('ims.evaluation_criteria.sort_order'));
+        SELECT coalesce(max(sort_order), 0) + 1 INTO NEW.sort_order FROM evaluation_criteria;
+    ELSIF NEW.sort_order IS DISTINCT FROM OLD.sort_order THEN
+        RAISE EXCEPTION 'The order of an evaluation criterion cannot be changed: it is assigned once, when the criterion is created.'
+            USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER evaluation_criteria_order
+    BEFORE INSERT OR UPDATE OF sort_order ON evaluation_criteria
+    FOR EACH ROW EXECUTE FUNCTION ims_evaluation_criteria_order();
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261118202455_EvaluationCriteriaAutomaticOrder', '10.0.13');
+
+COMMIT;
+

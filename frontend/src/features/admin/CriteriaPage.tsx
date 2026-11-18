@@ -9,8 +9,8 @@ import type { CreateEvaluationCriterionRequest, EvaluationCriterion } from './mo
 import { useLoad } from './useLoad';
 
 /**
- * Admin: manage the evaluation criteria (AD-66): Arabic and English names, order, active flag; no weights. Criteria are
- * deactivated, never deleted.
+ * Admin: manage the evaluation criteria (AD-66): Arabic and English names and the active flag; no weights. The order is
+ * assigned automatically and never changes (AD-68 G7), so it is shown but not edited. Criteria are deactivated, never deleted.
  */
 export function CriteriaPage() {
   const { t, language } = useI18n();
@@ -95,7 +95,6 @@ export function CriteriaPage() {
                             adminApi.updateCriterion(c.id, {
                               nameAr: c.nameAr,
                               nameEn: c.nameEn,
-                              sortOrder: c.sortOrder,
                               isActive,
                             }),
                           )

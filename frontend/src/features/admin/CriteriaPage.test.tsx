@@ -71,7 +71,6 @@ describe('CriteriaPage (AD-66: Arabic and English names, order, active flag; no 
     expect(sentBody(fetchMock, 'PUT')).toEqual({
       nameAr: 'التزام بالمواعيد',
       nameEn: 'Punctuality',
-      sortOrder: 1,
       isActive: false,
     });
   });
@@ -96,8 +95,6 @@ describe('CriteriaPage (AD-66: Arabic and English names, order, active flag; no 
     expect(screen.queryByLabelText(/weight/i)).not.toBeInTheDocument();
     await user.type(arabic, ' العمل الجماعي ');
     await user.type(english, ' Teamwork ');
-    await user.clear(screen.getByLabelText(/admin.criteria.order/));
-    await user.type(screen.getByLabelText(/admin.criteria.order/), '3');
     await user.click(screen.getByRole('button', { name: 'admin.actions.save' }));
 
     await waitFor(() =>
@@ -106,11 +103,7 @@ describe('CriteriaPage (AD-66: Arabic and English names, order, active flag; no 
         expect.objectContaining({ method: 'POST' }),
       ),
     );
-    expect(sentBody(fetchMock, 'POST')).toEqual({
-      nameAr: 'العمل الجماعي',
-      nameEn: 'Teamwork',
-      sortOrder: 3,
-    });
+    expect(sentBody(fetchMock, 'POST')).toEqual({ nameAr: 'العمل الجماعي', nameEn: 'Teamwork' });
   });
 
   it('edits a criterion, keeping its active flag', async () => {
@@ -136,9 +129,24 @@ describe('CriteriaPage (AD-66: Arabic and English names, order, active flag; no 
     expect(sentBody(fetchMock, 'PUT')).toEqual({
       nameAr: 'حضور وغياب',
       nameEn: 'Attendance',
-      sortOrder: 2,
       isActive: false,
     });
+  });
+
+  it('neither the create nor the edit dialog has an order field (AD-68 G7: assigned automatically)', async () => {
+    mockFetch(() => [200, criteria]);
+    renderPage(<CriteriaPage />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'admin.criteria.add' }));
+    expect(screen.queryByLabelText(/admin.criteria.order/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'admin.actions.cancel' }));
+
+    const rows = await screen.findAllByRole('row');
+    await user.click(within(rows[1]).getByRole('button', { name: 'admin.actions.edit' }));
+    expect(screen.queryByLabelText(/admin.criteria.order/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
   });
 
   it('requires both names, with the error linked to the field, and sends nothing', async () => {

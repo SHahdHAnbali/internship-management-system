@@ -447,8 +447,10 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .HasColumnName("name_en");
 
                     b.Property<int>("SortOrder")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
-                        .HasColumnName("sort_order");
+                        .HasColumnName("sort_order")
+                        .HasAnnotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.None);
 
                     b.Property<uint>("Version")
                         .IsConcurrencyToken()
@@ -464,8 +466,14 @@ namespace Ims.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_evaluation_criteria");
 
+                    b.HasIndex("SortOrder")
+                        .IsUnique()
+                        .HasDatabaseName("ux_evaluation_criteria_sort_order");
+
                     b.ToTable("evaluation_criteria", null, t =>
                         {
+                            t.HasCheckConstraint("ck_evaluation_criteria_sort_order", "sort_order >= 1");
+
                             t.HasCheckConstraint("ck_evaluation_criteria_weight", "weight IS NULL OR weight > 0");
                         });
                 });
