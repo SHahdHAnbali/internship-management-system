@@ -19,14 +19,18 @@ export interface UpdateFieldRequest extends CreateFieldRequest {
   isActive: boolean;
 }
 
+/** AD-66: Arabic and English names, display order and active flag; no weights. */
 export interface EvaluationCriterion {
   id: string;
-  name: string;
-  weight: number;
+  nameAr: string;
+  nameEn: string;
   sortOrder: number;
+  isActive: boolean;
 }
 
-export type SaveEvaluationCriterionRequest = Omit<EvaluationCriterion, 'id'>;
+/** A new criterion is active. */
+export type CreateEvaluationCriterionRequest = Omit<EvaluationCriterion, 'id' | 'isActive'>;
+export type UpdateEvaluationCriterionRequest = Omit<EvaluationCriterion, 'id'>;
 
 /** Staff hold Employee, HR or Admin (PDF §8). */
 export const STAFF_ROLES: readonly UserRole[] = ['Employee', 'HR', 'Admin'];

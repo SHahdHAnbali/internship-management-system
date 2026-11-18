@@ -3,9 +3,17 @@ using Ims.Domain.Evaluations;
 
 namespace Ims.Application.Admin.EvaluationCriteria;
 
-public sealed record EvaluationCriterionDto(Guid Id, string Name, decimal Weight, int SortOrder);
+public sealed record EvaluationCriterionDto(Guid Id, string NameAr, string NameEn, int SortOrder, bool IsActive);
 
-public sealed record SaveEvaluationCriterionRequest(
-    [Required, MaxLength(EvaluationCriterion.NameMaxLength)] string Name,
-    [Range(typeof(decimal), "0.0001", "99999")] decimal Weight,
+/// <summary>A new criterion is active (AD-66).</summary>
+public sealed record CreateEvaluationCriterionRequest(
+    [Required, MaxLength(EvaluationCriterion.NameMaxLength)] string NameAr,
+    [Required, MaxLength(EvaluationCriterion.NameMaxLength)] string NameEn,
     int SortOrder);
+
+/// <summary>`IsActive` must be sent: nullable only so that a missing or null value is a 400, never a silent false.</summary>
+public sealed record UpdateEvaluationCriterionRequest(
+    [Required, MaxLength(EvaluationCriterion.NameMaxLength)] string NameAr,
+    [Required, MaxLength(EvaluationCriterion.NameMaxLength)] string NameEn,
+    int SortOrder,
+    [Required] bool? IsActive);

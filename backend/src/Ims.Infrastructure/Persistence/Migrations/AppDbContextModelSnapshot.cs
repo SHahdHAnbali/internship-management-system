@@ -425,11 +425,26 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
                     b.Property<string>("Name")
-                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_ar");
+
+                    b.Property<string>("NameEn")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_en");
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer")
@@ -441,7 +456,7 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
-                    b.Property<decimal>("Weight")
+                    b.Property<decimal?>("Weight")
                         .HasPrecision(9, 4)
                         .HasColumnType("numeric(9,4)")
                         .HasColumnName("weight");
@@ -451,7 +466,7 @@ namespace Ims.Infrastructure.Persistence.Migrations
 
                     b.ToTable("evaluation_criteria", null, t =>
                         {
-                            t.HasCheckConstraint("ck_evaluation_criteria_weight", "weight > 0");
+                            t.HasCheckConstraint("ck_evaluation_criteria_weight", "weight IS NULL OR weight > 0");
                         });
                 });
 

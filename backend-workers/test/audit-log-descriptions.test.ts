@@ -336,18 +336,31 @@ describe('audit descriptions: every real writer, read back through the viewer', 
       'signInCode.used',
     ]);
 
-    // Evaluation criteria: added, then weight and order changed.
+    // Evaluation criteria (AD-66): added, then the English name, order and active flag changed; then the Arabic name,
+    // which the legacy `name` column follows and is not listed separately.
     const criterion = await body<{ id: string }>(
-      await admin.client.post('/api/admin/evaluation-criteria', { name: 'MARKER-CRITERION', weight: 1, sortOrder: 1 }),
+      await admin.client.post('/api/admin/evaluation-criteria', {
+        nameAr: 'MARKER-CRITERION-AR',
+        nameEn: 'MARKER-CRITERION',
+        sortOrder: 1,
+      }),
     );
     await admin.client.put(`/api/admin/evaluation-criteria/${criterion.id}`, {
-      name: 'MARKER-CRITERION',
-      weight: 2,
+      nameAr: 'MARKER-CRITERION-AR',
+      nameEn: 'MARKER-CRITERION-2',
       sortOrder: 5,
+      isActive: false,
+    });
+    await admin.client.put(`/api/admin/evaluation-criteria/${criterion.id}`, {
+      nameAr: 'MARKER-CRITERION-AR-2',
+      nameEn: 'MARKER-CRITERION-2',
+      sortOrder: 5,
+      isActive: false,
     });
     expect(await ofRecord(admin.client, 'evaluation_criteria', criterion.id)).toEqual([
       { event: 'evaluation_criteria.created' },
-      { event: 'criterion.changed', params: { changes: ['criterion.order', 'criterion.weight'] } },
+      { event: 'criterion.changed', params: { changes: ['criterion.active', 'criterion.nameEn', 'criterion.order'] } },
+      { event: 'criterion.changed', params: { changes: ['criterion.nameAr'] } },
     ]);
   });
 });
@@ -497,6 +510,11 @@ describe('audit descriptions: describeAudit itself', () => {
     expect(describeAudit('employees', 'UPDATE', { changed: ['role'], oldRole: 'HR', newRole: 'HR' })).toEqual({
       event: 'employees.updated',
     });
+    // Criterion history from before AD-66 (single name, weight) is still described as stored (ADL-02).
+    expect(describeAudit('evaluation_criteria', 'UPDATE', { changed: ['name', 'weight'] })).toEqual({
+      event: 'criterion.changed',
+      params: { changes: ['criterion.name', 'criterion.weight'] },
+    });
     // A criterion update touching an unknown column is not narrowed to the known ones.
     expect(describeAudit('evaluation_criteria', 'UPDATE', { changed: ['weight', 'secret'] })).toEqual({
       event: 'evaluation_criteria.updated',
@@ -551,6 +569,9 @@ describe('audit descriptions: Arabic and English texts', () => {
         'criterion.name',
         'criterion.weight',
         'criterion.order',
+        'criterion.nameAr',
+        'criterion.nameEn',
+        'criterion.active',
         'intervals.trainingEnding',
         'intervals.lateEvaluation',
         'intervals.pendingRequest',

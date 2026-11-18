@@ -33,11 +33,41 @@ export function adminPreviewSeed(): {
       { id: 'pv-field-5', name: 'Data & BI', description: null, isActive: false },
     ],
     criteria: [
-      { id: 'pv-crit-1', name: 'المهارات التقنية', weight: 3, sortOrder: 1 },
-      { id: 'pv-crit-2', name: 'Problem solving', weight: 2, sortOrder: 2 },
-      { id: 'pv-crit-3', name: 'العمل الجماعي', weight: 1.5, sortOrder: 3 },
-      { id: 'pv-crit-4', name: 'Communication', weight: 1, sortOrder: 4 },
-      { id: 'pv-crit-5', name: 'الالتزام بالمواعيد', weight: 1, sortOrder: 5 },
+      {
+        id: 'pv-crit-1',
+        nameAr: 'المهارات التقنية',
+        nameEn: 'Technical skills',
+        sortOrder: 1,
+        isActive: true,
+      },
+      {
+        id: 'pv-crit-2',
+        nameAr: 'حل المشكلات',
+        nameEn: 'Problem solving',
+        sortOrder: 2,
+        isActive: true,
+      },
+      {
+        id: 'pv-crit-3',
+        nameAr: 'العمل الجماعي',
+        nameEn: 'Teamwork',
+        sortOrder: 3,
+        isActive: true,
+      },
+      {
+        id: 'pv-crit-4',
+        nameAr: 'التواصل',
+        nameEn: 'Communication',
+        sortOrder: 4,
+        isActive: false,
+      },
+      {
+        id: 'pv-crit-5',
+        nameAr: 'الالتزام بالمواعيد',
+        nameEn: 'Punctuality',
+        sortOrder: 5,
+        isActive: true,
+      },
     ],
     users: [
       {

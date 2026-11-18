@@ -14,13 +14,13 @@ public sealed class EvaluationCriteriaController(EvaluationCriterionManagement c
     public Task<IReadOnlyList<EvaluationCriterionDto>> List(CancellationToken cancellationToken) => criteria.ListAsync(cancellationToken);
 
     [HttpPost]
-    public async Task<ActionResult<EvaluationCriterionDto>> Create(SaveEvaluationCriterionRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<EvaluationCriterionDto>> Create(CreateEvaluationCriterionRequest request, CancellationToken cancellationToken)
     {
         var criterion = await criteria.CreateAsync(request, cancellationToken);
         return Created($"/api/admin/evaluation-criteria/{criterion.Id}", criterion);
     }
 
     [HttpPut("{id:guid}")]
-    public Task<EvaluationCriterionDto> Update(Guid id, SaveEvaluationCriterionRequest request, CancellationToken cancellationToken)
+    public Task<EvaluationCriterionDto> Update(Guid id, UpdateEvaluationCriterionRequest request, CancellationToken cancellationToken)
         => criteria.UpdateAsync(id, request, cancellationToken);
 }

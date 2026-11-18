@@ -2,38 +2,40 @@ using Ims.Domain.Common;
 
 namespace Ims.Domain.Evaluations;
 
-/// <summary>A fixed evaluation criterion defined by Admin (PDF §4, §8: name, weight, order).</summary>
+/// <summary>
+/// An evaluation criterion defined by Admin (AD-66): an Arabic and an English name, a display order and an active flag.
+/// No weights: every active criterion counts equally. Never deleted; deactivated instead.
+/// </summary>
 public sealed class EvaluationCriterion : Entity
 {
     public const int NameMaxLength = 200;
 
     private EvaluationCriterion()
     {
-        Name = null!;
+        NameAr = null!;
+        NameEn = null!;
     }
 
-    public string Name { get; private set; }
+    public string NameAr { get; private set; }
 
-    public decimal Weight { get; private set; }
+    public string NameEn { get; private set; }
 
     public int SortOrder { get; private set; }
 
-    public static EvaluationCriterion Create(string name, decimal weight, int sortOrder)
+    public bool IsActive { get; private set; }
+
+    public static EvaluationCriterion Create(string nameAr, string nameEn, int sortOrder)
     {
         var criterion = new EvaluationCriterion();
-        criterion.Update(name, weight, sortOrder);
+        criterion.Update(nameAr, nameEn, sortOrder, isActive: true);
         return criterion;
     }
 
-    public void Update(string name, decimal weight, int sortOrder)
+    public void Update(string nameAr, string nameEn, int sortOrder, bool isActive)
     {
-        if (weight <= 0)
-        {
-            throw new DomainException("validation.range", "Weight must be greater than zero.");
-        }
-
-        Name = Guard.Required(name, "Name", NameMaxLength);
-        Weight = weight;
+        NameAr = Guard.Required(nameAr, "Arabic name", NameMaxLength);
+        NameEn = Guard.Required(nameEn, "English name", NameMaxLength);
         SortOrder = sortOrder;
+        IsActive = isActive;
     }
 }

@@ -14,7 +14,7 @@ Requirement-by-requirement status: [requirements-progress.md](requirements-progr
 - [x] Session keys: the Worker encrypts the session with a Workers secret (AD-40); ASP.NET Data Protection keys are not needed in production
 
 ## Phase 1: Core (MVP, about 6 weeks)
-- [x] Admin: fields, evaluation criteria (with weights; AD-66 replaces them with Arabic and English names and an active flag, not built yet), users and roles, notification intervals, certificate template (AD-43), accepted trainees (in production)
+- [x] Admin: fields, evaluation criteria (with weights in production; the AD-66 model with Arabic and English names and an active flag is implemented locally, not deployed), users and roles, notification intervals, certificate template (AD-43), accepted trainees (in production)
 - [x] Trainee: application form with CV/letter upload (R2, AD-48), application status board (in production; since 2026-11-10 it also shows the rejection reason of a rejected application, AD-61, production visual verification pending a legitimate rejected application). CAPTCHA out of scope (owner 2026-11-16, Q22). Not yet: the board after acceptance (L10)
 - [x] HR: applications inbox, Under Review, accept, reject with reason, contact log (AD-47, in production)
 - [x] Employee: available trainees with filters and CV view, mentor request (in production)

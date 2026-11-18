@@ -114,48 +114,171 @@ describe('fields', () => {
   });
 });
 
-describe('evaluation criteria', () => {
-  it('Admin manages criteria and weights in order', async () => {
+describe('evaluation criteria (AD-66: Arabic and English names, order, active flag; no weights)', () => {
+  it('Admin manages bilingual criteria in order; a new criterion is active', async () => {
     const { client } = await signInStaff(api, 'Admin');
-    const second = await body(
-      await client.post('/api/admin/evaluation-criteria', { name: unique('Teamwork'), weight: 1, sortOrder: 2 }),
-    );
-    const firstResponse = await client.post('/api/admin/evaluation-criteria', {
-      name: unique('Technical'),
-      weight: 3,
-      sortOrder: 1,
+    const secondResponse = await client.post('/api/admin/evaluation-criteria', {
+      nameAr: unique('العمل الجماعي'),
+      nameEn: unique('Teamwork'),
+      sortOrder: 2,
     });
-    expect(firstResponse.status).toBe(201);
-    const first = await body(firstResponse);
-
-    const updated = await body(
-      await client.put(`/api/admin/evaluation-criteria/${second.id}`, { name: second.name, weight: 2.5, sortOrder: 2 }),
+    expect(secondResponse.status).toBe(201);
+    const second = await body(secondResponse);
+    expect(second).toEqual({
+      id: expect.any(String),
+      nameAr: second.nameAr,
+      nameEn: second.nameEn,
+      sortOrder: 2,
+      isActive: true,
+    });
+    const first = await body(
+      await client.post('/api/admin/evaluation-criteria', {
+        nameAr: unique('المهارات التقنية'),
+        nameEn: unique('Technical'),
+        sortOrder: 1,
+      }),
     );
-    expect(updated.weight).toBe(2.5);
 
-    const list = await body<{ id: string; weight: number }[]>(await client.get('/api/admin/evaluation-criteria'));
+    const list = await body<{ id: string }[]>(await client.get('/api/admin/evaluation-criteria'));
     expect(list.findIndex((c) => c.id === first.id)).toBeLessThan(list.findIndex((c) => c.id === second.id));
-    expect(list.find((c) => c.id === second.id)?.weight).toBe(2.5);
+    expect(list.find((c) => c.id === second.id)).toEqual(second);
   });
 
-  it('a weight must be positive (400) and at most 99999', async () => {
+  it('a criterion is renamed, deactivated and reactivated', async () => {
     const { client } = await signInStaff(api, 'Admin');
-    for (const weight of [0, -1, 100000]) {
-      const response = await client.post('/api/admin/evaluation-criteria', { name: 'Zero', weight, sortOrder: 1 });
-      expect(response.status).toBe(400);
-      expect((await body(response)).errors).toEqual({ Weight: ['The field Weight must be between 0.0001 and 99999.'] });
-    }
+    const created = await body(
+      await client.post('/api/admin/evaluation-criteria', {
+        nameAr: unique('التواصل'),
+        nameEn: unique('Comms'),
+        sortOrder: 3,
+      }),
+    );
+    const path = `/api/admin/evaluation-criteria/${created.id}`;
+
+    const deactivated = await body(
+      await client.put(path, { nameAr: created.nameAr, nameEn: 'Communication', sortOrder: 3, isActive: false }),
+    );
+    expect(deactivated).toEqual({ ...created, nameEn: 'Communication', isActive: false });
+    const reactivated = await body(
+      await client.put(path, { nameAr: created.nameAr, nameEn: 'Communication', sortOrder: 3, isActive: true }),
+    );
+    expect(reactivated.isActive).toBe(true);
+    const list = await body<{ id: string }[]>(await client.get('/api/admin/evaluation-criteria'));
+    expect(list.find((c) => c.id === created.id)).toEqual(reactivated);
+  });
+
+  it('the legacy name column follows the Arabic name, and the weight is no longer written (rollback compatibility)', async () => {
+    const { client } = await signInStaff(api, 'Admin');
+    const created = await body(
+      await client.post('/api/admin/evaluation-criteria', {
+        nameAr: unique('الدقة'),
+        nameEn: unique('Accuracy'),
+        sortOrder: 1,
+      }),
+    );
+    await client.put(`/api/admin/evaluation-criteria/${created.id}`, {
+      nameAr: 'الدقة في العمل',
+      nameEn: created.nameEn,
+      sortOrder: 1,
+      isActive: true,
+    });
+
+    const { rows } = await withDb((db) =>
+      db.query('SELECT name, weight FROM evaluation_criteria WHERE id = $1', [created.id]),
+    );
+    expect(rows).toEqual([{ name: 'الدقة في العمل', weight: null }]);
+  });
+
+  it('both names are required (400), with the C# validation messages', async () => {
+    const { client } = await signInStaff(api, 'Admin');
+    const response = await client.post('/api/admin/evaluation-criteria', { nameAr: 'الانضباط', sortOrder: 1 });
+    expect(response.status).toBe(400);
+    expect((await body(response)).errors).toEqual({ NameEn: ['The NameEn field is required.'] });
+
+    const blank = await client.post('/api/admin/evaluation-criteria', {
+      nameAr: '  ',
+      nameEn: 'Discipline',
+      sortOrder: 1,
+    });
+    expect(blank.status).toBe(400);
+  });
+
+  it.each([
+    ['missing', {}, { IsActive: ['The IsActive field is required.'] }],
+    ['null', { isActive: null }, { IsActive: ['The IsActive field is required.'] }],
+    [
+      'a string',
+      { isActive: 'true' },
+      {
+        request: ['The request field is required.'],
+        '$.isActive': [
+          'The JSON value could not be converted to Ims.Application.Admin.EvaluationCriteria.UpdateEvaluationCriterionRequest. Path: $.isActive.',
+        ],
+      },
+    ],
+  ])('an update with isActive %s is refused (400) and changes nothing', async (_case, flag, errors) => {
+    const { client } = await signInStaff(api, 'Admin');
+    const created = await body(
+      await client.post('/api/admin/evaluation-criteria', {
+        nameAr: unique('الدقة'),
+        nameEn: unique('Accuracy'),
+        sortOrder: 1,
+      }),
+    );
+
+    const response = await client.put(`/api/admin/evaluation-criteria/${created.id}`, {
+      nameAr: created.nameAr,
+      nameEn: 'Changed',
+      sortOrder: 2,
+      ...flag,
+    });
+
+    expect(response.status).toBe(400);
+    expect((await body(response)).errors).toEqual(errors);
+    const list = await body<{ id: string }[]>(await client.get('/api/admin/evaluation-criteria'));
+    expect(list.find((c) => c.id === created.id)).toEqual(created);
+  });
+
+  it('a body with only the legacy name and weight is rejected (400)', async () => {
+    const { client } = await signInStaff(api, 'Admin');
+    const response = await client.post('/api/admin/evaluation-criteria', { name: 'Legacy', weight: 1, sortOrder: 1 });
+    expect(response.status).toBe(400);
+  });
+
+  it('an unchanged save writes nothing', async () => {
+    const { client } = await signInStaff(api, 'Admin');
+    const created = await body(
+      await client.post('/api/admin/evaluation-criteria', {
+        nameAr: unique('الثبات'),
+        nameEn: unique('Steady'),
+        sortOrder: 1,
+      }),
+    );
+    const response = await client.put(`/api/admin/evaluation-criteria/${created.id}`, {
+      nameAr: created.nameAr,
+      nameEn: created.nameEn,
+      sortOrder: 1,
+      isActive: true,
+    });
+    expect(response.status).toBe(200);
+
+    const { rows } = await withDb((db) =>
+      db.query("SELECT operation FROM audit_logs WHERE table_name = 'evaluation_criteria' AND entity_id = $1", [
+        created.id,
+      ]),
+    );
+    expect(rows.map((r) => r.operation)).toEqual(['INSERT']);
   });
 
   it('numbers may be sent as strings (System.Text.Json web defaults)', async () => {
     const { client } = await signInStaff(api, 'Admin');
     const response = await client.post('/api/admin/evaluation-criteria', {
-      name: unique('Strings'),
-      weight: '1.5',
+      nameAr: unique('سلاسل'),
+      nameEn: unique('Strings'),
       sortOrder: '4',
     });
     expect(response.status).toBe(201);
-    expect(await body(response)).toMatchObject({ weight: 1.5, sortOrder: 4 });
+    expect(await body(response)).toMatchObject({ sortOrder: 4, isActive: true });
   });
 });
 
@@ -305,7 +428,11 @@ describe('database integrity (PDF §6, §8): roles, audit log, no hard deletes',
     await signInTrainee(api);
     const { client } = await signInStaff(api, 'Admin');
     await client.post('/api/admin/fields', { name: unique('Seed') });
-    await client.post('/api/admin/evaluation-criteria', { name: unique('Seed'), weight: 1, sortOrder: 1 });
+    await client.post('/api/admin/evaluation-criteria', {
+      nameAr: unique('بذرة'),
+      nameEn: unique('Seed'),
+      sortOrder: 1,
+    });
 
     const error = await withDb((db) =>
       db.query(sql).then(

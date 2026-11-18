@@ -53,9 +53,12 @@ const IMAGE_ACTIONS = { uploaded: 'Uploaded', replaced: 'Replaced', removed: 'Re
 
 /** The properties an update may name, per table (column → property code shown in the description). */
 const CRITERION_PROPERTIES: Record<string, string> = {
-  name: 'criterion.name',
-  weight: 'criterion.weight',
+  name: 'criterion.name', // before AD-66 the only name; now kept equal to name_ar
+  weight: 'criterion.weight', // before AD-66 only
   sort_order: 'criterion.order',
+  name_ar: 'criterion.nameAr',
+  name_en: 'criterion.nameEn',
+  is_active: 'criterion.active',
 };
 const INTERVAL_PROPERTIES: Record<string, string> = {
   training_ending_notice_days: 'intervals.trainingEnding',
@@ -318,10 +321,12 @@ function describeUpdated(table: AuditedTable, facts: Facts, changed: string[] | 
         ? { event: alone ? 'field.activated' : 'field.updatedActivated' }
         : { event: alone ? 'field.deactivated' : 'field.updatedDeactivated' };
     }
-    case 'evaluation_criteria':
-      return onlyChanged(changed, Object.keys(CRITERION_PROPERTIES))
-        ? { event: 'criterion.changed', params: { changes: changed.map((c) => CRITERION_PROPERTIES[c]!) } }
-        : null;
+    case 'evaluation_criteria': {
+      if (!onlyChanged(changed, Object.keys(CRITERION_PROPERTIES))) return null;
+      // The legacy name follows the Arabic name (AD-66): one change, listed once.
+      const shown = changed.includes('name_ar') ? changed.filter((c) => c !== 'name') : changed;
+      return { event: 'criterion.changed', params: { changes: shown.map((c) => CRITERION_PROPERTIES[c]!) } };
+    }
     case 'notification_settings':
       return onlyChanged(changed, Object.keys(INTERVAL_PROPERTIES))
         ? { event: 'intervals.changed', params: { changes: changed.map((c) => INTERVAL_PROPERTIES[c]!) } }

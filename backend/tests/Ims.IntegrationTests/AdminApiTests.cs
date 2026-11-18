@@ -100,28 +100,47 @@ public sealed class AdminApiTests(ImsApiFactory factory) : IClassFixture<ImsApiF
     // ── Evaluation criteria ──────────────────────────────────────────────────
 
     [Fact]
-    public async Task Admin_manages_evaluation_criteria_and_weights_in_order()
+    public async Task Admin_manages_bilingual_evaluation_criteria_in_order()
     {
         using var admin = factory.CreateClient("Admin");
         var second = await ReadAsync<EvaluationCriterionDto>(
-            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new SaveEvaluationCriterionRequest(Unique("Teamwork"), 1, 2), _ct), HttpStatusCode.Created);
+            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest(Unique("العمل الجماعي"), Unique("Teamwork"), 2), _ct), HttpStatusCode.Created);
         var first = await ReadAsync<EvaluationCriterionDto>(
-            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new SaveEvaluationCriterionRequest(Unique("Technical"), 3, 1), _ct), HttpStatusCode.Created);
+            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest(Unique("المهارات التقنية"), Unique("Technical"), 1), _ct), HttpStatusCode.Created);
+        Assert.True(second.IsActive);
 
         var updated = await ReadAsync<EvaluationCriterionDto>(
-            await admin.PutAsJsonAsync($"/api/admin/evaluation-criteria/{second.Id}", new SaveEvaluationCriterionRequest(second.Name, 2.5m, 2), _ct));
-        Assert.Equal(2.5m, updated.Weight);
+            await admin.PutAsJsonAsync($"/api/admin/evaluation-criteria/{second.Id}", new UpdateEvaluationCriterionRequest(second.NameAr, "Team work", 2, false), _ct));
+        Assert.Equal(("Team work", false), (updated.NameEn, updated.IsActive));
 
         var list = (await admin.GetFromJsonAsync<List<EvaluationCriterionDto>>("/api/admin/evaluation-criteria", Json, _ct))!;
         Assert.True(list.FindIndex(c => c.Id == first.Id) < list.FindIndex(c => c.Id == second.Id));
     }
 
+    [Theory]
+    [InlineData("""{"nameAr":"الدقة","nameEn":"Changed","sortOrder":2}""")]
+    [InlineData("""{"nameAr":"الدقة","nameEn":"Changed","sortOrder":2,"isActive":null}""")]
+    [InlineData("""{"nameAr":"الدقة","nameEn":"Changed","sortOrder":2,"isActive":"true"}""")]
+    public async Task A_criterion_update_without_a_boolean_isActive_is_refused_and_changes_nothing(string json)
+    {
+        using var admin = factory.CreateClient("Admin");
+        var created = await ReadAsync<EvaluationCriterionDto>(
+            await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest("الدقة", Unique("Accuracy"), 1), _ct), HttpStatusCode.Created);
+
+        var response = await admin.PutAsync(
+            $"/api/admin/evaluation-criteria/{created.Id}", new StringContent(json, System.Text.Encoding.UTF8, "application/json"), _ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var list = (await admin.GetFromJsonAsync<List<EvaluationCriterionDto>>("/api/admin/evaluation-criteria", Json, _ct))!;
+        Assert.Equal(created, list.Single(c => c.Id == created.Id));
+    }
+
     [Fact]
-    public async Task A_criterion_weight_must_be_positive()
+    public async Task A_criterion_needs_an_english_name()
     {
         using var admin = factory.CreateClient("Admin");
 
-        var response = await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new SaveEvaluationCriterionRequest("Zero", 0, 1), _ct);
+        var response = await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new { nameAr = "الانضباط", sortOrder = 1 }, _ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -209,7 +228,7 @@ public sealed class AdminApiTests(ImsApiFactory factory) : IClassFixture<ImsApiF
         await SeedEmployeeAsync();
         using var admin = factory.CreateClient("Admin");
         await admin.PostAsJsonAsync("/api/admin/fields", new CreateFieldRequest(Unique("Seed"), null), _ct);
-        await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new SaveEvaluationCriterionRequest(Unique("Seed"), 1, 1), _ct);
+        await admin.PostAsJsonAsync("/api/admin/evaluation-criteria", new CreateEvaluationCriterionRequest(Unique("بذرة"), Unique("Seed"), 1), _ct);
         await using var connection = new NpgsqlConnection(factory.ConnectionString);
         await connection.OpenAsync(_ct);
         await using var command = new NpgsqlCommand(sql, connection);

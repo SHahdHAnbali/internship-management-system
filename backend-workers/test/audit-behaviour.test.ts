@@ -28,14 +28,15 @@ const auditOf = (where: string, params: unknown[]) =>
 describe('audit: Admin configuration', () => {
   it('an evaluation criterion update records the Admin and only the changed values, before and after', async () => {
     const admin = await signInStaff(api, 'Admin');
-    const name = unique('Criterion');
+    const nameAr = unique('معيار');
     const created = await body<{ id: string }>(
-      await admin.client.post('/api/admin/evaluation-criteria', { name, weight: 1, sortOrder: 1 }),
+      await admin.client.post('/api/admin/evaluation-criteria', { nameAr, nameEn: 'Criterion', sortOrder: 1 }),
     );
     const updated = await admin.client.put(`/api/admin/evaluation-criteria/${created.id}`, {
-      name,
-      weight: 2.5,
+      nameAr,
+      nameEn: 'Criterion B',
       sortOrder: 3,
+      isActive: true,
     });
     expect(updated.status).toBe(200);
 
@@ -45,12 +46,10 @@ describe('audit: Admin configuration', () => {
       ['UPDATE', 'Staff', admin.user.id],
     ]);
     const update = rows[1]!;
-    // Only what changed (the name did not); numbers as stored.
-    expect(Object.keys(update.new_values).sort()).toEqual(['sort_order', 'weight']);
-    expect(Number(update.old_values!.weight)).toBe(1);
-    expect(Number(update.new_values.weight)).toBe(2.5);
-    expect(update.old_values!.sort_order).toBe(1);
-    expect(update.new_values.sort_order).toBe(3);
+    // Only what changed (the Arabic name and the active flag did not).
+    expect(Object.keys(update.new_values).sort()).toEqual(['name_en', 'sort_order']);
+    expect(update.old_values).toEqual({ name_en: 'Criterion', sort_order: 1 });
+    expect(update.new_values).toEqual({ name_en: 'Criterion B', sort_order: 3 });
   });
 });
 

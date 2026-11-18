@@ -63,6 +63,15 @@ describe('describeEntry', () => {
     ],
     [
       event(
+        'criterion.changed',
+        { changes: ['criterion.active', 'criterion.nameAr', 'criterion.nameEn'] },
+        { table: 'evaluation_criteria' },
+      ),
+      'An evaluation criterion was changed (active status, Arabic name, English name)',
+      'تم تعديل معيار تقييم (حالة التفعيل، الاسم بالعربية، الاسم بالإنجليزية)',
+    ],
+    [
+      event(
         'assignment.statusChanged',
         { fromAssignmentStatus: 'Active', toAssignmentStatus: 'Completed' },
         { table: 'assignments' },

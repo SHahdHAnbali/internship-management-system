@@ -35,7 +35,7 @@ export class AdminPreviewStore {
       case 'GET evaluation-criteria':
         return this.ok(
           [...this.data.criteria].sort(
-            (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+            (a, b) => a.sortOrder - b.sortOrder || a.nameAr.localeCompare(b.nameAr),
           ),
         );
       case 'POST evaluation-criteria':
@@ -93,20 +93,33 @@ export class AdminPreviewStore {
   }
 
   private saveCriterion(id: string | null, body: Record<string, unknown>) {
-    const name = typeof body['name'] === 'string' ? body['name'].trim() : '';
-    const weight = Number(body['weight']);
+    const text = (key: string) => (typeof body[key] === 'string' ? body[key].trim() : '');
+    const nameAr = text('nameAr');
+    const nameEn = text('nameEn');
     const sortOrder = Number(body['sortOrder']);
-    if (!name || name.length > 200 || !(weight > 0) || !Number.isInteger(sortOrder))
+    if (
+      !nameAr ||
+      !nameEn ||
+      nameAr.length > 200 ||
+      nameEn.length > 200 ||
+      !Number.isInteger(sortOrder)
+    )
       return this.error(400);
 
     if (id) {
       const existing = this.data.criteria.find((c) => c.id === id);
       if (!existing) return this.error(404);
-      Object.assign(existing, { name, weight, sortOrder });
+      Object.assign(existing, { nameAr, nameEn, sortOrder, isActive: body['isActive'] === true });
       return this.ok(existing);
     }
 
-    const criterion = { id: `pv-crit-${crypto.randomUUID()}`, name, weight, sortOrder };
+    const criterion = {
+      id: `pv-crit-${crypto.randomUUID()}`,
+      nameAr,
+      nameEn,
+      sortOrder,
+      isActive: true,
+    };
     this.data.criteria.push(criterion);
     return this.ok(criterion, 201);
   }

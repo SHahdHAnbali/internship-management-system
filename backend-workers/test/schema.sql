@@ -726,3 +726,37 @@ VALUES ('20261115103328_PendingReminders', '10.0.13');
 
 COMMIT;
 
+START TRANSACTION;
+ALTER TABLE evaluation_criteria DROP CONSTRAINT ck_evaluation_criteria_weight;
+
+ALTER TABLE evaluation_criteria ALTER COLUMN weight DROP NOT NULL;
+
+ALTER TABLE evaluation_criteria ALTER COLUMN name DROP NOT NULL;
+
+ALTER TABLE evaluation_criteria ADD is_active boolean NOT NULL DEFAULT FALSE;
+
+ALTER TABLE evaluation_criteria ADD name_ar character varying(200);
+
+ALTER TABLE evaluation_criteria ADD name_en character varying(200);
+
+UPDATE evaluation_criteria
+   SET name_ar = name,
+       name_en = CASE name
+                     WHEN 'التزام بالمواعيد' THEN 'Punctuality'
+                     WHEN 'التزام بالوقت (تنفيذ المهام)' THEN 'Timely Task Completion'
+                     WHEN 'حضور وغياب' THEN 'Attendance and Absence'
+                     ELSE name
+                 END,
+       is_active = true;
+
+ALTER TABLE evaluation_criteria ALTER COLUMN name_ar SET NOT NULL;
+
+ALTER TABLE evaluation_criteria ALTER COLUMN name_en SET NOT NULL;
+
+ALTER TABLE evaluation_criteria ADD CONSTRAINT ck_evaluation_criteria_weight CHECK (weight IS NULL OR weight > 0);
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261118181152_EvaluationCriteriaBilingual', '10.0.13');
+
+COMMIT;
+

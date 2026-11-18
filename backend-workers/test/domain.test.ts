@@ -53,12 +53,28 @@ describe('Admin domain', () => {
     expect(fieldValues(` ${'x'.repeat(100)} `, null, true).name).toHaveLength(100); // trimmed before the check
   });
 
-  it.each([0, -1])('a criterion weight of %s is rejected', (weight) => {
-    expect(domainError(() => criterionValues('Teamwork', weight, 1)).code).toBe('validation.range');
+  it('a criterion has an Arabic and an English name, trimmed, an order and an active flag (AD-66, no weight)', () => {
+    expect(criterionValues(' العمل الجماعي ', ' Teamwork ', 2, false)).toEqual({
+      nameAr: 'العمل الجماعي',
+      nameEn: 'Teamwork',
+      sortOrder: 2,
+      isActive: false,
+    });
   });
 
-  it('criteria keep name, weight and order', () => {
-    expect(criterionValues('Communication', 1, 1)).toEqual({ name: 'Communication', weight: 1, sortOrder: 1 });
+  it.each([
+    ['  ', 'Teamwork', 'Arabic name is required.'],
+    ['العمل الجماعي', null, 'English name is required.'],
+  ])('a criterion needs both names (%j, %j)', (nameAr, nameEn, message) => {
+    expect(domainError(() => criterionValues(nameAr, nameEn, 1, true))).toMatchObject({
+      code: 'validation.required',
+      message,
+    });
+  });
+
+  it('a criterion name is at most 200 characters', () => {
+    expect(domainError(() => criterionValues('x'.repeat(201), 'Teamwork', 1, true)).code).toBe('validation.too_long');
+    expect(domainError(() => criterionValues('س', 'x'.repeat(201), 1, true)).code).toBe('validation.too_long');
   });
 
   it('notification intervals must be at least one day', () => {

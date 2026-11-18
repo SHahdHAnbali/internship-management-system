@@ -37,11 +37,15 @@ public class ImsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public string ConnectionString => _database.GetConnectionString();
 
+    /// <summary>The migration the database starts at; null (default) is the latest. Migration tests start earlier.</summary>
+    protected virtual string? InitialMigration => null;
+
     public async ValueTask InitializeAsync()
     {
         await _database.StartAsync();
         await using var scope = Services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>().Database;
+        await (InitialMigration is null ? database.MigrateAsync() : database.MigrateAsync(InitialMigration));
     }
 
     public override async ValueTask DisposeAsync()

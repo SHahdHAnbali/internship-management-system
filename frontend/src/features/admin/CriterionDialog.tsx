@@ -1,35 +1,35 @@
 import { useState, type FormEvent } from 'react';
 import { Dialog } from '../../components/Dialog';
 import { useI18n } from '../../i18n/context';
-import type { EvaluationCriterion, SaveEvaluationCriterionRequest } from './models';
+import type { CreateEvaluationCriterionRequest, EvaluationCriterion } from './models';
 
-/** Create or edit an evaluation criterion: name, weight, order (PDF §8). */
+/** Create or edit an evaluation criterion (AD-66): Arabic and English names and order; no weights. */
 export function CriterionDialog({
   criterion,
   onSave,
   onClose,
 }: {
   criterion: EvaluationCriterion | null;
-  onSave: (value: SaveEvaluationCriterionRequest) => void;
+  onSave: (value: CreateEvaluationCriterionRequest) => void;
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const [name, setName] = useState(criterion?.name ?? '');
-  const [weight, setWeight] = useState(String(criterion?.weight ?? 1));
+  const [nameAr, setNameAr] = useState(criterion?.nameAr ?? '');
+  const [nameEn, setNameEn] = useState(criterion?.nameEn ?? '');
   const [sortOrder, setSortOrder] = useState(String(criterion?.sortOrder ?? 1));
   const [touched, setTouched] = useState(false);
 
   const errors = {
-    name: name.trim() ? null : 'admin.validation.required',
-    weight: Number(weight) > 0 ? null : 'admin.validation.positive',
+    nameAr: nameAr.trim() ? null : 'admin.validation.required',
+    nameEn: nameEn.trim() ? null : 'admin.validation.required',
     sortOrder: /^-?\d+$/.test(sortOrder.trim()) ? null : 'admin.validation.integer',
   };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setTouched(true);
-    if (errors.name || errors.weight || errors.sortOrder) return;
-    onSave({ name: name.trim(), weight: Number(weight), sortOrder: Number(sortOrder) });
+    if (errors.nameAr || errors.nameEn || errors.sortOrder) return;
+    onSave({ nameAr: nameAr.trim(), nameEn: nameEn.trim(), sortOrder: Number(sortOrder) });
   };
 
   const field = (id: keyof typeof errors, label: string, input: React.ReactNode) => (
@@ -59,31 +59,32 @@ export function CriterionDialog({
     >
       <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
         {field(
-          'name',
-          t('admin.criteria.name'),
+          'nameAr',
+          t('admin.criteria.nameAr'),
           <input
-            id="criterion-name"
+            id="criterion-nameAr"
             className="ims-input"
-            value={name}
+            lang="ar"
+            dir="rtl"
+            value={nameAr}
             maxLength={200}
             autoFocus
-            {...invalid('name')}
-            onChange={(e) => setName(e.target.value)}
+            {...invalid('nameAr')}
+            onChange={(e) => setNameAr(e.target.value)}
           />,
         )}
         {field(
-          'weight',
-          t('admin.criteria.weight'),
+          'nameEn',
+          t('admin.criteria.nameEn'),
           <input
-            id="criterion-weight"
+            id="criterion-nameEn"
             className="ims-input"
-            type="number"
-            min="0"
-            step="any"
+            lang="en"
             dir="ltr"
-            value={weight}
-            {...invalid('weight')}
-            onChange={(e) => setWeight(e.target.value)}
+            value={nameEn}
+            maxLength={200}
+            {...invalid('nameEn')}
+            onChange={(e) => setNameEn(e.target.value)}
           />,
         )}
         {field(

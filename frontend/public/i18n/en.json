@@ -42,7 +42,6 @@
     },
     "validation": {
       "required": "This field is required",
-      "positive": "The value must be greater than zero",
       "integer": "The value must be a whole number",
       "days": "Enter a number of days between 1 and 365"
     },
@@ -56,11 +55,12 @@
       "empty": "No fields yet"
     },
     "criteria": {
-      "title": "Evaluation criteria and weights",
+      "title": "Evaluation criteria",
       "add": "Add criterion",
       "edit": "Edit criterion",
-      "name": "Name",
-      "weight": "Weight",
+      "nameAr": "Arabic name",
+      "nameEn": "English name",
+      "active": "Active",
       "order": "Order",
       "empty": "No criteria yet"
     },
@@ -347,7 +347,10 @@
         "criterion": {
           "name": "name",
           "weight": "weight",
-          "order": "order"
+          "order": "order",
+          "nameAr": "Arabic name",
+          "nameEn": "English name",
+          "active": "active status"
         },
         "intervals": {
           "trainingEnding": "training ending soon notice",

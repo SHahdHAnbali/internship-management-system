@@ -62,22 +62,39 @@ public sealed class AdminDomainTests
         Assert.Throws<DomainException>(() => Field.Create("  ", null));
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void A_criterion_weight_must_be_positive(decimal weight)
+    [Fact]
+    public void A_new_criterion_has_both_names_its_order_and_is_active()
     {
-        Assert.Throws<DomainException>(() => EvaluationCriterion.Create("Teamwork", weight, 1));
+        var criterion = EvaluationCriterion.Create(" العمل الجماعي ", " Teamwork ", 3);
+
+        Assert.Equal(("العمل الجماعي", "Teamwork", 3, true), (criterion.NameAr, criterion.NameEn, criterion.SortOrder, criterion.IsActive));
     }
 
     [Fact]
-    public void Criteria_keep_name_weight_and_order()
+    public void A_criterion_update_changes_names_order_and_active_flag()
     {
-        var criterion = EvaluationCriterion.Create("Teamwork", 2.5m, 3);
+        var criterion = EvaluationCriterion.Create("العمل الجماعي", "Teamwork", 3);
 
-        criterion.Update("Communication", 1, 1);
+        criterion.Update("التواصل", "Communication", 1, isActive: false);
 
-        Assert.Equal(("Communication", 1m, 1), (criterion.Name, criterion.Weight, criterion.SortOrder));
+        Assert.Equal(("التواصل", "Communication", 1, false), (criterion.NameAr, criterion.NameEn, criterion.SortOrder, criterion.IsActive));
+    }
+
+    [Theory]
+    [InlineData("  ", "Teamwork")]
+    [InlineData("العمل الجماعي", "")]
+    public void A_criterion_needs_an_arabic_and_an_english_name(string nameAr, string nameEn)
+    {
+        var error = Assert.Throws<DomainException>(() => EvaluationCriterion.Create(nameAr, nameEn, 1));
+
+        Assert.Equal("validation.required", error.Code);
+    }
+
+    [Fact]
+    public void A_criterion_name_is_at_most_200_characters()
+    {
+        Assert.Throws<DomainException>(() => EvaluationCriterion.Create(new string('a', 201), "Teamwork", 1));
+        Assert.Throws<DomainException>(() => EvaluationCriterion.Create("العمل الجماعي", new string('a', 201), 1));
     }
 
     [Fact]

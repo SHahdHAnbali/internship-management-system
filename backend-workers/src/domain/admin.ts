@@ -25,19 +25,26 @@ export function fieldValues(name: string | null, description: string | null, isA
   };
 }
 
-/** A fixed evaluation criterion: name, weight (> 0) and display order. */
+/** An evaluation criterion (AD-66): Arabic and English names, display order, active flag; no weights. */
 export interface CriterionValues {
-  name: string;
-  weight: number;
+  nameAr: string;
+  nameEn: string;
   sortOrder: number;
+  isActive: boolean;
 }
 
-export function criterionValues(name: string | null, weight: number, sortOrder: number): CriterionValues {
-  if (weight <= 0) {
-    throw new DomainError('validation.range', 'Weight must be greater than zero.');
-  }
-
-  return { name: required(name, 'Name', CRITERION_NAME_MAX_LENGTH), weight, sortOrder };
+export function criterionValues(
+  nameAr: string | null,
+  nameEn: string | null,
+  sortOrder: number,
+  isActive: boolean,
+): CriterionValues {
+  return {
+    nameAr: required(nameAr, 'Arabic name', CRITERION_NAME_MAX_LENGTH),
+    nameEn: required(nameEn, 'English name', CRITERION_NAME_MAX_LENGTH),
+    sortOrder,
+    isActive,
+  };
 }
 
 /** First Google sign-in creates the staff account with the Employee role; higher roles come only from an Admin. */

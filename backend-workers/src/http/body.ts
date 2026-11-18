@@ -18,6 +18,7 @@ export interface PropertySpec {
   /** The C# property name (PascalCase); the JSON name is its camelCase form. */
   name: string;
   kind: PropertyKind;
+  /** [Required]. On a `bool` it is C#'s `[Required] bool?`: missing or null is "required", never a silent false. */
   required?: boolean;
   maxLength?: number;
   /** [Range(min, max)] with the bounds as written in C# (used in the message). */
@@ -74,7 +75,13 @@ export async function bindJson<T>(request: Request, schema: RequestSchema, trace
   const bound: Bound = {};
   for (const property of schema.properties) {
     const entry = supplied.get(property.name.toLowerCase());
-    const converted = entry === undefined ? defaultValue(property.kind) : convert(property.kind, entry.value);
+    const requiredBool = property.required && property.kind === 'bool';
+    const converted =
+      entry === undefined || (requiredBool && entry.value === null)
+        ? requiredBool
+          ? null
+          : defaultValue(property.kind)
+        : convert(property.kind, entry.value);
     if (converted === CONVERSION_FAILED) {
       const path = `$.${entry!.key}`;
       return fail({ request: [REQUEST_REQUIRED], [path]: [conversionMessage(schema, path)] }, traceId);
@@ -160,10 +167,12 @@ function validate(property: PropertySpec, value: Bound[string]): string[] {
   const messages: string[] = [];
   const missingRole = property.kind === 'role' && value === undefined;
   const missingObject = property.required && property.kind === 'object' && value === null;
+  const missingBool = property.required && property.kind === 'bool' && value === null;
   if (
     (property.required && property.kind === 'string' && isNullOrWhiteSpace(value as string | null)) ||
     missingRole ||
-    missingObject
+    missingObject ||
+    missingBool
   ) {
     // A missing role is rejected (C# would bind default(UserRole) = Admin). See README.md, "Deliberate differences".
     messages.push(`The ${property.name} field is required.`);

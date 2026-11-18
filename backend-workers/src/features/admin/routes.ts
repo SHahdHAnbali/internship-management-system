@@ -18,7 +18,7 @@ import { endpointFailure, json, statusProblem } from '../../http/problems';
 import { routeId, type Route } from '../../http/routes';
 
 /**
- * The Admin module (`/api/admin`, Admin role only): training fields, evaluation criteria and weights, users and roles,
+ * The Admin module (`/api/admin`, Admin role only): training fields, evaluation criteria (AD-66), users and roles,
  * notification intervals (PDF §2, §4, §7). Mirrors Ims.Api.Controllers.Admin and Ims.Application.Admin.
  */
 const createFieldRequest: RequestSchema = {
@@ -34,13 +34,18 @@ const updateFieldRequest: RequestSchema = {
   properties: [...createFieldRequest.properties, { name: 'IsActive', kind: 'bool' }],
 };
 
-const saveCriterionRequest: RequestSchema = {
-  typeName: 'Ims.Application.Admin.EvaluationCriteria.SaveEvaluationCriterionRequest',
+const createCriterionRequest: RequestSchema = {
+  typeName: 'Ims.Application.Admin.EvaluationCriteria.CreateEvaluationCriterionRequest',
   properties: [
-    { name: 'Name', kind: 'string', required: true, maxLength: CRITERION_NAME_MAX_LENGTH },
-    { name: 'Weight', kind: 'decimal', range: { min: 0.0001, max: 99999, minText: '0.0001', maxText: '99999' } },
+    { name: 'NameAr', kind: 'string', required: true, maxLength: CRITERION_NAME_MAX_LENGTH },
+    { name: 'NameEn', kind: 'string', required: true, maxLength: CRITERION_NAME_MAX_LENGTH },
     { name: 'SortOrder', kind: 'int' },
   ],
+};
+
+const updateCriterionRequest: RequestSchema = {
+  typeName: 'Ims.Application.Admin.EvaluationCriteria.UpdateEvaluationCriterionRequest',
+  properties: [...createCriterionRequest.properties, { name: 'IsActive', kind: 'bool', required: true }],
 };
 
 const changeRoleRequest: RequestSchema = {
@@ -68,11 +73,20 @@ interface FieldRow {
 
 interface CriterionRow {
   id: string;
-  name: string;
-  weight: string;
+  name_ar: string;
+  name_en: string;
   sort_order: number;
+  is_active: boolean;
   version: string;
 }
+
+const criterionJson = (r: CriterionRow) => ({
+  id: r.id,
+  nameAr: r.name_ar,
+  nameEn: r.name_en,
+  sortOrder: r.sort_order,
+  isActive: r.is_active,
+});
 
 interface EmployeeRow {
   id: string;
@@ -158,16 +172,18 @@ export const adminRoutes: Route[] = [
     },
   },
 
-  // ── Evaluation criteria: name, weight (> 0), order ──
+  // ── Evaluation criteria (AD-66): Arabic and English names, order, active flag; no weights ──
+  // shortcut: the legacy `name` column is kept equal to the Arabic name and `weight` is no longer written, so a rollback
+  // to the Worker before AD-66 still shows the current names; stop writing `name` once that rollback is no longer needed.
   {
     method: 'GET',
     path: '/api/admin/evaluation-criteria',
     policy: 'Admin',
     async handle(c) {
       const { rows } = await c.var.db.query<CriterionRow>(
-        'SELECT id, name, weight, sort_order FROM evaluation_criteria ORDER BY sort_order, name',
+        'SELECT id, name_ar, name_en, sort_order, is_active FROM evaluation_criteria ORDER BY sort_order, name_ar',
       );
-      return json(rows.map((r) => ({ id: r.id, name: r.name, weight: Number(r.weight), sortOrder: r.sort_order })));
+      return json(rows.map(criterionJson));
     },
   },
   {
@@ -175,24 +191,23 @@ export const adminRoutes: Route[] = [
     path: '/api/admin/evaluation-criteria',
     policy: 'Admin',
     async handle(c) {
-      const body = await bindJson<{ name: string; weight: number; sortOrder: number }>(
+      const body = await bindJson<{ nameAr: string; nameEn: string; sortOrder: number }>(
         c.req.raw,
-        saveCriterionRequest,
+        createCriterionRequest,
         c.var.traceId,
       );
       if (!body.ok) return body.response;
 
       const criterion = {
         id: uuidV7(c.var.deps.now()),
-        ...criterionValues(body.value.name, body.value.weight, body.value.sortOrder),
+        ...criterionValues(body.value.nameAr, body.value.nameEn, body.value.sortOrder, true),
       };
       await c.var.db.transaction(c.var.actor, (tx) =>
-        tx.query('INSERT INTO evaluation_criteria (id, name, weight, sort_order) VALUES ($1, $2, $3, $4)', [
-          criterion.id,
-          criterion.name,
-          criterion.weight,
-          criterion.sortOrder,
-        ]),
+        tx.query(
+          `INSERT INTO evaluation_criteria (id, name_ar, name_en, sort_order, is_active, name)
+           VALUES ($1, $2, $3, $4, $5, $2)`,
+          [criterion.id, criterion.nameAr, criterion.nameEn, criterion.sortOrder, criterion.isActive],
+        ),
       );
       return json(criterion, 201, { Location: `/api/admin/evaluation-criteria/${criterion.id}` });
     },
@@ -203,30 +218,34 @@ export const adminRoutes: Route[] = [
     policy: 'Admin',
     async handle(c) {
       const id = routeId(c);
-      const body = await bindJson<{ name: string; weight: number; sortOrder: number }>(
+      const body = await bindJson<{ nameAr: string; nameEn: string; sortOrder: number; isActive: boolean }>(
         c.req.raw,
-        saveCriterionRequest,
+        updateCriterionRequest,
         c.var.traceId,
       );
       if (!body.ok) return body.response;
 
       const current = await single<CriterionRow>(
         c.var.db,
-        'SELECT id, name, weight, sort_order, xmin::text AS version FROM evaluation_criteria WHERE id = $1',
+        `SELECT id, name_ar, name_en, sort_order, is_active, xmin::text AS version
+           FROM evaluation_criteria WHERE id = $1`,
         id,
         'EvaluationCriterion',
       );
-      const values = criterionValues(body.value.name, body.value.weight, body.value.sortOrder);
+      const values = criterionValues(body.value.nameAr, body.value.nameEn, body.value.sortOrder, body.value.isActive);
+      const stored = criterionJson(current);
       if (
-        values.name !== current.name ||
-        values.weight !== Number(current.weight) ||
-        values.sortOrder !== current.sort_order
+        values.nameAr !== stored.nameAr ||
+        values.nameEn !== stored.nameEn ||
+        values.sortOrder !== stored.sortOrder ||
+        values.isActive !== stored.isActive
       ) {
         await c.var.db.transaction(c.var.actor, (tx) =>
           updateOrConflict(
             tx,
-            'UPDATE evaluation_criteria SET name = $1, weight = $2, sort_order = $3 WHERE id = $4 AND xmin = $5::xid',
-            [values.name, values.weight, values.sortOrder, id, current.version],
+            `UPDATE evaluation_criteria SET name_ar = $1, name_en = $2, sort_order = $3, is_active = $4, name = $1
+              WHERE id = $5 AND xmin = $6::xid`,
+            [values.nameAr, values.nameEn, values.sortOrder, values.isActive, id, current.version],
           ),
         );
       }

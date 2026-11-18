@@ -8,11 +8,12 @@ import type {
   AcceptedTrainee,
   AuditFilters,
   AuditPage,
+  CreateEvaluationCriterionRequest,
   CreateFieldRequest,
   EvaluationCriterion,
   Field,
   NotificationSettings,
-  SaveEvaluationCriterionRequest,
+  UpdateEvaluationCriterionRequest,
   UpdateFieldRequest,
   User,
   UserRole,
@@ -27,9 +28,9 @@ export const adminApi = {
   updateField: (id: string, request: UpdateFieldRequest) =>
     apiRequest<Field>('PUT', `/admin/fields/${id}`, request),
   listCriteria: () => apiRequest<EvaluationCriterion[]>('GET', '/admin/evaluation-criteria'),
-  createCriterion: (request: SaveEvaluationCriterionRequest) =>
+  createCriterion: (request: CreateEvaluationCriterionRequest) =>
     apiRequest<EvaluationCriterion>('POST', '/admin/evaluation-criteria', request),
-  updateCriterion: (id: string, request: SaveEvaluationCriterionRequest) =>
+  updateCriterion: (id: string, request: UpdateEvaluationCriterionRequest) =>
     apiRequest<EvaluationCriterion>('PUT', `/admin/evaluation-criteria/${id}`, request),
   listUsers: () => apiRequest<User[]>('GET', '/admin/users'),
   changeUserRole: (id: string, role: UserRole) =>

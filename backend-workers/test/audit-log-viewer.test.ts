@@ -166,7 +166,11 @@ describe('audit log viewer: filters and pages', () => {
       isActive: true,
     });
     const criterion = await body<{ id: string }>(
-      await admin.client.post('/api/admin/evaluation-criteria', { name: unique('Criterion'), weight: 1, sortOrder: 1 }),
+      await admin.client.post('/api/admin/evaluation-criteria', {
+        nameAr: unique('معيار'),
+        nameEn: unique('Criterion'),
+        sortOrder: 1,
+      }),
     );
     await newField(otherAdmin.client);
     const ended = new Date(Date.now() + 1000).toISOString();
