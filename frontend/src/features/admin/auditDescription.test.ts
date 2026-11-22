@@ -13,7 +13,6 @@ const en = t(enMessages);
 const ar = t(arMessages);
 
 const entry = (overrides: Partial<AuditEntry> = {}): AuditEntry => ({
-  id: '1',
   occurredAt: '2031-02-03T10:15:00Z',
   actorType: 'Staff',
   actorId: null,

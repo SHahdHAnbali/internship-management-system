@@ -799,3 +799,79 @@ VALUES ('20261118202455_EvaluationCriteriaAutomaticOrder', '10.0.13');
 
 COMMIT;
 
+START TRANSACTION;
+CREATE TABLE evaluations (
+    id uuid NOT NULL,
+    application_id uuid NOT NULL,
+    assignment_id uuid NOT NULL,
+    status character varying(32) NOT NULL,
+    comment character varying(4000),
+    hiring_recommendation character varying(32),
+    version integer NOT NULL DEFAULT 0,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    submitted_by_id uuid,
+    submitted_at timestamp with time zone,
+    CONSTRAINT pk_evaluations PRIMARY KEY (id),
+    CONSTRAINT ck_evaluations_hiring_recommendation CHECK (hiring_recommendation IN ('Yes', 'Maybe', 'No')),
+    CONSTRAINT ck_evaluations_status CHECK (status IN ('Draft', 'Submitted')),
+    CONSTRAINT ck_evaluations_submission CHECK ((status = 'Draft' AND submitted_by_id IS NULL AND submitted_at IS NULL) OR (status = 'Submitted' AND submitted_by_id IS NOT NULL AND submitted_at IS NOT NULL)),
+    CONSTRAINT ck_evaluations_submitted_content CHECK (status <> 'Submitted' OR (comment IS NOT NULL AND comment ~ '\S' AND hiring_recommendation IS NOT NULL)),
+    CONSTRAINT ck_evaluations_version CHECK (version >= 0),
+    CONSTRAINT fk_evaluations_assignments_assignment_id FOREIGN KEY (assignment_id) REFERENCES assignments (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_evaluations_employees_submitted_by_id FOREIGN KEY (submitted_by_id) REFERENCES employees (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_evaluations_training_applications_application_id FOREIGN KEY (application_id) REFERENCES training_applications (id) ON DELETE RESTRICT
+);
+
+CREATE TABLE evaluation_corrections (
+    id uuid NOT NULL,
+    evaluation_id uuid NOT NULL,
+    corrected_by_id uuid NOT NULL,
+    corrected_at timestamp with time zone NOT NULL,
+    reason character varying(2000),
+    CONSTRAINT pk_evaluation_corrections PRIMARY KEY (id),
+    CONSTRAINT fk_evaluation_corrections_employees_corrected_by_id FOREIGN KEY (corrected_by_id) REFERENCES employees (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_evaluation_corrections_evaluations_evaluation_id FOREIGN KEY (evaluation_id) REFERENCES evaluations (id) ON DELETE RESTRICT
+);
+
+CREATE TABLE evaluation_scores (
+    id uuid NOT NULL,
+    evaluation_id uuid NOT NULL,
+    criterion_id uuid NOT NULL,
+    score smallint,
+    frozen_name_ar character varying(200),
+    frozen_name_en character varying(200),
+    frozen_sort_order integer,
+    CONSTRAINT pk_evaluation_scores PRIMARY KEY (id),
+    CONSTRAINT ck_evaluation_scores_frozen_scored CHECK (frozen_sort_order IS NULL OR score IS NOT NULL),
+    CONSTRAINT ck_evaluation_scores_score CHECK (score BETWEEN 1 AND 5),
+    CONSTRAINT ck_evaluation_scores_snapshot CHECK ((frozen_name_ar IS NULL) = (frozen_name_en IS NULL) AND (frozen_name_ar IS NULL) = (frozen_sort_order IS NULL)),
+    CONSTRAINT fk_evaluation_scores_evaluation_criteria_criterion_id FOREIGN KEY (criterion_id) REFERENCES evaluation_criteria (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_evaluation_scores_evaluations_evaluation_id FOREIGN KEY (evaluation_id) REFERENCES evaluations (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX ix_evaluation_corrections_corrected_by_id ON evaluation_corrections (corrected_by_id);
+
+CREATE INDEX ix_evaluation_corrections_evaluation_id ON evaluation_corrections (evaluation_id);
+
+CREATE INDEX ix_evaluation_scores_criterion_id ON evaluation_scores (criterion_id);
+
+CREATE UNIQUE INDEX ux_evaluation_scores_evaluation_id_criterion_id ON evaluation_scores (evaluation_id, criterion_id);
+
+CREATE INDEX ix_evaluations_assignment_id ON evaluations (assignment_id);
+
+CREATE INDEX ix_evaluations_submitted_by_id ON evaluations (submitted_by_id);
+
+CREATE UNIQUE INDEX ux_evaluations_application_id ON evaluations (application_id);
+
+SELECT ims_protect_table('evaluations');
+
+SELECT ims_protect_table('evaluation_scores');
+
+SELECT ims_protect_table('evaluation_corrections');
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261122124131_FinalEvaluations', '10.0.13');
+
+COMMIT;
+

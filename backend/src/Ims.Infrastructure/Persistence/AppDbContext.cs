@@ -28,6 +28,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<EvaluationCriterion> EvaluationCriteria => Set<EvaluationCriterion>();
 
+    public DbSet<Evaluation> Evaluations => Set<Evaluation>();
+
+    public DbSet<EvaluationScore> EvaluationScores => Set<EvaluationScore>();
+
+    public DbSet<EvaluationCorrection> EvaluationCorrections => Set<EvaluationCorrection>();
+
     public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
 
     public DbSet<PendingRequestReminder> PendingRequestReminders => Set<PendingRequestReminder>();

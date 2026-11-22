@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ADMIN_EXCLUDED_AUDIT_TABLES, ADMIN_VISIBLE_AUDIT_TABLES } from '../src/features/admin/auditDescriptions';
 import { AUDIT_PAGE_SIZE, AUDITED_TABLES } from '../src/features/admin/auditLogRoutes';
 import { body, createTestApi, signInStaff, signInTrainee, type TestClient, unique, withDb } from './helpers';
 import { newField, submitApplication } from './seed';
@@ -10,7 +11,6 @@ import { newField, submitApplication } from './seed';
 const api = createTestApi();
 
 interface Entry {
-  id: string;
   occurredAt: string;
   actorType: string;
   actorId: string | null;
@@ -20,6 +20,8 @@ interface Entry {
 }
 interface Page {
   hasMore: boolean;
+  /** The opaque Load More cursor (option A, owner 2026-11-22): null on the last page. */
+  nextCursor: string | null;
   entries: Entry[];
 }
 
@@ -32,14 +34,21 @@ const read = async (admin: TestClient, query = '') => {
 /** Every page for a query, following the Load More cursor. */
 async function readAll(admin: TestClient, query: string) {
   const pages: Page[] = [];
-  let before = '';
+  let cursor: string | null = null;
   for (;;) {
-    const page = await read(admin, `${query}${before ? `&before=${before}` : ''}`);
+    const page = await read(admin, `${query}${cursor ? `&cursor=${cursor}` : ''}`);
     pages.push(page);
+    expect(page.nextCursor === null, query).toBe(!page.hasMore);
     if (!page.hasMore) return pages;
-    before = page.entries.at(-1)!.id;
+    cursor = page.nextCursor;
   }
 }
+
+/** A problem body without its per-request trace id, to compare two refusals. */
+const problem = async (response: Response) => {
+  const { traceId: _traceId, ...rest } = await body<Record<string, unknown>>(response);
+  return rest;
+};
 
 describe('audit log viewer: what it returns', () => {
   it('lists audit entries newest first with exactly the safe metadata fields', async () => {
@@ -66,16 +75,22 @@ describe('audit log viewer: what it returns', () => {
         'actorType',
         'description',
         'entityId',
-        'id',
         'occurredAt',
         'operation',
         'table',
       ]);
-      expect(entry.id).toMatch(/^\d+$/);
       expect(new Date(entry.occurredAt).toISOString()).toBe(entry.occurredAt);
     }
-    expect(Number(page.entries[0]!.id)).toBeGreaterThan(Number(page.entries[1]!.id));
-    expect(Object.keys(page).sort()).toEqual(['entries', 'hasMore']);
+    expect(Object.keys(page).sort()).toEqual(['entries', 'hasMore', 'nextCursor']);
+    expect(page.nextCursor).toBeNull();
+    // The audit log's own sequential numbers never reach the Admin (option A): no value of the response is one.
+    const numbers = await withDb((db) =>
+      db.query<{ id: string }>("SELECT id::text FROM audit_logs WHERE actor_id = $1 AND table_name = 'fields'", [
+        admin.user.id,
+      ]),
+    );
+    const values = page.entries.flatMap((e) => Object.values(e).map(String));
+    for (const { id } of numbers.rows) expect(values).not.toContain(id);
   });
 
   it('never returns stored values, sign-in secrets, session or code ids, or file storage keys', async () => {
@@ -144,13 +159,32 @@ describe('audit log viewer: what it returns', () => {
     expect(attachments.entries[0]!.entityId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it('offers exactly the audited tables in its table filter', async () => {
+  it('knows every audited table, and offers all of them in its table filter except the final evaluation tables', async () => {
     const tables = await withDb((db) =>
       db.query<{ relname: string }>(
         "SELECT c.relname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid WHERE t.tgname = 'audit_row_change' ORDER BY 1",
       ),
     );
     expect([...AUDITED_TABLES]).toEqual(tables.rows.map((r) => r.relname));
+    // Owner decision of 2026-11-22 (AD-68 G4): evaluation events are recorded but never shown to the Admin.
+    expect([...ADMIN_EXCLUDED_AUDIT_TABLES]).toEqual(['evaluations', 'evaluation_scores', 'evaluation_corrections']);
+    expect([...ADMIN_VISIBLE_AUDIT_TABLES]).toEqual(
+      AUDITED_TABLES.filter((t) => !(ADMIN_EXCLUDED_AUDIT_TABLES as readonly string[]).includes(t)),
+    );
+    expect(ADMIN_VISIBLE_AUDIT_TABLES).toContain('evaluation_criteria');
+
+    const admin = await signInStaff(api, 'Admin');
+    for (const table of ADMIN_VISIBLE_AUDIT_TABLES) {
+      expect((await admin.client.get(`/api/admin/audit-logs?table=${table}`)).status, table).toBe(200);
+    }
+    // An excluded table is refused exactly like a table that does not exist: its existence is not revealed.
+    const unknown = await problem(await admin.client.get('/api/admin/audit-logs?table=no_such_table'));
+    expect(unknown).toMatchObject({ status: 400, code: 'validation.invalid' });
+    for (const table of ADMIN_EXCLUDED_AUDIT_TABLES) {
+      const response = await admin.client.get(`/api/admin/audit-logs?table=${table}&operation=INSERT`);
+      expect(response.status, table).toBe(400);
+      expect(await problem(response), table).toEqual(unknown);
+    }
   });
 });
 
@@ -205,7 +239,11 @@ describe('audit log viewer: filters and pages', () => {
     expect(made(await read(admin.client, `?${mine}&from=${encodeURIComponent(offset)}`))).toHaveLength(3);
 
     // Nothing matches: an empty history for those filters.
-    expect(await read(admin.client, `?actorId=${crypto.randomUUID()}`)).toEqual({ hasMore: false, entries: [] });
+    expect(await read(admin.client, `?actorId=${crypto.randomUUID()}`)).toEqual({
+      hasMore: false,
+      nextCursor: null,
+      entries: [],
+    });
   });
 
   it('pages newest first with Load More, without repeats or gaps', async () => {
@@ -216,46 +254,55 @@ describe('audit log viewer: filters and pages', () => {
     const pages = await readAll(admin.client, `?actorId=${admin.user.id}&table=fields`);
     expect(pages.map((p) => p.entries.length)).toEqual([AUDIT_PAGE_SIZE, 7]);
     expect(pages.map((p) => p.hasMore)).toEqual([true, false]);
-    const ids = pages.flatMap((p) => p.entries.map((e) => Number(e.id)));
-    expect(new Set(ids).size).toBe(created);
-    expect(ids).toEqual([...ids].sort((a, b) => b - a));
+    expect(pages[0]!.nextCursor).toMatch(/^c1\.[A-Za-z0-9_-]{71}$/);
+    const records = pages.flatMap((p) => p.entries.map((e) => e.entityId));
+    expect(new Set(records).size).toBe(created);
 
-    // The same records as the database holds for this actor and table.
+    // Exactly the records the database holds for this actor and table, in the audit log's own order (newest first).
     const expected = await withDb((db) =>
-      db.query<{ id: string }>(
-        "SELECT id::text FROM audit_logs WHERE actor_id = $1 AND table_name = 'fields' ORDER BY audit_logs.id DESC",
+      db.query<{ entity_id: string }>(
+        "SELECT entity_id::text FROM audit_logs WHERE actor_id = $1 AND table_name = 'fields' ORDER BY audit_logs.id DESC",
         [admin.user.id],
       ),
     );
-    expect(ids.map(String)).toEqual(expected.rows.map((r) => r.id));
+    expect(records).toEqual(expected.rows.map((r) => r.entity_id));
 
     // A new record while paging does not shift the older pages.
-    const firstPage = pages[0]!;
     await newField(admin.client);
-    const second = await read(
-      admin.client,
-      `?actorId=${admin.user.id}&table=fields&before=${firstPage.entries.at(-1)!.id}`,
-    );
-    expect(second.entries.map((e) => e.id)).toEqual(pages[1]!.entries.map((e) => e.id));
+    const second = await read(admin.client, `?actorId=${admin.user.id}&table=fields&cursor=${pages[0]!.nextCursor}`);
+    expect(second.entries).toEqual(pages[1]!.entries);
   });
 
-  it('orders by the audit number as a number, across 99 → 100', async () => {
+  it('accepts a cursor only for the Admin and the filters it was issued to, with one fixed error', async () => {
     const admin = await signInStaff(api, 'Admin');
-    // Make sure numbers above 100 exist (each new field adds one audit entry).
-    for (;;) {
-      const max = await withDb((db) => db.query<{ max: string }>('SELECT max(id)::text AS max FROM audit_logs'));
-      if (Number(max.rows[0]!.max) > 110) break;
-      await newField(admin.client);
+    const otherAdmin = await signInStaff(api, 'Admin');
+    for (let i = 0; i < AUDIT_PAGE_SIZE + 1; i++) await newField(admin.client);
+    const query = `?actorId=${admin.user.id}&table=fields`;
+    const cursor = (await read(admin.client, query)).nextCursor!;
+    expect((await admin.client.get(`/api/admin/audit-logs${query}&cursor=${cursor}`)).status).toBe(200);
+
+    const refusal = await problem(await admin.client.get(`/api/admin/audit-logs${query}&cursor=garbage`));
+    expect(refusal).toMatchObject({ status: 400, code: 'validation.invalid', detail: 'The cursor is not valid.' });
+    const flipped = cursor.slice(0, 20) + (cursor[20] === 'A' ? 'B' : 'A') + cursor.slice(21);
+    for (const [client, request] of [
+      [otherAdmin.client, `${query}&cursor=${cursor}`], // another Admin
+      [admin.client, `?actorId=${admin.user.id}&cursor=${cursor}`], // other filters
+      [admin.client, `${query}&operation=INSERT&cursor=${cursor}`],
+      [admin.client, `${query}&cursor=${flipped}`], // changed
+      [admin.client, `${query}&cursor=${cursor}&cursor=${cursor}`], // repeated
+      [admin.client, `${query}&cursor=`],
+    ] as const) {
+      const response = await client.get(`/api/admin/audit-logs${request}`);
+      expect(response.status, request).toBe(400);
+      expect(await problem(response), request).toEqual(refusal);
     }
-    const page = await read(admin.client, '?before=102');
-    const ids = page.entries.map((e) => Number(e.id));
-    // Numbers may have gaps (a rolled-back write uses one up), so check the order, not exact values. As text,
-    // "99" would come before "101".
-    expect(ids[0]).toBeGreaterThanOrEqual(100);
-    expect(ids.some((id) => id < 100)).toBe(true);
-    expect(ids).toEqual([...ids].sort((a, b) => b - a));
-    const next = await read(admin.client, `?before=${page.entries.at(-1)!.id}`);
-    expect(next.entries.every((e) => Number(e.id) < ids.at(-1)!)).toBe(true);
+
+    // The raw-number cursor of before 2026-11-22 is refused, whatever its value.
+    for (const value of ['5', '102', '']) {
+      const response = await admin.client.get(`/api/admin/audit-logs${query}&before=${value}`);
+      expect(response.status, value).toBe(400);
+      expect(await problem(response), value).toMatchObject({ code: 'validation.invalid' });
+    }
   });
 
   it('refuses malformed filters without echoing them', async () => {
@@ -274,9 +321,10 @@ describe('audit log viewer: filters and pages', () => {
       '?from=2026-11-03T10:00:00Z&to=2026-11-03T10:00:00Z',
       '?from=2026-11-04T00:00:00Z&to=2026-11-03T00:00:00Z',
       '?before=0',
-      '?before=-5',
+      '?before=102',
       `?before=${marker}`,
-      '?before=99999999999999999999',
+      `?cursor=${marker}`,
+      `?cursor=c1.${marker}`,
     ]) {
       const response = await admin.client.get(`/api/admin/audit-logs${query}`);
       expect(response.status, query).toBe(400);

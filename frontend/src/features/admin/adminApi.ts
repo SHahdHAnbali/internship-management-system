@@ -41,10 +41,10 @@ export const adminApi = {
     apiRequest<AcceptedTrainee>('PUT', `/admin/accepted-trainees/${applicationId}/responsible-hr`, {
       hrId,
     }),
-  /** The audit log, newest first; `before` = the last entry shown, for the next (older) page. */
-  auditLogs: (filters: AuditFilters, before?: string) => {
+  /** The audit log, newest first; `cursor` = the previous page's `nextCursor`, for the next (older) page. */
+  auditLogs: (filters: AuditFilters, cursor?: string) => {
     const query = new URLSearchParams(
-      Object.entries({ ...filters, before: before ?? '' }).filter(([, value]) => value),
+      Object.entries({ ...filters, cursor: cursor ?? '' }).filter(([, value]) => value),
     ).toString();
     return apiRequest<AuditPage>('GET', `/admin/audit-logs${query ? `?${query}` : ''}`);
   },

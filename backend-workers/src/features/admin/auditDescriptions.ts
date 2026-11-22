@@ -22,7 +22,10 @@ export const AUDITED_TABLES = [
   'certificate_templates',
   'contact_logs',
   'employees',
+  'evaluation_corrections',
   'evaluation_criteria',
+  'evaluation_scores',
+  'evaluations',
   'fields',
   'mentor_requests',
   'notification_settings',
@@ -38,6 +41,19 @@ export const AUDITED_TABLES = [
   'user_sessions',
 ] as const;
 export type AuditedTable = (typeof AUDITED_TABLES)[number];
+
+/**
+ * Audited tables whose entries the Admin viewer never shows (owner decision of 2026-11-22, AD-68 G4): the final
+ * evaluation's status, scores, comments, recommendations and corrections are for its evaluators only. Their audit rows
+ * are recorded like every other; the viewer's query leaves them out and its table filter does not know them. An explicit
+ * list, not a prefix: `evaluation_criteria` (the Admin's own criteria) stays visible.
+ */
+export const ADMIN_EXCLUDED_AUDIT_TABLES = ['evaluations', 'evaluation_scores', 'evaluation_corrections'] as const;
+
+/** The audited tables the Admin viewer shows and filters by. */
+export const ADMIN_VISIBLE_AUDIT_TABLES = AUDITED_TABLES.filter(
+  (t) => !(ADMIN_EXCLUDED_AUDIT_TABLES as readonly string[]).includes(t),
+);
 
 const APPLICATION_STATUSES = ['Submitted', 'UnderReview', 'Accepted', 'Rejected'] as const;
 const REQUEST_STATUSES = ['Pending', 'Approved', 'Rejected'] as const;
@@ -112,7 +128,7 @@ const SPECIFIC_EVENTS = [
  */
 export const AUDIT_EVENTS: readonly string[] = [
   ...SPECIFIC_EVENTS,
-  ...AUDITED_TABLES.flatMap((table) => [`${table}.created`, `${table}.updated`]),
+  ...ADMIN_VISIBLE_AUDIT_TABLES.flatMap((table) => [`${table}.created`, `${table}.updated`]),
   'other.created',
   'other.updated',
   'unknown',
@@ -189,7 +205,8 @@ const onlyChanged = (changed: string[] | null, allowed: readonly string[]) =>
 export function describeAudit(table: string, operation: string, rawFacts: unknown): AuditDescription {
   if (operation !== 'INSERT' && operation !== 'UPDATE') return { event: 'unknown' };
   const created = operation === 'INSERT';
-  if (!(AUDITED_TABLES as readonly string[]).includes(table)) {
+  // An excluded table is never described for the Admin (its entries are never returned): it is treated as unknown.
+  if (!(ADMIN_VISIBLE_AUDIT_TABLES as readonly string[]).includes(table)) {
     return { event: created ? 'other.created' : 'other.updated' };
   }
   const facts: Facts =

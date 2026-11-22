@@ -12,8 +12,8 @@ import { AuditLogPage } from './AuditLogPage';
 afterEach(() => vi.unstubAllGlobals());
 
 const ADMIN_ID = '01a181df-0000-7000-8000-000000000001';
-const entry = (id: number, overrides: object = {}) => ({
-  id: String(id),
+/** An entry as the API returns it: no audit number (option A, owner 2026-11-22); `n` only makes its record id. */
+const entry = (n: number, overrides: object = {}) => ({
   occurredAt: '2031-02-03T10:15:00Z',
   actorType: 'Staff',
   actorId: ADMIN_ID,
@@ -22,7 +22,7 @@ const entry = (id: number, overrides: object = {}) => ({
   actorCurrentRole: 'Admin',
   operation: 'UPDATE',
   table: 'fields',
-  entityId: `01a1aaaa-0000-7000-8000-${String(id).padStart(12, '0')}`,
+  entityId: `01a1aaaa-0000-7000-8000-${String(n).padStart(12, '0')}`,
   ...overrides,
 });
 
@@ -48,6 +48,7 @@ describe('AuditLogPage', () => {
         entries: [
           // Anything else a response might carry is never shown.
           entry(12, {
+            id: '987654321', // an audit number from an older Worker: never shown
             newValues: { code_hash: 'SECRET-HASH' },
             oldValues: { phone: 'SYNTHETIC-PHONE-555' },
           }),
@@ -70,9 +71,9 @@ describe('AuditLogPage', () => {
       within(screen.getByRole('table'))
         .getAllByRole('columnheader')
         .map((h) => h.textContent),
-    ).toEqual(['No.', 'Time', 'Description', 'Actor', 'Operation', 'Table', 'Record']);
+    ).toEqual(['Time', 'Description', 'Actor', 'Operation', 'Table', 'Record']);
     const [first, second] = rows();
-    expect(within(first!).getByText('12')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('987654321');
     expect(within(first!).getByText('Synthetic Admin')).toBeInTheDocument();
     expect(within(first!).getByText('Staff · current role: Admin')).toBeInTheDocument();
     expect(within(first!).getByText(ADMIN_ID)).toBeInTheDocument();
@@ -162,24 +163,29 @@ describe('AuditLogPage', () => {
     expect(auditCalls(fetchMock).some((url) => url.includes('to='))).toBe(false);
   });
 
-  it('loads older entries after the last one shown, without repeats, until there are no more', async () => {
+  it('loads older entries with the cursor the API gave, until there are no more', async () => {
     const fetchMock = api((url) =>
-      url.includes('before=11')
-        ? [200, { hasMore: false, entries: [entry(11), entry(10), entry(9)] }] // 11 again: shown once
-        : [200, { hasMore: true, entries: [entry(12), entry(11)] }],
+      url.includes('cursor=c1.FIRST')
+        ? [200, { hasMore: true, nextCursor: 'c1.SECOND', entries: [entry(10), entry(9)] }]
+        : url.includes('cursor=c1.SECOND')
+          ? [200, { hasMore: false, nextCursor: null, entries: [entry(8)] }]
+          : [200, { hasMore: true, nextCursor: 'c1.FIRST', entries: [entry(12), entry(11)] }],
     );
     open();
     const user = userEvent.setup();
     await screen.findByRole('table');
     await user.click(screen.getByRole('button', { name: 'admin.auditLog.loadMore' }));
     await waitFor(() => expect(rows()).toHaveLength(4));
-    expect(rows().map((r) => within(r).getAllByRole('cell')[0]!.textContent)).toEqual([
-      '12',
-      '11',
-      '10',
-      '9',
+    await user.click(screen.getByRole('button', { name: 'admin.auditLog.loadMore' }));
+    await waitFor(() => expect(rows()).toHaveLength(5));
+    expect(
+      rows().map((r) => within(r).getAllByRole('cell').at(-1)!.textContent!.slice(-2)),
+    ).toEqual(['12', '11', '10', '09', '08']);
+    expect(auditCalls(fetchMock)).toEqual([
+      '/api/admin/audit-logs',
+      '/api/admin/audit-logs?cursor=c1.FIRST',
+      '/api/admin/audit-logs?cursor=c1.SECOND',
     ]);
-    expect(auditCalls(fetchMock).at(-1)).toBe('/api/admin/audit-logs?before=11');
     expect(
       screen.queryByRole('button', { name: 'admin.auditLog.loadMore' }),
     ).not.toBeInTheDocument();
@@ -187,9 +193,9 @@ describe('AuditLogPage', () => {
 
   it('keeps what is shown when an older page fails', async () => {
     api((url) =>
-      url.includes('before=')
+      url.includes('cursor=')
         ? [500, { detail: 'Stack trace' }]
-        : [200, { hasMore: true, entries: [entry(2)] }],
+        : [200, { hasMore: true, nextCursor: 'c1.NEXT', entries: [entry(2)] }],
     );
     open();
     const user = userEvent.setup();
@@ -265,7 +271,7 @@ describe('AuditLogPage', () => {
     ];
     const actorLines = () =>
       rows().map((r) =>
-        Array.from(within(r).getAllByRole('cell')[3]!.querySelectorAll('span')).map(
+        Array.from(within(r).getAllByRole('cell')[2]!.querySelectorAll('span')).map(
           (span) => span.textContent,
         ),
       );
@@ -307,16 +313,16 @@ describe('AuditLogPage', () => {
       await screen.findByRole('table');
       expect(actorLines()).toEqual(expected);
       // The name is the prominent line; the recorded id is secondary.
-      const firstLines = within(rows()[0]!).getAllByRole('cell')[3]!.querySelectorAll('span');
+      const firstLines = within(rows()[0]!).getAllByRole('cell')[2]!.querySelectorAll('span');
       expect(firstLines[0]!.className).toContain('font-semibold');
       expect(firstLines[2]!.className).toContain('text-muted');
     });
 
     it('keeps names when older entries are loaded', async () => {
       api((url) =>
-        url.includes('before=')
-          ? [200, { hasMore: false, entries: [cases[1]] }]
-          : [200, { hasMore: true, entries: [cases[0]] }],
+        url.includes('cursor=')
+          ? [200, { hasMore: false, nextCursor: null, entries: [cases[1]] }]
+          : [200, { hasMore: true, nextCursor: 'c1.NEXT', entries: [cases[0]] }],
       );
       open();
       const user = userEvent.setup();
@@ -358,7 +364,7 @@ describe('AuditLogPage', () => {
       ]);
       open(testI18n(JSON.parse(raw), language));
       await screen.findByRole('table');
-      expect(rows().map((r) => within(r).getAllByRole('cell')[2]!.textContent)).toEqual(
+      expect(rows().map((r) => within(r).getAllByRole('cell')[1]!.textContent)).toEqual(
         descriptions,
       );
       expect(within(rows()[1]!).getByText(otherTable)).toBeInTheDocument();

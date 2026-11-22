@@ -127,10 +127,10 @@ export const AUDIT_ACTOR_TYPES = ['Staff', 'Trainee', 'Anonymous', 'System', 'Da
 
 /**
  * One audit log entry as the viewer receives it (AD-51): safe metadata only, never the stored values, plus who acted by
- * name. `entityId` is null for the sign-in tables (session and sign-in code ids are not shown).
+ * name. `entityId` is null for the sign-in tables (session and sign-in code ids are not shown). The audit log's own
+ * sequential number is never sent (owner decision of 2026-11-22, option A).
  */
 export interface AuditEntry {
-  id: string;
   occurredAt: string;
   actorType: (typeof AUDIT_ACTOR_TYPES)[number];
   actorId: string | null;
@@ -149,6 +149,8 @@ export interface AuditEntry {
 
 export interface AuditPage {
   hasMore: boolean;
+  /** Opaque Load More cursor for the next (older) page with the same filters; null on the last page. */
+  nextCursor: string | null;
   entries: AuditEntry[];
 }
 

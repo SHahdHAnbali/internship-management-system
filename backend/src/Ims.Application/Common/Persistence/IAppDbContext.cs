@@ -31,6 +31,12 @@ public interface IAppDbContext
 
     DbSet<EvaluationCriterion> EvaluationCriteria { get; }
 
+    DbSet<Evaluation> Evaluations { get; }
+
+    DbSet<EvaluationScore> EvaluationScores { get; }
+
+    DbSet<EvaluationCorrection> EvaluationCorrections { get; }
+
     DbSet<NotificationSettings> NotificationSettings { get; }
 
     DbSet<PendingRequestReminder> PendingRequestReminders { get; }

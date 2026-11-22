@@ -419,6 +419,132 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ims.Domain.Evaluations.Evaluation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<Guid>("AssignmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assignment_id");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("HiringRecommendation")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("hiring_recommendation");
+
+                    b.Property<int>("Revision")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("version");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<Guid?>("SubmittedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submitted_by_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_evaluations");
+
+                    b.HasIndex("ApplicationId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_evaluations_application_id");
+
+                    b.HasIndex("AssignmentId")
+                        .HasDatabaseName("ix_evaluations_assignment_id");
+
+                    b.HasIndex("SubmittedById")
+                        .HasDatabaseName("ix_evaluations_submitted_by_id");
+
+                    b.ToTable("evaluations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_evaluations_hiring_recommendation", "hiring_recommendation IN ('Yes', 'Maybe', 'No')");
+
+                            t.HasCheckConstraint("ck_evaluations_status", "status IN ('Draft', 'Submitted')");
+
+                            t.HasCheckConstraint("ck_evaluations_submission", "(status = 'Draft' AND submitted_by_id IS NULL AND submitted_at IS NULL) OR (status = 'Submitted' AND submitted_by_id IS NOT NULL AND submitted_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_evaluations_submitted_content", "status <> 'Submitted' OR (comment IS NOT NULL AND comment ~ '\\S' AND hiring_recommendation IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_evaluations_version", "version >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Ims.Domain.Evaluations.EvaluationCorrection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CorrectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("corrected_at");
+
+                    b.Property<Guid>("CorrectedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("corrected_by_id");
+
+                    b.Property<Guid>("EvaluationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("evaluation_id");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("reason");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_evaluation_corrections");
+
+                    b.HasIndex("CorrectedById")
+                        .HasDatabaseName("ix_evaluation_corrections_corrected_by_id");
+
+                    b.HasIndex("EvaluationId")
+                        .HasDatabaseName("ix_evaluation_corrections_evaluation_id");
+
+                    b.ToTable("evaluation_corrections", (string)null);
+                });
+
             modelBuilder.Entity("Ims.Domain.Evaluations.EvaluationCriterion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -475,6 +601,64 @@ namespace Ims.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_evaluation_criteria_sort_order", "sort_order >= 1");
 
                             t.HasCheckConstraint("ck_evaluation_criteria_weight", "weight IS NULL OR weight > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Ims.Domain.Evaluations.EvaluationScore", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CriterionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("criterion_id");
+
+                    b.Property<Guid>("EvaluationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("evaluation_id");
+
+                    b.Property<string>("FrozenNameAr")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("frozen_name_ar");
+
+                    b.Property<string>("FrozenNameEn")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("frozen_name_en");
+
+                    b.Property<int?>("FrozenSortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("frozen_sort_order");
+
+                    b.Property<short?>("Score")
+                        .HasColumnType("smallint")
+                        .HasColumnName("score");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_evaluation_scores");
+
+                    b.HasIndex("CriterionId")
+                        .HasDatabaseName("ix_evaluation_scores_criterion_id");
+
+                    b.HasIndex("EvaluationId", "CriterionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_evaluation_scores_evaluation_id_criterion_id");
+
+                    b.ToTable("evaluation_scores", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_evaluation_scores_frozen_scored", "frozen_sort_order IS NULL OR score IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_evaluation_scores_score", "score BETWEEN 1 AND 5");
+
+                            t.HasCheckConstraint("ck_evaluation_scores_snapshot", "(frozen_name_ar IS NULL) = (frozen_name_en IS NULL) AND (frozen_name_ar IS NULL) = (frozen_sort_order IS NULL)");
                         });
                 });
 
@@ -1421,6 +1605,63 @@ namespace Ims.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_training_applications_trainees_trainee_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Evaluations.Evaluation", b =>
+                {
+                    b.HasOne("Ims.Domain.Applications.TrainingApplication", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_evaluations_training_applications_application_id");
+
+                    b.HasOne("Ims.Domain.Mentoring.Assignment", null)
+                        .WithMany()
+                        .HasForeignKey("AssignmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_evaluations_assignments_assignment_id");
+
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("SubmittedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_evaluations_employees_submitted_by_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Evaluations.EvaluationCorrection", b =>
+                {
+                    b.HasOne("Ims.Domain.Staff.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("CorrectedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_evaluation_corrections_employees_corrected_by_id");
+
+                    b.HasOne("Ims.Domain.Evaluations.Evaluation", null)
+                        .WithMany()
+                        .HasForeignKey("EvaluationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_evaluation_corrections_evaluations_evaluation_id");
+                });
+
+            modelBuilder.Entity("Ims.Domain.Evaluations.EvaluationScore", b =>
+                {
+                    b.HasOne("Ims.Domain.Evaluations.EvaluationCriterion", null)
+                        .WithMany()
+                        .HasForeignKey("CriterionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_evaluation_scores_evaluation_criteria_criterion_id");
+
+                    b.HasOne("Ims.Domain.Evaluations.Evaluation", null)
+                        .WithMany()
+                        .HasForeignKey("EvaluationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_evaluation_scores_evaluations_evaluation_id");
                 });
 
             modelBuilder.Entity("Ims.Domain.Mentoring.Assignment", b =>

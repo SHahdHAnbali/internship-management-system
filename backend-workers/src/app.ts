@@ -27,6 +27,7 @@ import { auditLogRoutes } from './features/admin/auditLogRoutes';
 import { adminRoutes } from './features/admin/routes';
 import { certificateTemplateRoutes } from './features/admin/certificateTemplate';
 import { authRoutes, isSecure } from './features/auth/routes';
+import { evaluationRoutes } from './features/evaluation/routes';
 import { notificationRoutes } from './features/notifications/routes';
 import { fieldsReportRoutes } from './features/reports/fieldsReport';
 import { mentorProfileRoutes } from './features/reports/mentorProfileReport';
@@ -54,6 +55,7 @@ export const routes: Route[] = [
   ...adminTraineeRoutes,
   ...traineeRoutes,
   ...hrRoutes,
+  ...evaluationRoutes,
   ...employeeRoutes,
   ...reportRoutes,
   ...fieldsReportRoutes,

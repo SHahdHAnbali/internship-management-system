@@ -23,6 +23,10 @@ in it; safe to run again):
 | UPDATE, column-level | `assignments (status, end_date, end_reason)` only, for the training lifecycle (AD-63 Phase 1). Applied on Neon by the owner's authorization on 2026-11-11 as `neondb_owner`, in one transaction, verified: those three columns only, no table-wide UPDATE, no other column, still no DELETE or TRUNCATE; no row changed. `transfer_decisions (status, resolved_at, resolved_by_id, resolution_code, resolution_reason)` only (AD-65): a decision only ever leaves Pending, what was decided (date, mentor, reason, HR) can never change; applied on Neon on 2026-11-13 |
 | never | DELETE, TRUNCATE, TRIGGER, REFERENCES on any table; anything on `roles` and `__EFMigrationsHistory` (foreign-key checks run as the table owner) |
 
+*Local only, not applied on Neon (R27 stage S2.1, AD-69, 2026-11-22):* `scripts/ims-app-grants.sql` also grants **SELECT only** on
+`evaluations`, `evaluation_scores` and `evaluation_corrections` (no INSERT, UPDATE, DELETE or TRUNCATE; the Worker only
+reads them in S2.1). The table above stays the production state until the owner authorizes that release.
+
 The list comes from every SQL statement in `backend-workers/src`. No sequence grant is needed: `audit_logs.id` is an
 identity column (no privilege check) and every other id is made by the Worker. Trigger functions are not
 privilege-checked when they fire.

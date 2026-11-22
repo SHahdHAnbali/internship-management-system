@@ -79,7 +79,11 @@ export function AuditLogPage() {
   const { t, language } = useI18n();
   const id = useId();
   const [inputs, setInputs] = useState<Inputs>(NO_INPUTS);
-  const [log, setLog] = useState<{ key: string; entries: AuditEntry[]; hasMore: boolean }>();
+  const [log, setLog] = useState<{
+    key: string;
+    entries: AuditEntry[];
+    nextCursor: string | null;
+  }>();
   const [failedKey, setFailedKey] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreFailed, setMoreFailed] = useState(false);
@@ -102,7 +106,7 @@ export function AuditLogPage() {
     adminApi.auditLogs(JSON.parse(key) as AuditFilters).then(
       (page) => {
         if (!current) return;
-        setLog({ key, entries: page.entries, hasMore: page.hasMore });
+        setLog({ key, entries: page.entries, nextCursor: page.hasMore ? page.nextCursor : null });
         setFailedKey(null);
         setMoreFailed(false);
       },
@@ -113,21 +117,23 @@ export function AuditLogPage() {
     };
   }, [key]);
 
+  // The server's cursor continues exactly after the last entry shown (newer entries never shift it), so pages are
+  // simply appended.
   const loadMore = async () => {
-    const last = log?.entries.at(-1);
-    if (!log || !last) return;
+    const cursor = log?.nextCursor;
+    if (!log || !cursor) return;
     setLoadingMore(true);
     try {
-      const page = await adminApi.auditLogs(filters, last.id);
-      setLog((shown) => {
-        if (!shown || shown.key !== key) return shown;
-        const seen = new Set(shown.entries.map((e) => e.id));
-        return {
-          key,
-          hasMore: page.hasMore,
-          entries: [...shown.entries, ...page.entries.filter((e) => !seen.has(e.id))],
-        };
-      });
+      const page = await adminApi.auditLogs(filters, cursor);
+      setLog((shown) =>
+        !shown || shown.key !== key
+          ? shown
+          : {
+              key,
+              nextCursor: page.hasMore ? page.nextCursor : null,
+              entries: [...shown.entries, ...page.entries],
+            },
+      );
       setMoreFailed(false);
     } catch {
       setMoreFailed(true);
@@ -257,7 +263,6 @@ export function AuditLogPage() {
             <table className="ims-table">
               <thead>
                 <tr>
-                  <th scope="col">{t('admin.auditLog.number')}</th>
                   <th scope="col">{t('admin.auditLog.time')}</th>
                   <th scope="col">{t('admin.auditLog.descriptionColumn')}</th>
                   <th scope="col">{t('admin.auditLog.actor')}</th>
@@ -267,11 +272,9 @@ export function AuditLogPage() {
                 </tr>
               </thead>
               <tbody>
-                {shown.entries.map((entry) => (
-                  <tr key={entry.id}>
-                    <td dir="ltr" className="text-start">
-                      {entry.id}
-                    </td>
+                {shown.entries.map((entry, index) => (
+                  // Entries have no id of their own here; the list is only ever appended to or replaced.
+                  <tr key={index}>
                     <td>{new Date(entry.occurredAt).toLocaleString(language)}</td>
                     <td className="min-w-56">{describeEntry(t, entry)}</td>
                     <td>
@@ -300,7 +303,7 @@ export function AuditLogPage() {
               {t('admin.auditLog.loadFailed')}
             </p>
           )}
-          {shown.hasMore && (
+          {shown.nextCursor && (
             <div className="mt-4 flex justify-center">
               <button
                 type="button"

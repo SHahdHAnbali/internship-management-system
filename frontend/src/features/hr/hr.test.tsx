@@ -634,7 +634,7 @@ describe('HR extends a training (AD-63 L2, NEW-35)', () => {
 });
 
 describe('HR navigation', () => {
-  it('has Applications, Mentor requests, Trainings and Reports, and no separate Trainees tab', async () => {
+  it('has Applications, Mentor requests, Trainings, Evaluations and Reports, and no separate Trainees tab', async () => {
     mockFetch(() => [200, { unreadCount: 0, hasMore: false, notifications: [] }]);
     renderRoutes([{ path: '/hr', element: <HrArea /> }], {
       url: '/hr',
@@ -649,6 +649,7 @@ describe('HR navigation', () => {
       ['hr.nav.applications', '/hr/applications'],
       ['hr.nav.mentorRequests', '/hr/mentor-requests'],
       ['hr.nav.trainings', '/hr/trainings'],
+      ['hr.nav.evaluations', '/hr/evaluations'],
       ['hr.nav.reports', '/hr/reports'],
     ]);
   });

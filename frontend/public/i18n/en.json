@@ -293,7 +293,6 @@
       "from": "From date",
       "to": "To date",
       "rangeInvalid": "The end date must be on or after the start date.",
-      "number": "No.",
       "time": "Time",
       "actor": "Actor",
       "record": "Record",
@@ -672,7 +671,8 @@
     "nav": {
       "available": "Available trainees",
       "trainees": "My trainees",
-      "reports": "My reports"
+      "reports": "My reports",
+      "evaluations": "Evaluations"
     },
     "available": {
       "title": "Available trainees",
@@ -730,7 +730,8 @@
       "applications": "Applications",
       "mentorRequests": "Mentor requests",
       "trainings": "Trainings",
-      "reports": "Reports"
+      "reports": "Reports",
+      "evaluations": "Evaluations"
     },
     "applications": {
       "title": "Training applications",
@@ -1010,5 +1011,37 @@
       "failed": "The file could not be prepared. Please try again.",
       "generated": "Exported on {{date}}"
     }
+  },
+  "evaluation": {
+    "title": "Evaluations",
+    "intro": "Final evaluations of the trainings you mentored last, or for which you are the responsible HR, once HR has ended them.",
+    "empty": "No final evaluation is due for you.",
+    "trainee": "Trainee",
+    "traineeUnnamed": "Name not entered yet",
+    "endStatus": "Training ended",
+    "endDate": "End date",
+    "capacity": "Your role",
+    "status": "Evaluation",
+    "open": "Open",
+    "back": "Back to evaluations",
+    "listSeparator": ", ",
+    "capacities": {
+      "FinalMentor": "Final mentor",
+      "ResponsibleHr": "Responsible HR"
+    },
+    "statuses": {
+      "NotStarted": "Not started",
+      "Draft": "Draft",
+      "Submitted": "Submitted"
+    },
+    "training": "Training",
+    "period": "Training period",
+    "criteria": "Criteria",
+    "frozen": "The criteria as they were when the evaluation was submitted.",
+    "commentOnly": "There is no active criterion: this evaluation will consist of a written comment only.",
+    "commentOnlySubmitted": "This evaluation was submitted with a written comment only.",
+    "readOnly": "This page shows the training and its evaluation criteria; the evaluation cannot be filled in here yet.",
+    "notFound": "This evaluation was not found.",
+    "notAvailable": "The final evaluation is available only after HR ends the training as Completed or Ended early."
   }
 }

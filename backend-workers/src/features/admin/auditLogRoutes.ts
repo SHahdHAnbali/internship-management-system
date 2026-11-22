@@ -4,13 +4,26 @@ import { DomainError } from '../../domain/errors';
 import { parseGuid } from '../../domain/uuid';
 import { json } from '../../http/problems';
 import type { Route } from '../../http/routes';
-import { AUDIT_FACTS_SQL, AUDITED_TABLES, describeAudit } from './auditDescriptions';
+import { type AuditCursorFilters, issueAuditCursor, readAuditCursor } from './auditCursor';
+import {
+  ADMIN_EXCLUDED_AUDIT_TABLES,
+  ADMIN_VISIBLE_AUDIT_TABLES,
+  AUDIT_FACTS_SQL,
+  AUDITED_TABLES,
+  describeAudit,
+} from './auditDescriptions';
 
 /**
  * `GET /api/admin/audit-logs` (Admin role only; owner decision AD-51): the audit log, read-only, newest first, in pages.
  * Only safe metadata is returned, chosen column by column: never `old_values` / `new_values` (they can hold sign-in code
  * and token hashes, file storage keys and personal data), and no record id for the sign-in tables, whose ids are those of
  * sessions and sign-in codes. Filters: operation, table, actor (type and/or id) and a time range.
+ *
+ * Owner decisions of 2026-11-22 (S2.1): the final evaluation tables (`ADMIN_EXCLUDED_AUDIT_TABLES`) are recorded like
+ * every table but never returned: the query leaves them out before ordering and limiting, so pages stay full and
+ * `hasMore` is exact, and the table filter refuses them exactly like a table that does not exist (AD-68 G4). The audit
+ * log's own sequential number is not returned either (option A): Load More uses `nextCursor`, an encrypted cursor bound
+ * to the Admin and the filters (`auditCursor.ts`); the former `before` number is refused.
  *
  * Who acted is also given by name: for a Staff actor the employee's name and their current role (roles are not kept
  * historically, so it may differ from their role when they acted); for a Trainee actor the trainee's name, which is
@@ -34,6 +47,7 @@ const ACTOR_TYPES = ['Anonymous', 'Staff', 'Trainee', 'System', 'Database'] as c
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/;
 
 interface AuditRow {
+  /** Internal only: read to issue the next cursor, never returned. */
   id: string;
   occurred_at: Date;
   actor_type: string;
@@ -67,11 +81,7 @@ function instant(c: Context<AppEnv>, name: string): string | null {
   return time.toISOString();
 }
 
-function filters(c: Context<AppEnv>) {
-  const before = c.req.query('before');
-  if (before && !/^[1-9]\d{0,17}$/.test(before)) {
-    throw new DomainError('validation.invalid', 'The before cursor is not valid.');
-  }
+function filters(c: Context<AppEnv>): AuditCursorFilters {
   const actor = c.req.query('actorId');
   const actorId = actor ? parseGuid(actor) : null;
   if (actor && !actorId) throw new DomainError('validation.invalid', 'The actorId filter is not valid.');
@@ -80,14 +90,24 @@ function filters(c: Context<AppEnv>) {
   if (from && to && to <= from)
     throw new DomainError('validation.period', 'The end of the range must be after its start.');
   return {
-    before: before || null,
     operation: oneOf(c, 'operation', OPERATIONS),
-    table: oneOf(c, 'table', AUDITED_TABLES),
+    // Only the tables the Admin may see: an excluded one gets the same refusal as a table that does not exist.
+    table: oneOf(c, 'table', ADMIN_VISIBLE_AUDIT_TABLES),
     actorType: oneOf(c, 'actorType', ACTOR_TYPES),
     actorId,
     from,
     to,
   };
+}
+
+/** The audit number a valid `cursor` stands for; none without one. One fixed error for every invalid cursor. */
+async function cursorPosition(c: Context<AppEnv>, f: AuditCursorFilters, userId: string): Promise<string | null> {
+  const values = c.req.queries('cursor');
+  if (values === undefined) return null;
+  const position =
+    values.length === 1 ? await readAuditCursor(values[0]!, f, userId, c.var.settings.sessionSecrets) : null;
+  if (position === null) throw new DomainError('validation.invalid', 'The cursor is not valid.');
+  return position;
 }
 
 export const auditLogRoutes: Route[] = [
@@ -96,7 +116,12 @@ export const auditLogRoutes: Route[] = [
     path: '/api/admin/audit-logs',
     policy: 'Admin',
     async handle(c) {
+      if (c.req.queries('before') !== undefined) {
+        throw new DomainError('validation.invalid', 'The before parameter is not supported; use the cursor.');
+      }
       const f = filters(c);
+      const userId = c.var.user!.id;
+      const before = await cursorPosition(c, f, userId);
       const { rows } = await c.var.db.query<AuditRow>(
         `SELECT a.id::text, a.occurred_at, a.actor_type, a.actor_id, a.operation, a.table_name,
                 CASE WHEN a.table_name = ANY($9::text[]) THEN NULL ELSE a.entity_id END AS entity_id,
@@ -114,10 +139,11 @@ export const auditLogRoutes: Route[] = [
             AND ($5::uuid IS NULL OR a.actor_id = $5)
             AND ($6::timestamptz IS NULL OR a.occurred_at >= $6)
             AND ($7::timestamptz IS NULL OR a.occurred_at < $7)
+            AND a.table_name <> ALL($10::text[])
           ORDER BY a.id DESC
           LIMIT $8`,
         [
-          f.before,
+          before,
           f.operation,
           f.table,
           f.actorType,
@@ -126,13 +152,17 @@ export const auditLogRoutes: Route[] = [
           f.to,
           AUDIT_PAGE_SIZE + 1,
           HIDDEN_ENTITY_TABLES,
+          ADMIN_EXCLUDED_AUDIT_TABLES,
         ],
       );
       const page = rows.slice(0, AUDIT_PAGE_SIZE);
+      const hasMore = rows.length > AUDIT_PAGE_SIZE;
       return json({
-        hasMore: rows.length > AUDIT_PAGE_SIZE,
+        hasMore,
+        nextCursor: hasMore
+          ? await issueAuditCursor(page.at(-1)!.id, f, userId, c.var.settings.sessionSecrets[0]!)
+          : null,
         entries: page.map((r) => ({
-          id: r.id,
           occurredAt: r.occurred_at,
           actorType: r.actor_type,
           actorId: r.actor_id,

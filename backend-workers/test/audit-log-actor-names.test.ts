@@ -10,7 +10,6 @@ import { newField, submitApplication } from './seed';
 const api = createTestApi();
 
 interface Entry {
-  id: string;
   actorType: string;
   actorId: string | null;
   actorKnown: boolean;
@@ -82,7 +81,7 @@ describe('audit log viewer: actor names', () => {
     // The role shown is the current one: after a role change, earlier entries show the new role.
     await setRole(hr.email, 'Employee');
     const [same] = await read(admin.client, `?actorId=${hr.user.id}&table=training_applications`);
-    expect(same!.id).toBe(decision!.id);
+    expect([same!.table, same!.entityId]).toEqual([decision!.table, decision!.entityId]);
     expect(same!.actorCurrentRole).toBe('Employee');
   });
 
@@ -147,17 +146,14 @@ describe('audit log viewer: actor names', () => {
     );
     for (let i = 0; i < 53; i++) await newField(admin.client);
 
-    const first = await body<{ hasMore: boolean; entries: Entry[] }>(
+    const first = await body<{ hasMore: boolean; nextCursor: string; entries: Entry[] }>(
       await admin.client.get(`/api/admin/audit-logs?actorId=${admin.user.id}&table=fields`),
     );
-    const second = await read(
-      admin.client,
-      `?actorId=${admin.user.id}&table=fields&before=${first.entries.at(-1)!.id}`,
-    );
+    const second = await read(admin.client, `?actorId=${admin.user.id}&table=fields&cursor=${first.nextCursor}`);
     expect(first.hasMore).toBe(true);
     const all = [...first.entries, ...second];
     expect(all).toHaveLength(53);
-    expect(new Set(all.map((e) => e.id)).size).toBe(53);
+    expect(new Set(all.map((e) => e.entityId)).size).toBe(53);
     expect(all.every((e) => e.actorName === 'Synthetic Admin Person' && e.actorCurrentRole === 'Admin')).toBe(true);
 
     const text = JSON.stringify(all);
@@ -171,7 +167,6 @@ describe('audit log viewer: actor names', () => {
       'actorType',
       'description',
       'entityId',
-      'id',
       'occurredAt',
       'operation',
       'table',

@@ -49,7 +49,10 @@ const TABLES = [
   'certificate_templates',
   'contact_logs',
   'employees',
+  'evaluation_corrections',
   'evaluation_criteria',
+  'evaluation_scores',
+  'evaluations',
   'fields',
   'mentor_requests',
   'notification_settings',
@@ -66,7 +69,9 @@ const TABLES = [
   '__EFMigrationsHistory',
 ];
 const SELECT = TABLES.filter((t) => t !== 'roles' && t !== '__EFMigrationsHistory');
-const INSERT = SELECT.filter((t) => t !== 'notification_settings');
+/** R27 S2.1 (owner, 2026-11-22): the final evaluation tables are read-only for the Worker until a later stage writes them. */
+const EVALUATION_TABLES = ['evaluations', 'evaluation_scores', 'evaluation_corrections'];
+const INSERT = SELECT.filter((t) => t !== 'notification_settings' && !EVALUATION_TABLES.includes(t));
 const UPDATE = [
   'certificate_templates',
   'employees',
@@ -260,6 +265,28 @@ describe('ims_app: refused (negative tests, disposable test database only)', () 
     ["UPDATE a reminder's attempt time", 'UPDATE pending_reminders SET attempted_at = attempted_at'],
     ['DELETE a pending-request reminder', 'DELETE FROM pending_reminders'],
     ['TRUNCATE pending-request reminders', 'TRUNCATE pending_reminders'],
+    // R27 S2.1: the final evaluation tables are read-only for the Worker (owner, 2026-11-22).
+    [
+      'INSERT an evaluation',
+      `INSERT INTO evaluations (id, application_id, assignment_id, status, created_at, updated_at) VALUES ('${tamper}', '${tamper}', '${tamper}', 'Draft', now(), now())`,
+    ],
+    ['UPDATE an evaluation', "UPDATE evaluations SET status = 'Submitted'"],
+    ['DELETE an evaluation', 'DELETE FROM evaluations'],
+    ['TRUNCATE evaluations', 'TRUNCATE evaluations'],
+    [
+      'INSERT an evaluation score',
+      `INSERT INTO evaluation_scores (id, evaluation_id, criterion_id, score) VALUES ('${tamper}', '${tamper}', '${tamper}', 5)`,
+    ],
+    ['UPDATE an evaluation score', 'UPDATE evaluation_scores SET score = 5'],
+    ['DELETE an evaluation score', 'DELETE FROM evaluation_scores'],
+    ['TRUNCATE evaluation scores', 'TRUNCATE evaluation_scores'],
+    [
+      'INSERT an evaluation correction',
+      `INSERT INTO evaluation_corrections (id, evaluation_id, corrected_by_id, corrected_at) VALUES ('${tamper}', '${tamper}', '${tamper}', now())`,
+    ],
+    ['UPDATE an evaluation correction', "UPDATE evaluation_corrections SET reason = 'x'"],
+    ['DELETE an evaluation correction', 'DELETE FROM evaluation_corrections'],
+    ['TRUNCATE evaluation corrections', 'TRUNCATE evaluation_corrections'],
     ['DELETE FROM audit_logs', 'DELETE FROM audit_logs WHERE id = 1'],
     ['TRUNCATE audit_logs', 'TRUNCATE audit_logs'],
     ['DISABLE an audit trigger', 'ALTER TABLE fields DISABLE TRIGGER audit_row_change'],

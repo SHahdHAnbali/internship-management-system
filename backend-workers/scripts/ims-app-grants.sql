@@ -8,7 +8,7 @@
 --
 -- `ims_app` owns nothing, so it cannot ALTER, DROP or DISABLE TRIGGER on any table, nor replace any function. It gets
 -- exactly the rights the Worker's SQL uses, taken from every statement in backend-workers/src:
---   SELECT on the 16 tables the Worker reads (all but `roles`; foreign-key checks run as the table owner),
+--   SELECT on the tables the Worker reads (all but `roles`; foreign-key checks run as the table owner),
 --   INSERT on the 14 tables it inserts into, UPDATE on the 11 it updates; never DELETE, TRUNCATE, TRIGGER, REFERENCES.
 -- `audit_logs`: SELECT for the Admin viewer, and INSERT because the audit trigger (`ims_audit_row_change`) runs as
 -- SECURITY INVOKER, so it writes the audit row as `ims_app`. A direct INSERT is still refused by the `append_only`
@@ -66,6 +66,10 @@ GRANT UPDATE (status, resolved_at, resolved_by_id, resolution_code, resolution_r
 -- Pending-request reminders (NEW-05, AD-61 items 4–17): one row per reminded request (unique); only its outcome, written
 -- once after the e-mails were attempted, is updatable; what was reminded and when never changes.
 GRANT UPDATE (outcome, accepted_count, failed_count, completed_at) ON pending_reminders TO ims_app;
+
+-- Final evaluation (R27, stage S2.1; owner decision 2026-11-22): read-only. The Worker only reads these tables in S2.1;
+-- INSERT and UPDATE are granted by the later stage that writes them, after its own approval. Never DELETE or TRUNCATE.
+GRANT SELECT ON evaluations, evaluation_scores, evaluation_corrections TO ims_app;
 
 -- Only the schema owner sets up audit protection on a table.
 REVOKE EXECUTE ON FUNCTION ims_protect_table(regclass) FROM PUBLIC;

@@ -3,7 +3,8 @@ import { AreaShell } from '../../components/AreaShell';
 
 /**
  * The HR area, so far: training applications (review, accept, reject), employees' mentor requests, the trainings
- * (read-only) and the reports, so far the trainee history (PDF §4, §6).
+ * (read-only), the final evaluations it gives as the responsible HR (R27, read-only so far) and the reports, so far the
+ * trainee history (PDF §4, §6).
  */
 export function HrArea() {
   return (
@@ -12,6 +13,7 @@ export function HrArea() {
         { to: '/hr/applications', label: 'hr.nav.applications' },
         { to: '/hr/mentor-requests', label: 'hr.nav.mentorRequests' },
         { to: '/hr/trainings', label: 'hr.nav.trainings' },
+        { to: '/hr/evaluations', label: 'hr.nav.evaluations' },
         { to: '/hr/reports', label: 'hr.nav.reports' },
       ]}
     >

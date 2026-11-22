@@ -86,6 +86,21 @@ export const routes: RouteObject[] = [
                 Component: () => <m.MentorProfileReport scope="own" backTo="/employee/reports" />,
               })),
           },
+          // Final evaluation (R27, S2.1): read-only for its evaluators; also in the HR area, never the Admin's.
+          {
+            path: 'evaluations',
+            lazy: () =>
+              import('./features/evaluation/EvaluationsPage').then((m) => ({
+                Component: () => <m.EvaluationsPage base="/employee/evaluations" />,
+              })),
+          },
+          {
+            path: 'evaluations/:applicationId',
+            lazy: () =>
+              import('./features/evaluation/EvaluationPage').then((m) => ({
+                Component: () => <m.EvaluationPage base="/employee/evaluations" />,
+              })),
+          },
         ],
       },
     ],
@@ -125,6 +140,21 @@ export const routes: RouteObject[] = [
             lazy: () =>
               import('./features/hr/TrainingsPage').then((m) => ({
                 Component: m.TrainingsPage,
+              })),
+          },
+          // Final evaluation (R27, S2.1): read-only for the final mentor and the current responsible HR.
+          {
+            path: 'evaluations',
+            lazy: () =>
+              import('./features/evaluation/EvaluationsPage').then((m) => ({
+                Component: () => <m.EvaluationsPage base="/hr/evaluations" />,
+              })),
+          },
+          {
+            path: 'evaluations/:applicationId',
+            lazy: () =>
+              import('./features/evaluation/EvaluationPage').then((m) => ({
+                Component: () => <m.EvaluationPage base="/hr/evaluations" />,
               })),
           },
           {

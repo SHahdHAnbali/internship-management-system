@@ -78,7 +78,7 @@ dotnet ef database update -p src/Ims.Infrastructure -s src/Ims.Api
 
 ## Frontend rules
 - React function components and hooks only, TypeScript `strict`. Shared state through small contexts (`auth/context.ts`, `i18n/context.ts`, `components/toastContext.ts`); keep a context and its hook in a `.ts` file separate from the provider component (fast refresh).
-- Code lives in `src/features/<area>/` (`public`, `admin`, `areas`, `trainee`, `employee`, `hr`). App-wide pieces are in `src/auth`, `src/i18n`, `src/lib` (API client), `src/preview`. Reusable presentational components are in `src/components`. Features must not import from other features.
+- Code lives in `src/features/<area>/` (`public`, `admin`, `areas`, `trainee`, `employee`, `hr`, `evaluation`). App-wide pieces are in `src/auth`, `src/i18n`, `src/lib` (API client), `src/preview`. Reusable presentational components are in `src/components`. Features must not import from other features.
 - Routes are declared in `src/routes.tsx` with route-level `lazy` code-splitting. Every role area is wrapped in `<RequireRole role="…">` (`src/auth/guards.tsx`). The API enforces the same rules; guards are navigation only.
 - HTTP goes through `apiRequest` (`src/lib/api.ts`) and per-feature API modules (`features/admin/adminApi.ts`). The base URL is `VITE_API_BASE_URL` or `/api`. Never hard-code hosts.
 - **Bilingual RTL/LTR**: default `ar`/`rtl`. Use logical properties and utilities (`ms-*`, `pe-*`, `start-*`, `text-start`, `margin-inline-start`) and never `left`/`right` (`ml-*`, `mr-*`, `left-*`) for layout.

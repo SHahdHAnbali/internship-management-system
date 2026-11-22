@@ -5,10 +5,12 @@ import {
   AUDIT_EVENT_PARAMS,
   AUDIT_EVENTS,
   AUDIT_FACTS_SQL,
+  ADMIN_EXCLUDED_AUDIT_TABLES,
   AUDITED_TABLES,
   describeAudit,
   type AuditDescription,
 } from '../src/features/admin/auditDescriptions';
+import { HIDDEN_ENTITY_TABLES } from '../src/features/admin/auditLogRoutes';
 import {
   body,
   COMPANY_DOMAIN,
@@ -29,18 +31,44 @@ import { newField, submitApplication } from './seed';
 const api = createTestApi();
 
 interface Entry {
-  id: string;
   actorType: string;
+  entityId: string | null;
   description: AuditDescription;
 }
 
-/** What the API says about audit entry `id` (read through the viewer, as the Admin). */
+/**
+ * What the API says about audit entry `id` (read through the viewer, as the Admin). The viewer does not return audit
+ * numbers (option A, owner 2026-11-22), so the entry is found with its public filters: its table and operation within
+ * the millisecond it occurred, then its record, then its place among the newer entries of that millisecond.
+ */
 async function describedAs(admin: TestClient, id: string): Promise<Entry> {
-  const response = await admin.get(`/api/admin/audit-logs?before=${BigInt(id) + 1n}`);
+  const { rows } = await withDb((db) =>
+    db.query<{ table_name: string; operation: string; entity_id: string | null; ms: string; newer: number }>(
+      `SELECT a.table_name, a.operation, a.entity_id::text,
+              (extract(epoch FROM date_trunc('milliseconds', a.occurred_at)) * 1000)::bigint::text AS ms,
+              (SELECT count(*)::int FROM audit_logs b
+                WHERE b.table_name = a.table_name AND b.operation = a.operation AND b.id > a.id
+                  AND date_trunc('milliseconds', b.occurred_at) = date_trunc('milliseconds', a.occurred_at)
+                  AND (a.table_name = ANY($2::text[]) OR b.entity_id IS NOT DISTINCT FROM a.entity_id)) AS newer
+         FROM audit_logs a WHERE a.id = $1`,
+      [id, HIDDEN_ENTITY_TABLES],
+    ),
+  );
+  const row = rows[0]!;
+  const from = new Date(Number(row.ms));
+  const query = new URLSearchParams({
+    table: row.table_name,
+    operation: row.operation,
+    from: from.toISOString(),
+    to: new Date(from.getTime() + 1).toISOString(),
+  });
+  const response = await admin.get(`/api/admin/audit-logs?${query}`);
   expect(response.status).toBe(200);
-  const entry = (await body<{ entries: Entry[] }>(response)).entries[0]!;
-  expect(entry.id).toBe(id);
-  return entry;
+  const { entries } = await body<{ entries: Entry[] }>(response);
+  const hidden = (HIDDEN_ENTITY_TABLES as readonly string[]).includes(row.table_name);
+  const entry = entries.filter((e) => e.entityId === (hidden ? null : row.entity_id))[row.newer];
+  expect(entry, id).toBeDefined();
+  return entry!;
 }
 
 /** The ids of the audit entries matching `where` (as the database owner), oldest first. */
@@ -529,7 +557,9 @@ describe('audit descriptions: describeAudit itself', () => {
   it('describes every audit entry in this database (written by all test files) without an unknown or other event', async () => {
     const { rows } = await withDb((db) =>
       db.query<{ table_name: string; operation: string; facts: unknown }>(
-        `SELECT a.table_name, a.operation, ${AUDIT_FACTS_SQL} AS facts FROM audit_logs a`,
+        // The entries the Admin viewer can show (the final evaluation tables are never described or returned).
+        `SELECT a.table_name, a.operation, ${AUDIT_FACTS_SQL} AS facts FROM audit_logs a WHERE a.table_name <> ALL($1::text[])`,
+        [ADMIN_EXCLUDED_AUDIT_TABLES],
       ),
     );
     expect(rows.length).toBeGreaterThan(0);
