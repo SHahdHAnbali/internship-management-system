@@ -13,7 +13,16 @@ import {
 } from '../src/features/notifications/transferEmailCatchUp';
 import { executeDueTransfers, type TransactionalDatabase } from '../src/features/training/transfers';
 import { createScheduledHandler } from '../src/scheduled';
-import { body, createTestApi, signInStaff, signInTrainee, type TestApi, type TestClient, withDb } from './helpers';
+import {
+  body,
+  COMPANY_DOMAIN,
+  createTestApi,
+  signInStaff,
+  signInTrainee,
+  type TestApi,
+  type TestClient,
+  withDb,
+} from './helpers';
 import { newField, seedAssignment, submitApplication } from './seed';
 
 /**
@@ -78,14 +87,21 @@ interface Assignment {
   transferredTo: { assignmentId: string; employeeName: string } | null;
 }
 
+/**
+ * A mentor's address whose masked form differs from the other mentors' (the mask keeps only the first and last
+ * character of the local part, so two random addresses can share it): `a…a`, `b…b`, `c…c`, unique in between.
+ */
+const mentorEmail = (mark: 'a' | 'b' | 'c') =>
+  `${mark}${crypto.randomUUID().replace(/-/g, '')}${mark}@${COMPANY_DOMAIN}`;
+
 /** A training accepted by HR A (its responsible HR), Active with mentor A from `start` to `end`. */
 async function training(testApi: TestApi, start: string, end: string) {
   const admin = await signInStaff(testApi, 'Admin');
   const hrA = await signInStaff(testApi, 'HR');
   const hrB = await signInStaff(testApi, 'HR');
-  const mentorA = await signInStaff(testApi, 'Employee');
-  const mentorB = await signInStaff(testApi, 'Employee');
-  const mentorC = await signInStaff(testApi, 'Employee');
+  const mentorA = await signInStaff(testApi, 'Employee', mentorEmail('a'));
+  const mentorB = await signInStaff(testApi, 'Employee', mentorEmail('b'));
+  const mentorC = await signInStaff(testApi, 'Employee', mentorEmail('c'));
   const trainee = await signInTrainee(testApi);
   const field = await newField(admin.client);
   const applicationId = await submitApplication(trainee.client, field.id);
@@ -1045,6 +1061,7 @@ describe('the incoming mentor e-mail (AD-65, TrainingTransferredToYou)', () => {
     });
     const otherDecision = (await decisions(other.applicationId))[0]!.id;
     const expected = maskEmail(t.mentorB.email);
+    expect(maskEmail(t.mentorA.email)).not.toBe(expected); // so the wrong-recipient check below is meaningful
     await withDb(async (db) => {
       const ok = await prepareTransferCatchUpEmail(db, {
         transferId: link!.id,

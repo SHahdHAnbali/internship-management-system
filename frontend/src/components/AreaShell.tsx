@@ -35,7 +35,8 @@ export function AreaShell({ tabs, children }: { tabs?: AreaTab[]; children: Reac
               <span className="ims-badge hidden sm:inline-flex">{t(`roles.${user.role}`)}</span>
             )}
           </Link>
-          <div className="flex items-center gap-1 sm:gap-2">
+          {/* min-w-0 + flex-wrap: on a narrow screen (Arabic at 390 px) the controls wrap instead of overflowing it. */}
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
             {/* PDF §7: only HR and employees receive in-app notifications. */}
             {(user?.role === 'HR' || user?.role === 'Employee') && <NotificationsMenu />}
             <LanguageSwitch />

@@ -221,8 +221,18 @@ describe('errors', () => {
   });
 });
 
+/**
+ * The real limiter (Miniflare's Workers Rate Limiting binding) counts in windows aligned to the wall-clock minute: a burst
+ * started at second 59 is split across two windows and its 11th request is allowed. Start the burst early in a minute.
+ */
+async function startOfAMinute(margin = 15_000) {
+  const left = 60_000 - (Date.now() % 60_000);
+  if (left < margin) await new Promise((resolve) => setTimeout(resolve, left + 100));
+}
+
 describe('rate limiting (trainee sign-in, per client)', () => {
   it('allows 10 requests per minute per client across both trainee endpoints, then 429', async () => {
+    await startOfAMinute(); // the 11 requests fall in one window of the real limiter
     const client = api.client({ ip: '10.77.0.1' });
     const statuses: number[] = [];
     for (let i = 0; i < 10; i++)
@@ -240,5 +250,38 @@ describe('rate limiting (trainee sign-in, per client)', () => {
       (await api.client({ ip: '10.77.0.2' }).post('/api/auth/trainee/request', { email: 'limit@uni.example' })).status,
     ).toBe(202);
     expect((await client.get('/api/auth/config')).status).toBe(200);
+  });
+
+  it('refuses the request after the limit with 429, per client and only on the limited endpoints (no clock involved)', async () => {
+    // A counting limiter in place of the binding: the threshold is checked without any time window.
+    const counts = new Map<string, number>();
+    const keys: string[] = [];
+    const limitedApi = createTestApi({
+      async rateLimit(_env, key) {
+        keys.push(key);
+        const count = (counts.get(key) ?? 0) + 1;
+        counts.set(key, count);
+        return count <= 10;
+      },
+    });
+    const client = limitedApi.client({ ip: '10.78.0.1' });
+    const statuses: number[] = [];
+    for (let i = 0; i < 10; i++)
+      statuses.push((await client.post('/api/auth/trainee/request', { email: 'limit@uni.example' })).status);
+    expect(statuses).toEqual(Array(10).fill(202)); // below and at the threshold
+
+    const limited = await client.post('/api/auth/trainee/verify', { token: 'x' });
+    expect(limited.status).toBe(429); // above it, before any validation of the request
+    expect(Object.keys(await body(limited))).toEqual(['status', 'traceId']);
+    expect(limited.headers.get('retry-after')).toBe('60');
+    expect(keys.every((key) => key === '10.78.0.1')).toBe(true); // counted per client address
+
+    // Another client is not limited, and its invalid request keeps its validation error.
+    const other = limitedApi.client({ ip: '10.78.0.2' });
+    expect((await other.post('/api/auth/trainee/verify', { token: 'x' })).status).toBe(400);
+    // Endpoints that are not limited do not consult the limiter.
+    const before = keys.length;
+    expect((await client.get('/api/auth/config')).status).toBe(200);
+    expect(keys).toHaveLength(before);
   });
 });

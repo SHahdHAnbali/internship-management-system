@@ -1291,7 +1291,14 @@ describe('HR: trainee history (PDF §6)', () => {
     );
     await hr.client.post(`/api/hr/applications/${second.id}/accept`);
 
-    const statuses = await withDb((db) => db.query('SELECT id, status FROM training_applications ORDER BY id'));
+    // This test's own applications: the shared test database also holds other files' rows, written concurrently.
+    const own = [submitted, underReview, rejected, twice].map((t) => t.applicationId).concat(second.id);
+    const ownStatuses = () =>
+      withDb((db) =>
+        db.query('SELECT id, status FROM training_applications WHERE id = ANY($1::uuid[]) ORDER BY id', [own]),
+      ).then((r) => r.rows);
+    const statuses = await ownStatuses();
+    expect(statuses).toHaveLength(own.length);
     const list = await body<{ id: string }[]>(await hr.client.get('/api/hr/trainees'));
     const ids = list.map((t) => t.id);
     expect(ids.filter((id) => id === twice.user.id)).toHaveLength(1);
@@ -1305,9 +1312,7 @@ describe('HR: trainee history (PDF §6)', () => {
     );
     expect(history.applications.map((a) => a.status)).toEqual(['Rejected', 'Accepted']); // nothing hidden
     // Reading changes no status.
-    expect((await withDb((db) => db.query('SELECT id, status FROM training_applications ORDER BY id'))).rows).toEqual(
-      statuses.rows,
-    );
+    expect(await ownStatuses()).toEqual(statuses);
   });
 
   it('answers 404 for an unknown trainee, and is for HR only', async () => {
@@ -1453,7 +1458,11 @@ describe('in-app notifications (PDF §7, events whose workflow exists)', () => {
     const otherHr = await signInStaff(api, 'HR');
     const { applicationId } = await acceptedTrainee(hr.client, field.id);
     const mine = about(await inbox(hr.client), 'ApplicationSubmitted', applicationId)[0]!;
-    const before = (await inbox(hr.client)).unreadCount;
+    // Every HR member also gets the applications other test files submit meanwhile, so the counts here are of this
+    // test's own notifications (the exact unread count is checked with an isolated recipient below).
+    const ownUnread = async (client: TestClient) =>
+      about(await inbox(client), 'ApplicationSubmitted', applicationId).filter((n) => !n.isRead).length;
+    expect(await ownUnread(hr.client)).toBe(1);
 
     expect((await otherHr.client.post(`/api/notifications/${mine.id}/read`)).status).toBe(404);
     expect((await hr.client.post(`/api/notifications/${mine.id}/read`)).status).toBe(204);
@@ -1461,7 +1470,7 @@ describe('in-app notifications (PDF §7, events whose workflow exists)', () => {
     expect((await hr.client.post(`/api/notifications/${crypto.randomUUID()}/read`)).status).toBe(404);
 
     const after = await inbox(hr.client);
-    expect(after.unreadCount).toBe(before - 1);
+    expect(await ownUnread(hr.client)).toBe(0);
     expect(after.notifications.find((n) => n.id === mine.id)!.isRead).toBe(true);
     // The other HR member's copy is still unread.
     expect(about(await inbox(otherHr.client), 'ApplicationSubmitted', applicationId)[0]!.isRead).toBe(false);
@@ -1469,6 +1478,34 @@ describe('in-app notifications (PDF §7, events whose workflow exists)', () => {
       ['INSERT', 'Trainee', expect.any(String)],
       ['UPDATE', 'Staff', hr.user.id],
     ]);
+  });
+
+  it('reading one notification lowers the unread count by exactly one (a recipient no other test writes to)', async () => {
+    // An employee receives only the notifications about their own requests, so nothing else changes their count.
+    const employee = await signInStaff(api, 'Employee');
+    const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+    await withDb(async (db) => {
+      for (const id of ids) {
+        await db.query(
+          `INSERT INTO notifications (id, recipient_id, type, entity_id, is_read, created_at)
+           VALUES ($1, $2, 'MentorRequestApproved', $3, false, now())`,
+          [id, employee.user.id, crypto.randomUUID()],
+        );
+      }
+    });
+    const before = await inbox(employee.client);
+    expect(before.unreadCount).toBe(3);
+
+    expect((await employee.client.post(`/api/notifications/${ids[1]}/read`)).status).toBe(204);
+    expect((await employee.client.post(`/api/notifications/${ids[1]}/read`)).status).toBe(204); // once only
+    const after = await inbox(employee.client);
+    expect(after.unreadCount).toBe(before.unreadCount - 1);
+    expect(
+      after.notifications
+        .filter((n) => !n.isRead)
+        .map((n) => n.id)
+        .sort(),
+    ).toEqual([ids[0], ids[2]].sort());
   });
 
   it('pages through every notification newest first, without gaps or repeats, with an accurate unread count', async () => {
@@ -1548,7 +1585,11 @@ describe('in-app notifications (PDF §7, events whose workflow exists)', () => {
     const { hr, field } = await cast();
     const { applicationId } = await acceptedTrainee(hr.client, field.id);
     const note = about(await inbox(hr.client), 'ApplicationSubmitted', applicationId)[0]!;
-    const unreadAsHr = (await inbox(hr.client)).unreadCount;
+    // While HR, this user also gets the applications other test files submit meanwhile, so the HR-side counts are of
+    // this test's own notification (the exact total across a role change is checked with an Employee below).
+    const ownUnread = async () =>
+      about(await inbox(hr.client), 'ApplicationSubmitted', applicationId).filter((n) => !n.isRead).length;
+    expect(await ownUnread()).toBe(1);
 
     await setRole(hr.email, 'Employee');
     const asEmployee = await inbox(hr.client);
@@ -1562,7 +1603,39 @@ describe('in-app notifications (PDF §7, events whose workflow exists)', () => {
     await setRole(hr.email, 'HR');
     const back = await inbox(hr.client);
     expect(back.notifications.find((n) => n.id === note.id)).toMatchObject({ isRead: false });
-    expect(back.unreadCount).toBe(unreadAsHr);
+    expect(await ownUnread()).toBe(1); // it is counted again, unread
+  });
+
+  it("the other way round: an Employee's notifications are hidden while HR and return with the exact same count", async () => {
+    // An employee receives only the notifications about their own requests, so their total is controlled here; what
+    // other files send to HR while this user is HR is of an HR type, hidden again once they are an Employee.
+    const employee = await signInStaff(api, 'Employee');
+    const ids = [crypto.randomUUID(), crypto.randomUUID()];
+    await withDb(async (db) => {
+      for (const id of ids) {
+        await db.query(
+          `INSERT INTO notifications (id, recipient_id, type, entity_id, is_read, created_at)
+           VALUES ($1, $2, 'MentorRequestApproved', $3, false, now())`,
+          [id, employee.user.id, crypto.randomUUID()],
+        );
+      }
+    });
+    const asEmployee = await inbox(employee.client);
+    expect(asEmployee.unreadCount).toBe(2);
+    expect(asEmployee.notifications.map((n) => n.id).sort()).toEqual([...ids].sort());
+
+    await setRole(employee.email, 'HR');
+    const asHr = await inbox(employee.client);
+    expect(asHr.notifications.filter((n) => ids.includes(n.id))).toEqual([]); // the Employee's are hidden
+    expect(
+      asHr.notifications.every((n) => n.type === 'ApplicationSubmitted' || n.type === 'MentorRequestSubmitted'),
+    ).toBe(true);
+    expect((await employee.client.post(`/api/notifications/${ids[0]}/read`)).status).toBe(404);
+
+    await setRole(employee.email, 'Employee');
+    const back = await inbox(employee.client);
+    expect(back.unreadCount).toBe(asEmployee.unreadCount); // exactly the same total, HR's notifications not counted
+    expect(back.notifications.map((n) => [n.id, n.isRead]).sort()).toEqual(ids.map((id) => [id, false]).sort());
   });
 
   it('each role sees only its own notification types; Trainee and Admin have none; deleting is refused', async () => {
