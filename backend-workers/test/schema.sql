@@ -875,3 +875,72 @@ VALUES ('20261122124131_FinalEvaluations', '10.0.13');
 
 COMMIT;
 
+START TRANSACTION;
+CREATE FUNCTION ims_evaluations_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    -- Permanent: an evaluation keeps its identity.
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.application_id IS DISTINCT FROM OLD.application_id
+       OR NEW.assignment_id IS DISTINCT FROM OLD.assignment_id OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+        RAISE EXCEPTION 'An evaluation''s application, assignment and creation time cannot be changed.'
+            USING ERRCODE = 'restrict_violation', CONSTRAINT = 'evaluations_identity_immutable';
+    END IF;
+    IF OLD.status = 'Submitted' THEN
+        -- Permanent: never back to Draft; the original submitter and submission time are kept (AD-66).
+        IF NEW.status IS DISTINCT FROM OLD.status OR NEW.submitted_by_id IS DISTINCT FROM OLD.submitted_by_id
+           OR NEW.submitted_at IS DISTINCT FROM OLD.submitted_at THEN
+            RAISE EXCEPTION 'A submitted evaluation keeps its status, submitter and submission time.'
+                USING ERRCODE = 'restrict_violation', CONSTRAINT = 'evaluations_submission_immutable';
+        END IF;
+        -- S2.2: a submitted evaluation is read-only (S2.4 replaces only this branch, with its own approval).
+        RAISE EXCEPTION 'A submitted evaluation cannot be changed.'
+            USING ERRCODE = 'restrict_violation', CONSTRAINT = 'evaluations_submitted_readonly';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER evaluations_guard BEFORE UPDATE ON evaluations
+    FOR EACH ROW EXECUTE FUNCTION ims_evaluations_guard();
+
+CREATE FUNCTION ims_evaluation_scores_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    parent_status text;
+BEGIN
+    IF TG_OP = 'UPDATE' THEN
+        -- Permanent: a score keeps its evaluation and criterion, a saved score is never cleared, and a frozen
+        -- snapshot never changes.
+        IF NEW.id IS DISTINCT FROM OLD.id OR NEW.evaluation_id IS DISTINCT FROM OLD.evaluation_id
+           OR NEW.criterion_id IS DISTINCT FROM OLD.criterion_id THEN
+            RAISE EXCEPTION 'A score''s evaluation and criterion cannot be changed.'
+                USING ERRCODE = 'restrict_violation', CONSTRAINT = 'evaluation_scores_identity_immutable';
+        END IF;
+        IF OLD.score IS NOT NULL AND NEW.score IS NULL THEN
+            RAISE EXCEPTION 'A saved score cannot be cleared.'
+                USING ERRCODE = 'restrict_violation', CONSTRAINT = 'evaluation_scores_not_cleared';
+        END IF;
+        IF OLD.frozen_sort_order IS NOT NULL AND (NEW.frozen_name_ar IS DISTINCT FROM OLD.frozen_name_ar
+           OR NEW.frozen_name_en IS DISTINCT FROM OLD.frozen_name_en
+           OR NEW.frozen_sort_order IS DISTINCT FROM OLD.frozen_sort_order) THEN
+            RAISE EXCEPTION 'A frozen criterion snapshot cannot be changed.'
+                USING ERRCODE = 'restrict_violation', CONSTRAINT = 'evaluation_scores_snapshot_immutable';
+        END IF;
+    END IF;
+    -- Lock the parent (waits for a concurrent status change) and read its latest committed status.
+    SELECT status INTO parent_status FROM evaluations WHERE id = NEW.evaluation_id FOR SHARE;
+    IF parent_status = 'Submitted' THEN
+        -- S2.2: the scores of a submitted evaluation are read-only (S2.4 replaces only this branch).
+        RAISE EXCEPTION 'The scores of a submitted evaluation cannot be changed.'
+            USING ERRCODE = 'restrict_violation', CONSTRAINT = 'evaluation_scores_submitted_readonly';
+    END IF;
+    RETURN NEW; -- an unknown parent is left to the foreign key
+END;
+$$;
+
+CREATE TRIGGER evaluation_scores_guard BEFORE INSERT OR UPDATE ON evaluation_scores
+    FOR EACH ROW EXECUTE FUNCTION ims_evaluation_scores_guard();
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261122164739_EvaluationWriteGuards', '10.0.13');
+
+COMMIT;
+

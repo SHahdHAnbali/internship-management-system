@@ -23,7 +23,8 @@ export interface EvaluableTraining {
   trainee_name: string | null;
   field_name: string;
   start_date: string | null;
-  /** The latest assignment's status and end date (the actual end once HR ended it). */
+  /** The latest assignment (the one a draft is recorded against), its status and end date (the actual end once ended). */
+  assignment_id: string | null;
   end_status: string | null;
   end_date: string | null;
   final_mentor: boolean;
@@ -44,7 +45,7 @@ export async function evaluableTrainings(
   const { rows } = await q.query<EvaluableTraining>(
     `SELECT a.id AS application_id, t.full_name AS trainee_name, f.name AS field_name,
             (SELECT min(p.start_date) FROM assignments p WHERE p.application_id = a.id)::text AS start_date,
-            s.status AS end_status, s.end_date::text AS end_date,
+            s.id AS assignment_id, s.status AS end_status, s.end_date::text AS end_date,
             coalesce(s.employee_id = $1, false) AS final_mentor,
             ($2 = 'HR' AND ${CURRENT_RESPONSIBLE_HR_ID} = $1) AS responsible_hr,
             ev.id AS evaluation_id, ev.status AS evaluation_status
@@ -52,7 +53,7 @@ export async function evaluableTrainings(
        JOIN trainees t ON t.id = a.trainee_id
        JOIN fields f ON f.id = a.field_id
        LEFT JOIN LATERAL (
-              SELECT s.employee_id, s.status, s.end_date FROM assignments s
+              SELECT s.id, s.employee_id, s.status, s.end_date FROM assignments s
                WHERE s.application_id = a.id
                  AND NOT EXISTS (SELECT 1 FROM assignment_transfers x WHERE x.from_assignment_id = s.id)
                ORDER BY s.created_at DESC, s.id DESC LIMIT 1) s ON true

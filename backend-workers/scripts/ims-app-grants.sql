@@ -67,9 +67,19 @@ GRANT UPDATE (status, resolved_at, resolved_by_id, resolution_code, resolution_r
 -- once after the e-mails were attempted, is updatable; what was reminded and when never changes.
 GRANT UPDATE (outcome, accepted_count, failed_count, completed_at) ON pending_reminders TO ims_app;
 
--- Final evaluation (R27, stage S2.1; owner decision 2026-11-22): read-only. The Worker only reads these tables in S2.1;
--- INSERT and UPDATE are granted by the later stage that writes them, after its own approval. Never DELETE or TRUNCATE.
+-- Final evaluation (R27, stage S2.1; owner decision 2026-11-22): read access. Never DELETE or TRUNCATE.
 GRANT SELECT ON evaluations, evaluation_scores, evaluation_corrections TO ims_app;
+-- Stage S2.2, the shared draft (owner decisions 2026-11-22, AD-70): column-level only. A draft is created with its
+-- identity and times (status 'Draft'; `version` takes its default 0) and then edits its comment, recommendation, change
+-- counter and last-saved time, and its scores. Never the submission (status, submitter, time: S2.3), the frozen
+-- snapshot (S2.3) or corrections (S2.4). A submitted row cannot be created: `ck_evaluations_submission` needs the
+-- submitter and time, which are not granted. The database guards (migration EvaluationWriteGuards) refuse, for every
+-- role, any change to a submitted evaluation or its scores and the clearing of a saved score; their parent lock
+-- (`FOR SHARE`) relies on this UPDATE grant.
+GRANT INSERT (id, application_id, assignment_id, status, created_at, updated_at) ON evaluations TO ims_app;
+GRANT UPDATE (comment, hiring_recommendation, version, updated_at) ON evaluations TO ims_app;
+GRANT INSERT (id, evaluation_id, criterion_id, score) ON evaluation_scores TO ims_app;
+GRANT UPDATE (score) ON evaluation_scores TO ims_app;
 
 -- Only the schema owner sets up audit protection on a table.
 REVOKE EXECUTE ON FUNCTION ims_protect_table(regclass) FROM PUBLIC;

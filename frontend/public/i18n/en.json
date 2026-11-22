@@ -1040,8 +1040,40 @@
     "frozen": "The criteria as they were when the evaluation was submitted.",
     "commentOnly": "There is no active criterion: this evaluation will consist of a written comment only.",
     "commentOnlySubmitted": "This evaluation was submitted with a written comment only.",
-    "readOnly": "This page shows the training and its evaluation criteria; the evaluation cannot be filled in here yet.",
+    "readOnly": "This evaluation has been submitted and is read-only.",
     "notFound": "This evaluation was not found.",
-    "notAvailable": "The final evaluation is available only after HR ends the training as Completed or Ended early."
+    "notAvailable": "The final evaluation is available only after HR ends the training as Completed or Ended early.",
+    "draft": {
+      "hint": "Choose a score from 1 to 5 for each criterion you have assessed. You can save an incomplete draft and continue later; the other evaluator of this training sees the same draft.",
+      "comment": "Comment (optional while drafting)",
+      "commentCount": "{{count}} / {{max}}",
+      "commentTooLong": "The comment must be at most {{max}} characters.",
+      "recommendation": "Hiring recommendation (optional while drafting)",
+      "recommendations": {
+        "Yes": "Yes",
+        "Maybe": "Maybe",
+        "No": "No",
+        "none": "Not chosen"
+      },
+      "save": "Save draft",
+      "saving": "Saving…",
+      "saved": "Draft saved",
+      "unsaved": "Unsaved changes",
+      "lastSaved": "Last saved: {{time}}",
+      "conflict": "Another evaluator saved changes to this draft. What you entered is still shown here and has not been saved.",
+      "criteriaChanged": "The evaluation criteria have changed. What you entered is still shown here and has not been saved.",
+      "alreadySubmitted": "This evaluation has already been submitted. What you entered has not been saved.",
+      "saveFailed": "The draft could not be saved. Try again.",
+      "loadLatest": "Load the latest version",
+      "discard": "Discard my changes",
+      "confirmTitle": "Discard your unsaved changes?",
+      "confirmText": "The latest saved version will replace what you have entered here. This cannot be undone.",
+      "confirmDiscard": "Discard and load the latest",
+      "keepEditing": "Keep editing",
+      "leaveTitle": "Leave without saving?",
+      "leaveText": "Your changes to this draft have not been saved and will be lost if you leave this page.",
+      "stay": "Stay on this page",
+      "leave": "Leave without saving"
+    }
   }
 }

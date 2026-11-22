@@ -69,9 +69,30 @@ const AUDIT = {
 };
 /**
  * Deliberate extra triggers, by table (names sort between audit_row_change and no_delete). evaluation_criteria: the
- * database assigns each new criterion its order and refuses any later change of it (AD-68 G7).
+ * database assigns each new criterion its order and refuses any later change of it (AD-68 G7). evaluations and
+ * evaluation_scores: the final evaluation write guards (S2.2, K1 option B, migration EvaluationWriteGuards).
  */
 const EXTRA_TRIGGERS: Record<string, object[]> = {
+  evaluations: [
+    {
+      name: 'evaluations_guard',
+      enabled: true,
+      timing: 'BEFORE',
+      level: 'ROW',
+      events: ['UPDATE'],
+      fn: 'ims_evaluations_guard',
+    },
+  ],
+  evaluation_scores: [
+    {
+      name: 'evaluation_scores_guard',
+      enabled: true,
+      timing: 'BEFORE',
+      level: 'ROW',
+      events: ['INSERT', 'UPDATE'],
+      fn: 'ims_evaluation_scores_guard',
+    },
+  ],
   evaluation_criteria: [
     {
       name: 'evaluation_criteria_order',

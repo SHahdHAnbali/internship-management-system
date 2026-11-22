@@ -69,7 +69,10 @@ const TABLES = [
   '__EFMigrationsHistory',
 ];
 const SELECT = TABLES.filter((t) => t !== 'roles' && t !== '__EFMigrationsHistory');
-/** R27 S2.1 (owner, 2026-11-22): the final evaluation tables are read-only for the Worker until a later stage writes them. */
+/**
+ * R27 (owner, 2026-11-22): the final evaluation tables have no table-wide INSERT or UPDATE. S2.2 grants the draft's
+ * columns only (checked column by column below); `evaluation_corrections` stays read-only.
+ */
 const EVALUATION_TABLES = ['evaluations', 'evaluation_scores', 'evaluation_corrections'];
 const INSERT = SELECT.filter((t) => t !== 'notification_settings' && !EVALUATION_TABLES.includes(t));
 const UPDATE = [
@@ -226,6 +229,35 @@ describe('ims_app: exactly the privileges the Worker needs', () => {
     ]);
   });
 
+  it("may write only a final evaluation draft's columns (R27 S2.2), never its submission, snapshot or corrections", async () => {
+    const columns = await withDb((db) =>
+      db.query<{ table: string; column: string; insert: boolean; update: boolean }>(
+        `SELECT c.relname AS table, a.attname AS column,
+                has_column_privilege('ims_app', c.oid, a.attname, 'INSERT') AS insert,
+                has_column_privilege('ims_app', c.oid, a.attname, 'UPDATE') AS update
+           FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
+          WHERE c.relname IN ('evaluations', 'evaluation_scores', 'evaluation_corrections')
+            AND a.attnum > 0 AND NOT a.attisdropped
+          ORDER BY c.relname, a.attname`,
+      ),
+    );
+    const granted = (table: string, privilege: 'insert' | 'update') =>
+      columns.rows.filter((c) => c.table === table && c[privilege]).map((c) => c.column);
+    expect(granted('evaluations', 'insert')).toEqual([
+      'application_id',
+      'assignment_id',
+      'created_at',
+      'id',
+      'status',
+      'updated_at',
+    ]);
+    expect(granted('evaluations', 'update')).toEqual(['comment', 'hiring_recommendation', 'updated_at', 'version']);
+    expect(granted('evaluation_scores', 'insert')).toEqual(['criterion_id', 'evaluation_id', 'id', 'score']);
+    expect(granted('evaluation_scores', 'update')).toEqual(['score']);
+    expect(granted('evaluation_corrections', 'insert')).toEqual([]);
+    expect(granted('evaluation_corrections', 'update')).toEqual([]);
+  });
+
   it('cannot create anything: no schema CREATE, no TEMP (also not through PUBLIC), no protect function', async () => {
     const checks = await withDb((db) =>
       db.query(
@@ -265,19 +297,23 @@ describe('ims_app: refused (negative tests, disposable test database only)', () 
     ["UPDATE a reminder's attempt time", 'UPDATE pending_reminders SET attempted_at = attempted_at'],
     ['DELETE a pending-request reminder', 'DELETE FROM pending_reminders'],
     ['TRUNCATE pending-request reminders', 'TRUNCATE pending_reminders'],
-    // R27 S2.1: the final evaluation tables are read-only for the Worker (owner, 2026-11-22).
-    [
-      'INSERT an evaluation',
-      `INSERT INTO evaluations (id, application_id, assignment_id, status, created_at, updated_at) VALUES ('${tamper}', '${tamper}', '${tamper}', 'Draft', now(), now())`,
-    ],
-    ['UPDATE an evaluation', "UPDATE evaluations SET status = 'Submitted'"],
+    // R27 S2.2 (owner, 2026-11-22): only a draft's columns are writable; never submission, snapshot or corrections.
+    ...['submitted_by_id', 'submitted_at', 'comment', 'hiring_recommendation', 'version'].map((column) => [
+      `INSERT an evaluation with ${column}`,
+      `INSERT INTO evaluations (id, application_id, assignment_id, status, created_at, updated_at, ${column}) VALUES ('${tamper}', '${tamper}', '${tamper}', 'Draft', now(), now(), NULL)`,
+    ]),
+    ...['status', 'submitted_by_id', 'submitted_at', 'application_id', 'assignment_id', 'created_at', 'id'].map(
+      (column) => [`UPDATE an evaluation's ${column}`, `UPDATE evaluations SET ${column} = ${column}`],
+    ),
     ['DELETE an evaluation', 'DELETE FROM evaluations'],
     ['TRUNCATE evaluations', 'TRUNCATE evaluations'],
-    [
-      'INSERT an evaluation score',
-      `INSERT INTO evaluation_scores (id, evaluation_id, criterion_id, score) VALUES ('${tamper}', '${tamper}', '${tamper}', 5)`,
-    ],
-    ['UPDATE an evaluation score', 'UPDATE evaluation_scores SET score = 5'],
+    ...['frozen_name_ar', 'frozen_name_en', 'frozen_sort_order'].map((column) => [
+      `INSERT an evaluation score with ${column}`,
+      `INSERT INTO evaluation_scores (id, evaluation_id, criterion_id, score, ${column}) VALUES ('${tamper}', '${tamper}', '${tamper}', 5, NULL)`,
+    ]),
+    ...['frozen_name_ar', 'frozen_name_en', 'frozen_sort_order', 'evaluation_id', 'criterion_id', 'id'].map(
+      (column) => [`UPDATE an evaluation score's ${column}`, `UPDATE evaluation_scores SET ${column} = ${column}`],
+    ),
     ['DELETE an evaluation score', 'DELETE FROM evaluation_scores'],
     ['TRUNCATE evaluation scores', 'TRUNCATE evaluation_scores'],
     [
@@ -287,6 +323,12 @@ describe('ims_app: refused (negative tests, disposable test database only)', () 
     ['UPDATE an evaluation correction', "UPDATE evaluation_corrections SET reason = 'x'"],
     ['DELETE an evaluation correction', 'DELETE FROM evaluation_corrections'],
     ['TRUNCATE evaluation corrections', 'TRUNCATE evaluation_corrections'],
+    ['DISABLE an evaluation guard', 'ALTER TABLE evaluations DISABLE TRIGGER evaluations_guard'],
+    ['DROP a score guard', 'DROP TRIGGER evaluation_scores_guard ON evaluation_scores'],
+    [
+      'replace an evaluation guard function',
+      "CREATE OR REPLACE FUNCTION ims_evaluations_guard() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NEW; END'",
+    ],
     ['DELETE FROM audit_logs', 'DELETE FROM audit_logs WHERE id = 1'],
     ['TRUNCATE audit_logs', 'TRUNCATE audit_logs'],
     ['DISABLE an audit trigger', 'ALTER TABLE fields DISABLE TRIGGER audit_row_change'],
@@ -391,5 +433,115 @@ describe('ims_app: refused (negative tests, disposable test database only)', () 
       db.query("SELECT count(*)::int AS n FROM audit_logs WHERE entity_id = 'forged-by-temp-trigger'"),
     );
     expect(kept.rows[0]).toEqual({ n: 0 }); // nothing stayed
+  });
+});
+
+describe('ims_app and the final evaluation guards (R27 S2.2; K1 option B, owner 2026-11-22)', () => {
+  /** A training (seeded by the owner, actor System) and a criterion; returns their ids. */
+  async function training() {
+    const [employee, trainee, field, application, assignment, criterion] = [1, 2, 3, 4, 5, 6].map(() =>
+      crypto.randomUUID(),
+    ) as [string, string, string, string, string, string];
+    await withDb((db) =>
+      db.query(`
+        INSERT INTO employees (id, full_name, email, role) VALUES ('${employee}', 'Guard Mentor', '${employee}@company.example', 'Employee');
+        INSERT INTO trainees (id, email) VALUES ('${trainee}', '${trainee}@example.com');
+        INSERT INTO fields (id, name, is_active) VALUES ('${field}', 'Guard ${field}', true);
+        INSERT INTO training_applications (id, trainee_id, field_id, status, available_from, available_to, hours,
+                                           mandatory_for_university, submitted_at, decided_at, decided_by_id)
+          VALUES ('${application}', '${trainee}', '${field}', 'Accepted', '2026-01-01', '2026-03-01', 1, false, now(), now(), '${employee}');
+        INSERT INTO assignments (id, application_id, employee_id, start_date, end_date, status, created_at)
+          VALUES ('${assignment}', '${application}', '${employee}', '2026-01-01', '2026-03-01', 'Completed', now());
+        INSERT INTO evaluation_criteria (id, name_ar, name_en, is_active) VALUES ('${criterion}', 'معيار', 'Guard ${criterion}', true);
+      `),
+    );
+    return { employee, application, assignment, criterion };
+  }
+
+  /** The PostgreSQL error (SQLSTATE and constraint) of `sql` run as ims_app, rolled back. */
+  const refusal = async (sql: string) => {
+    const error = (await refused(sql)) as { code: string; constraint?: string };
+    return [error.code, error.constraint ?? null];
+  };
+
+  it('writes a draft with only its granted columns, as the draft API does (locks included)', async () => {
+    const t = await training();
+    const evaluation = crypto.randomUUID();
+    await connect(async (db) => {
+      await db.query('BEGIN');
+      await db.query(
+        `INSERT INTO evaluations (id, application_id, assignment_id, status, created_at, updated_at)
+         VALUES ($1, $2, $3, 'Draft', now(), now()) ON CONFLICT (application_id) DO NOTHING`,
+        [evaluation, t.application, t.assignment],
+      );
+      await db.query('SELECT version FROM evaluations WHERE id = $1 FOR UPDATE', [evaluation]);
+      await db.query(
+        `INSERT INTO evaluation_scores (id, evaluation_id, criterion_id, score) VALUES (gen_random_uuid(), $1, $2, 3)
+         ON CONFLICT (evaluation_id, criterion_id) DO UPDATE SET score = EXCLUDED.score`,
+        [evaluation, t.criterion],
+      );
+      await db.query('UPDATE evaluation_scores SET score = 5 WHERE evaluation_id = $1', [evaluation]);
+      await db.query(
+        `UPDATE evaluations SET comment = 'Draft', hiring_recommendation = 'Maybe', version = version + 1, updated_at = now()
+          WHERE id = $1`,
+        [evaluation],
+      );
+      await db.query('COMMIT');
+    });
+    const stored = await withDb((db) =>
+      db.query(
+        'SELECT e.status, e.version, e.comment, s.score FROM evaluations e JOIN evaluation_scores s ON s.evaluation_id = e.id WHERE e.id = $1',
+        [evaluation],
+      ),
+    );
+    expect(stored.rows).toEqual([{ status: 'Draft', version: 1, comment: 'Draft', score: 5 }]);
+  });
+
+  it('cannot create a submitted evaluation: the columns it would need are not granted, the constraint refuses the rest', async () => {
+    const t = await training();
+    expect(
+      await refusal(
+        `INSERT INTO evaluations (id, application_id, assignment_id, status, created_at, updated_at)
+         VALUES (gen_random_uuid(), '${t.application}', '${t.assignment}', 'Submitted', now(), now())`,
+      ),
+    ).toEqual(['23514', 'ck_evaluations_submission']);
+  });
+
+  it('cannot clear a saved score, nor touch a submitted evaluation or its scores (database guards)', async () => {
+    const t = await training();
+    const evaluation = crypto.randomUUID();
+    const other = (await training()).criterion;
+    await withDb((db) =>
+      db.query(`
+        INSERT INTO evaluations (id, application_id, assignment_id, status, created_at, updated_at)
+          VALUES ('${evaluation}', '${t.application}', '${t.assignment}', 'Draft', now(), now());
+        INSERT INTO evaluation_scores (id, evaluation_id, criterion_id, score) VALUES (gen_random_uuid(), '${evaluation}', '${t.criterion}', 4);
+      `),
+    );
+    expect(await refusal(`UPDATE evaluation_scores SET score = NULL WHERE evaluation_id = '${evaluation}'`)).toEqual([
+      '23001',
+      'evaluation_scores_not_cleared',
+    ]);
+
+    // Submitted the S2.3 way (by the owner here: the Worker has no grant for it yet).
+    await withDb((db) =>
+      db.query(`
+        UPDATE evaluation_scores SET frozen_name_ar = 'معيار', frozen_name_en = 'Guard', frozen_sort_order = 1 WHERE evaluation_id = '${evaluation}';
+        UPDATE evaluations SET status = 'Submitted', comment = 'Final', hiring_recommendation = 'Yes',
+               submitted_by_id = '${t.employee}', submitted_at = now() WHERE id = '${evaluation}';
+      `),
+    );
+    for (const sql of [
+      `UPDATE evaluations SET comment = 'Changed' WHERE id = '${evaluation}'`,
+      `UPDATE evaluations SET hiring_recommendation = 'No', version = version + 1, updated_at = now() WHERE id = '${evaluation}'`,
+    ]) {
+      expect(await refusal(sql), sql).toEqual(['23001', 'evaluations_submitted_readonly']);
+    }
+    for (const sql of [
+      `UPDATE evaluation_scores SET score = 1 WHERE evaluation_id = '${evaluation}'`,
+      `INSERT INTO evaluation_scores (id, evaluation_id, criterion_id, score) VALUES (gen_random_uuid(), '${evaluation}', '${other}', 2)`,
+    ]) {
+      expect(await refusal(sql), sql).toEqual(['23001', 'evaluation_scores_submitted_readonly']);
+    }
   });
 });

@@ -139,7 +139,10 @@ public sealed class FinalEvaluationsSchemaTests(ImsApiFactory factory) : IClassF
             """);
 
         Assert.Equal(
-            "evaluation_corrections:audit_row_change,no_delete,no_truncate;evaluation_scores:audit_row_change,no_delete,no_truncate;evaluations:audit_row_change,no_delete,no_truncate",
+            // The S2.2 write guards (migration EvaluationWriteGuards) sit between the audit and the no-delete triggers.
+            "evaluation_corrections:audit_row_change,no_delete,no_truncate;" +
+            "evaluation_scores:audit_row_change,evaluation_scores_guard,no_delete,no_truncate;" +
+            "evaluations:audit_row_change,evaluations_guard,no_delete,no_truncate",
             await EvaluationSql.ScalarAsync(connection, """
                 SELECT string_agg(relname || ':' || triggers, ';' ORDER BY relname)
                   FROM (SELECT c.relname, string_agg(t.tgname, ',' ORDER BY t.tgname) AS triggers

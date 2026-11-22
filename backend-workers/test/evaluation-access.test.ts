@@ -37,7 +37,8 @@ interface Detail extends ListItem {
 }
 
 const LIST_KEYS = ['applicationId', 'capacities', 'endDate', 'endStatus', 'fieldName', 'status', 'traineeName'];
-const DETAIL_KEYS = [...LIST_KEYS, 'commentOnly', 'criteria', 'startDate'].sort();
+// S2.2 (AD-70): while not submitted, the detail also carries the shared draft (revision and draft values).
+const DETAIL_KEYS = [...LIST_KEYS, 'commentOnly', 'criteria', 'draft', 'revision', 'startDate'].sort();
 
 const list = async (client: TestClient) => {
   const response = await client.get('/api/evaluations');
@@ -97,21 +98,21 @@ async function seedEvaluation(
     await db.query(
       `INSERT INTO evaluations (id, application_id, assignment_id, status, comment, hiring_recommendation, version,
                                 created_at, updated_at, submitted_by_id, submitted_at)
-       VALUES ($1, $2, $3, $4, 'SECRET-EVALUATION-COMMENT', 'Maybe', 7, now(), now(), $5, $6)`,
-      [
-        id,
-        applicationId,
-        assignmentId,
-        values.status,
-        values.submittedBy ?? null,
-        values.submittedBy ? new Date() : null,
-      ],
+       VALUES ($1, $2, $3, 'Draft', 'SECRET-EVALUATION-COMMENT', 'Maybe', 7, now(), now(), NULL, NULL)`,
+      [id, applicationId, assignmentId],
     );
     for (const f of values.frozen ?? []) {
       await db.query(
         `INSERT INTO evaluation_scores (id, evaluation_id, criterion_id, score, frozen_name_ar, frozen_name_en, frozen_sort_order)
          VALUES (gen_random_uuid(), $1, $2, $3, 'اسم مجمد', 'Frozen name', $4)`,
         [id, f.criterion, f.score, f.order],
+      );
+    }
+    // S2.3's order (the database guards refuse score writes once submitted): freeze the scores, then submit.
+    if (values.status === 'Submitted') {
+      await db.query(
+        "UPDATE evaluations SET status = 'Submitted', submitted_by_id = $2, submitted_at = now() WHERE id = $1",
+        [id, values.submittedBy],
       );
     }
     await db.query('COMMIT');
