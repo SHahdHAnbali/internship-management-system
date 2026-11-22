@@ -16,7 +16,7 @@ blocks it, not built) · **Partly done** · **Done**. Production means the Cloud
 
 | Module | PDF reference | State |
 |---|---|---|
-| Admin | §2, §4 Admin | **Built, in production**: fields, evaluation criteria and weights, users and roles, notification intervals, certificate template (AD-43), accepted trainees, reports (monthly, fields), audit log viewer (AD-51) |
+| Admin | §2, §4 Admin | **Built, in production**: fields, evaluation criteria (AD-66: Arabic and English names, an automatic order that never changes, an active flag, no weights; S1, since 2026-11-18), users and roles, notification intervals, certificate template (AD-43), accepted trainees, reports (monthly, fields), audit log viewer (AD-51) |
 | Authentication: staff (Google, staff domains) | §2, §9 | **Built, in production** (AD-42, AD-44, AD-45, AD-46) |
 | Authentication: trainee (passwordless e-mail link/code, 15 min) | §2, §4 Trainee, §9 | **Built, in production**: verified by the owner on 2026-11-10 (e-mail through Gmail SMTP, AD-58). Since 2026-11-12 an existing trainee may also sign in with Google using the same verified non-staff e-mail (AD-42 B1); registration stays e-mail only |
 | Trainee: applications | §3 steps 1–4, §4 Trainee | **Built, in production** (AD-47, AD-48) |
