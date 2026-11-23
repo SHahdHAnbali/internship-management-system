@@ -1,7 +1,18 @@
 import { env } from 'cloudflare:workers';
+import pg from 'pg';
 import { describe, expect, it } from 'vitest';
 import type { Bindings } from '../src/config';
-import { body, createTestApi, setRole, signInStaff, signInTrainee, type TestClient, unique, withDb } from './helpers';
+import {
+  body,
+  createTestApi,
+  ownerDatabaseUrl,
+  setRole,
+  signInStaff,
+  signInTrainee,
+  type TestClient,
+  unique,
+  withDb,
+} from './helpers';
 
 /**
  * The trainee lifecycle as far as the Employee area needs it (PDF §3, §4; owner decisions 2026-10-29): a trainee
@@ -396,17 +407,70 @@ describe('applications', () => {
   });
 
   it('two HR decisions at the same moment: exactly one wins', async () => {
+    // Deterministic (S2.4 stabilization, owner decision of 2026-11-23): two requests sent together need not overlap. A
+    // decision reads the application, checks its status, then updates it in a transaction (hrRoutes.ts). Here a
+    // transaction of the owner locks the application row first: both decisions read it (a plain read does not wait),
+    // pass the status check and are then seen waiting for that lock in their UPDATE; only then is the lock released, so
+    // they really compete. The winner answers 200; the other finds the status changed: 409. (A decision sent after the
+    // other has finished is refused with 400 application.invalid_status: the sequential test above.)
     const { hr, field } = await cast();
     const hr2 = await signInStaff(api, 'HR');
     const trainee = await signInTrainee(api);
     const { id } = await body<{ id: string }>(
       await trainee.client.post('/api/trainee/applications', applicationForm(field.id)),
     );
-    const results = await Promise.all([
-      hr.client.post(`/api/hr/applications/${id}/accept`),
-      hr2.client.post(`/api/hr/applications/${id}/reject`, { reason: 'Duplicate' }),
-    ]);
-    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    const holder = new pg.Client({ connectionString: ownerDatabaseUrl() });
+    holder.on('error', () => undefined);
+    await holder.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT id FROM training_applications WHERE id = $1 FOR UPDATE', [id]);
+      const holderPid = (await holder.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+      const decisions = [
+        hr.client.post(`/api/hr/applications/${id}/accept`),
+        hr2.client.post(`/api/hr/applications/${id}/reject`, { reason: 'Duplicate' }),
+      ];
+      // Both wait behind the holder's lock in their UPDATE of the application, so each has read it and passed the
+      // check. PostgreSQL queues row-lock waiters: the first waits for the holder, the second for the first.
+      for (let waited = 0; ; waited += 25) {
+        const { rows } = await withDb((db) =>
+          db.query<{ query: string }>(
+            `WITH first AS (SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))
+             SELECT a.query FROM pg_stat_activity a
+              WHERE a.pid IN (SELECT pid FROM first)
+                 OR EXISTS (SELECT 1 FROM first f WHERE f.pid = ANY(pg_blocking_pids(a.pid)))`,
+            [holderPid],
+          ),
+        );
+        if (rows.length === 2) {
+          expect(rows.every((r) => r.query.startsWith('UPDATE training_applications SET'))).toBe(true);
+          break;
+        }
+        if (waited > 10_000) throw new Error(`Expected both decisions to wait for the lock; ${rows.length} did.`);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      await holder.query('ROLLBACK'); // the holder changed nothing
+
+      const [accepted, rejected] = await Promise.all(decisions);
+      expect([accepted!.status, rejected!.status].sort()).toEqual([200, 409]);
+      const loser = accepted!.status === 409 ? accepted! : rejected!;
+      expect((await body<{ code: string }>(loser)).code).toBe('conflict.concurrent_update');
+      // The stored decision is the winner's, by the winner.
+      const stored = await withDb((db) =>
+        db.query<{ status: string; decided_by_id: string }>(
+          'SELECT status, decided_by_id FROM training_applications WHERE id = $1',
+          [id],
+        ),
+      ).then((r) => r.rows[0]!);
+      expect(stored).toEqual(
+        accepted!.status === 200
+          ? { status: 'Accepted', decided_by_id: hr.user.id }
+          : { status: 'Rejected', decided_by_id: hr2.user.id },
+      );
+    } finally {
+      await holder.query('ROLLBACK').catch(() => undefined);
+      await holder.end().catch(() => undefined);
+    }
   });
 });
 

@@ -71,7 +71,8 @@ const TABLES = [
 const SELECT = TABLES.filter((t) => t !== 'roles' && t !== '__EFMigrationsHistory');
 /**
  * R27 (owner, 2026-11-22): the final evaluation tables have no table-wide INSERT or UPDATE. S2.2 grants the draft's
- * columns only (checked column by column below); `evaluation_corrections` stays read-only.
+ * columns only (checked column by column below); S2.4 (AD-72) the INSERT of a correction record's columns, never an UPDATE
+ * (the database guards H1/H2 decide which records are accepted: tested as ims_app in evaluation-correct.test.ts).
  */
 const EVALUATION_TABLES = ['evaluations', 'evaluation_scores', 'evaluation_corrections'];
 const INSERT = SELECT.filter((t) => t !== 'notification_settings' && !EVALUATION_TABLES.includes(t));
@@ -229,7 +230,7 @@ describe('ims_app: exactly the privileges the Worker needs', () => {
     ]);
   });
 
-  it("may write only a final evaluation draft's and submission's columns (R27 S2.2, S2.3), never corrections", async () => {
+  it("may write only a final evaluation draft's, submission's and correction's columns (R27 S2.2, S2.3, S2.4)", async () => {
     const columns = await withDb((db) =>
       db.query<{ table: string; column: string; insert: boolean; update: boolean }>(
         `SELECT c.relname AS table, a.attname AS column,
@@ -267,7 +268,13 @@ describe('ims_app: exactly the privileges the Worker needs', () => {
       'frozen_sort_order',
       'score',
     ]);
-    expect(granted('evaluation_corrections', 'insert')).toEqual([]);
+    expect(granted('evaluation_corrections', 'insert')).toEqual([
+      'corrected_at',
+      'corrected_by_id',
+      'evaluation_id',
+      'id',
+      'reason',
+    ]);
     expect(granted('evaluation_corrections', 'update')).toEqual([]);
   });
 
@@ -332,15 +339,17 @@ describe('ims_app: refused (negative tests, disposable test database only)', () 
     ]),
     ['DELETE an evaluation score', 'DELETE FROM evaluation_scores'],
     ['TRUNCATE evaluation scores', 'TRUNCATE evaluation_scores'],
-    [
-      'INSERT an evaluation correction',
-      `INSERT INTO evaluation_corrections (id, evaluation_id, corrected_by_id, corrected_at) VALUES ('${tamper}', '${tamper}', '${tamper}', now())`,
-    ],
+    // INSERT of a correction record is granted in S2.4 (AD-72); the guards refuse an invalid one (evaluation-correct).
     ['UPDATE an evaluation correction', "UPDATE evaluation_corrections SET reason = 'x'"],
     ['DELETE an evaluation correction', 'DELETE FROM evaluation_corrections'],
     ['TRUNCATE evaluation corrections', 'TRUNCATE evaluation_corrections'],
     ['DISABLE an evaluation guard', 'ALTER TABLE evaluations DISABLE TRIGGER evaluations_guard'],
     ['DROP a score guard', 'DROP TRIGGER evaluation_scores_guard ON evaluation_scores'],
+    ['DISABLE a correction guard', 'ALTER TABLE evaluation_corrections DISABLE TRIGGER evaluation_corrections_guard'],
+    [
+      'DROP the correction net-change check',
+      'DROP TRIGGER evaluation_corrections_net_change ON evaluation_corrections',
+    ],
     [
       'replace an evaluation guard function',
       "CREATE OR REPLACE FUNCTION ims_evaluations_guard() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NEW; END'",

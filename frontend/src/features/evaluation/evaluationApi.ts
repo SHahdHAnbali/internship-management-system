@@ -1,5 +1,7 @@
 import { apiRequest } from '../../lib/api';
 import type {
+  CorrectEvaluationRequest,
+  CorrectionStart,
   EvaluationDetail,
   EvaluationSummary,
   SaveDraftRequest,
@@ -23,6 +25,19 @@ export const evaluationApi = {
     apiRequest<EvaluationDetail>(
       'POST',
       `/evaluations/${encodeURIComponent(applicationId)}/submit`,
+      request,
+    ),
+  /** The correction page's starting values (S2.4). */
+  correction: (applicationId: string) =>
+    apiRequest<CorrectionStart>(
+      'GET',
+      `/evaluations/${encodeURIComponent(applicationId)}/correction`,
+    ),
+  /** Corrects the submitted evaluation at once (S2.4); answers with it as `get` does. Never retried automatically. */
+  correct: (applicationId: string, request: CorrectEvaluationRequest) =>
+    apiRequest<EvaluationDetail>(
+      'POST',
+      `/evaluations/${encodeURIComponent(applicationId)}/corrections`,
       request,
     ),
 };

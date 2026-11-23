@@ -1,3 +1,5 @@
+using System.Net;
+using Docker.DotNet;
 using Ims.Application.Common.Email;
 using Ims.Application.Common.Security;
 using Ims.Infrastructure.Persistence;
@@ -33,7 +35,18 @@ public class ImsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     protected virtual int TraineeRateLimitPerMinute => 1000;
 
-    private readonly PostgreSqlContainer _database = new PostgreSqlBuilder("postgres:18.6-alpine").Build();
+    /// <summary>Container starts per factory, the first included (S2.4 stabilization, owner decision of 2026-11-23).</summary>
+    internal const int MaxContainerStartAttempts = 3;
+
+    /// <summary>
+    /// When set, each retried container start is appended to this file (outside the repository), so a run with a
+    /// recovered host-port collision can be told from a clean one. Optional; no configuration changes otherwise.
+    /// </summary>
+    internal const string RetryLogVariable = "IMS_TESTCONTAINERS_RETRY_LOG";
+
+    private PostgreSqlContainer _database = NewContainer();
+
+    private static PostgreSqlContainer NewContainer() => new PostgreSqlBuilder("postgres:18.6-alpine").Build();
 
     public string ConnectionString => _database.GetConnectionString();
 
@@ -42,10 +55,52 @@ public class ImsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        await _database.StartAsync();
+        await StartDatabaseAsync();
         await using var scope = Services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<AppDbContext>().Database;
         await (InitialMigration is null ? database.MigrateAsync() : database.MigrateAsync(InitialMigration));
+    }
+
+    /// <summary>
+    /// Starts the container. Docker Desktop on macOS can pick a random host port that is already in use ("failed to bind
+    /// host port … address already in use", seen when the suites run one after another); only that failure is retried,
+    /// with a new container each time, at most <see cref="MaxContainerStartAttempts"/> starts in all. Any other failure,
+    /// and the last collision, is thrown unchanged. Migrations and tests are never retried.
+    /// </summary>
+    private async Task StartDatabaseAsync()
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await _database.StartAsync();
+                return;
+            }
+            catch (DockerApiException error) when (attempt < MaxContainerStartAttempts && IsHostPortCollision(error))
+            {
+                RecordRetry(attempt, error);
+                await _database.DisposeAsync();
+                _database = NewContainer();
+            }
+        }
+    }
+
+    /// <summary>Docker could not bind the randomly chosen host port because something else holds it.</summary>
+    internal static bool IsHostPortCollision(DockerApiException error) =>
+        error.StatusCode == HttpStatusCode.InternalServerError
+        && error.Message.Contains("failed to bind host port", StringComparison.Ordinal)
+        && error.Message.Contains("address already in use", StringComparison.Ordinal);
+
+    private void RecordRetry(int attempt, DockerApiException error)
+    {
+        var line = $"{DateTimeOffset.UtcNow:O} {GetType().Name} start attempt {attempt} of {MaxContainerStartAttempts} " +
+                   $"failed with a host-port collision; retrying with a new container: {error.Message}";
+        Console.Error.WriteLine(line);
+        var log = Environment.GetEnvironmentVariable(RetryLogVariable);
+        if (!string.IsNullOrEmpty(log))
+        {
+            File.AppendAllText(log, line + Environment.NewLine);
+        }
     }
 
     public override async ValueTask DisposeAsync()

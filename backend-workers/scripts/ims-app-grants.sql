@@ -86,6 +86,12 @@ GRANT UPDATE (score) ON evaluation_scores TO ims_app;
 -- refusing, for every role, any change to a submitted evaluation, its scores or its frozen snapshot.
 GRANT UPDATE (status, submitted_by_id, submitted_at) ON evaluations TO ims_app;
 GRANT UPDATE (frozen_name_ar, frozen_name_en, frozen_sort_order) ON evaluation_scores TO ims_app;
+-- Stage S2.4, corrections (owner decisions 2026-11-23, AD-72): the correction record, column-level, insert-only (never
+-- UPDATE, DELETE or TRUNCATE). The database guards (migration EvaluationCorrections) accept a change to a submitted
+-- evaluation or a frozen score only with such a record of the same transaction and actor, one per evaluation and
+-- transaction, and refuse at commit a record without a net change of a score, the comment or the recommendation. The
+-- column grants above (comment, hiring_recommendation, version, updated_at; score) are the ones a correction writes.
+GRANT INSERT (id, evaluation_id, corrected_by_id, corrected_at, reason) ON evaluation_corrections TO ims_app;
 
 -- Only the schema owner sets up audit protection on a table.
 REVOKE EXECUTE ON FUNCTION ims_protect_table(regclass) FROM PUBLIC;

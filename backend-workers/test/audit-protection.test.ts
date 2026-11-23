@@ -93,6 +93,25 @@ const EXTRA_TRIGGERS: Record<string, object[]> = {
       fn: 'ims_evaluation_scores_guard',
     },
   ],
+  // S2.4 (AD-72): H1 checks each record before it is written; H2, a deferred constraint trigger, checks at commit.
+  evaluation_corrections: [
+    {
+      name: 'evaluation_corrections_guard',
+      enabled: true,
+      timing: 'BEFORE',
+      level: 'ROW',
+      events: ['INSERT'],
+      fn: 'ims_evaluation_corrections_guard',
+    },
+    {
+      name: 'evaluation_corrections_net_change',
+      enabled: true,
+      timing: 'AFTER',
+      level: 'ROW',
+      events: ['INSERT'],
+      fn: 'ims_evaluation_corrections_net_change',
+    },
+  ],
   evaluation_criteria: [
     {
       name: 'evaluation_criteria_order',

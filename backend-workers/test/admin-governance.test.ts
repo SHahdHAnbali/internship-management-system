@@ -1,9 +1,7 @@
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { env } from 'cloudflare:test';
-import appGrants from '../scripts/ims-app-grants.sql?raw';
 import { body, COMPANY_DOMAIN, createTestApi, ownerDatabaseUrl, TestClient, uniqueEmail } from './helpers';
-import schema from './schema.sql?raw';
+import { createIsolatedDatabase, type IsolatedDatabase } from './isolated-database';
 
 /**
  * Who may change an Admin's role (owner decisions 2026-11-07): AUD-01 a change never leaves zero Admins; AUD-02 an Admin
@@ -12,16 +10,16 @@ import schema from './schema.sql?raw';
  * "Zero Admins" can only be tested where the Admins are known, and the shared test database gets Admins from every test
  * file in parallel. So this file has its own database (same schema, same `ims_app` grants), and each test starts with
  * no Admin. The tests in a file run one after another.
+ *
+ * That database comes from the shared helper (test/isolated-database.ts, alternative B, AD-71): created only inside the
+ * disposable test container, under the helper's own name, so the helper's fail-closed check never meets a database it
+ * does not know (S2.4 stabilization, owner decision of 2026-11-23: a hand-made database here made that check refuse
+ * when both files ran at once). This file still drops its database when it ends.
  */
 const api = createTestApi();
-const NAME = `ims_governance_${crypto.randomUUID().replace(/-/g, '')}`;
+let isolated: IsolatedDatabase | undefined;
 
-const inDatabase = (url: string) => {
-  const copy = new URL(url);
-  copy.pathname = `/${NAME}`;
-  return copy.toString();
-};
-const appUrl = () => inDatabase((env as unknown as { DATABASE_URL: string }).DATABASE_URL);
+const appUrl = () => isolated!.appUrl;
 
 async function connect(url: string) {
   const client = new pg.Client({ connectionString: url });
@@ -32,7 +30,7 @@ async function connect(url: string) {
 
 /** Runs SQL as the owner of this file's database. */
 async function asOwner<T>(work: (db: pg.Client) => Promise<T>): Promise<T> {
-  const client = await connect(inDatabase(ownerDatabaseUrl()));
+  const client = await connect(isolated!.ownerUrl);
   try {
     return await work(client);
   } finally {
@@ -40,23 +38,17 @@ async function asOwner<T>(work: (db: pg.Client) => Promise<T>): Promise<T> {
   }
 }
 
+// The schema (test/schema.sql) and the `ims_app` grants are applied by the helper; the Worker connects as `ims_app`.
 beforeAll(async () => {
-  const server = await connect(ownerDatabaseUrl());
-  try {
-    await server.query(`CREATE DATABASE ${NAME} TEMPLATE template0`);
-  } finally {
-    await server.end();
-  }
-  await asOwner(async (db) => {
-    await db.query(schema);
-    if (new URL(appUrl()).username === 'ims_app') await db.query(appGrants);
-  });
+  isolated = await createIsolatedDatabase();
 });
 
+// Runs whether the tests passed or failed; nothing to drop when the helper refused to create the database.
 afterAll(async () => {
+  if (!isolated) return;
   const server = await connect(ownerDatabaseUrl());
   try {
-    await server.query(`DROP DATABASE ${NAME} WITH (FORCE)`);
+    await server.query(`DROP DATABASE ${isolated.name} WITH (FORCE)`);
   } finally {
     await server.end();
   }

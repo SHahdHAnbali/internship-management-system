@@ -39,6 +39,7 @@ const submission = (overrides: Record<string, unknown> = {}) => ({
   hiringRecommendation: 'Maybe',
   scores: { [C1]: 5, [C2]: 4 },
   grade: 'Excellent',
+  latestCorrection: null, // S2.4 (AD-72)
   ...overrides,
 });
 /** As the API returns it: a draft (S2.2, with the criteria fingerprint of S2.3) unless the evaluation is submitted. */
@@ -1072,8 +1073,10 @@ describe('Evaluations navigation (Employee and HR only)', () => {
     expect(all.filter((p) => /\/evaluations(\/|$)/.test(p)).sort()).toEqual([
       '/employee/evaluations',
       '/employee/evaluations/:applicationId',
+      '/employee/evaluations/:applicationId/correct', // S2.4: the correction page
       '/hr/evaluations',
       '/hr/evaluations/:applicationId',
+      '/hr/evaluations/:applicationId/correct',
     ]);
   });
 });

@@ -70,6 +70,18 @@ async function evaluationFixture(criteria = 0) {
 const newEvaluation = (f: { evaluation: string; application: string; assignment: string }) =>
   `INSERT INTO evaluations (id, application_id, assignment_id, status, comment, created_at, updated_at)
      VALUES ('${f.evaluation}', '${f.application}', '${f.assignment}', 'Draft', 'Synthetic draft comment', now(), now())`;
+/** Submits the synthetic draft (the owner writes it directly, as the database itself would accept it). */
+const submitEvaluation = (f: { evaluation: string; employee: string }) =>
+  `UPDATE evaluations SET status = 'Submitted', hiring_recommendation = 'Yes', submitted_by_id = '${f.employee}',
+          submitted_at = now(), version = version + 1 WHERE id = '${f.evaluation}'`;
+/**
+ * One correction (S2.4, AD-72): its record and a real change, in one transaction whose Staff actor is the corrector
+ * (the database refuses a record otherwise).
+ */
+const correction = (f: { evaluation: string; employee: string }, i: number, reason = 'NULL') => [
+  `INSERT INTO evaluation_corrections (id, evaluation_id, corrected_by_id, corrected_at, reason) VALUES (gen_random_uuid(), '${f.evaluation}', '${f.employee}', now(), ${reason})`,
+  `UPDATE evaluations SET comment = 'Synthetic correction ${i}', version = version + 1 WHERE id = '${f.evaluation}'`,
+];
 const visibleWrite = () =>
   `INSERT INTO fields (id, name, is_active) VALUES (gen_random_uuid(), 'Synthetic field ' || gen_random_uuid(), true)`;
 
@@ -85,20 +97,29 @@ const visibleRecords = (actorId: string, extra = '') =>
 describe('audit log viewer: final evaluation events', () => {
   it('records them internally, never returns them, and keeps pages full whatever the filter', async () => {
     const admin = await signInStaff(api, 'Admin');
-    const actor = crypto.randomUUID();
     const fixture = await evaluationFixture(10);
+    const actor = fixture.employee; // a correction is recorded by its Staff actor (S2.4)
     const started = new Date(Date.now() - 1000).toISOString();
-    // 60 visible writes, with a hidden one after every second: the evaluation, then scores, updates and corrections.
+    // 60 visible writes, with hidden ones after every second: the evaluation, then 10 scores and 4 draft updates, the
+    // submission, then 14 corrections (each a record and a comment change, S2.4).
     await asActor(actor, [visibleWrite(), newEvaluation(fixture)]);
-    let scores = 0;
     for (let i = 1; i < 60; i++) {
+      const k = i / 2; // the hidden slot, 1 to 29
       const hidden =
-        i % 6 === 0 && scores < fixture.criterionIds.length
-          ? `INSERT INTO evaluation_scores (id, evaluation_id, criterion_id, score) VALUES (gen_random_uuid(), '${fixture.evaluation}', '${fixture.criterionIds[scores++]}', 4)`
-          : i % 6 === 2
-            ? `UPDATE evaluations SET version = version + 1, comment = 'Synthetic comment ${i}' WHERE id = '${fixture.evaluation}'`
-            : `INSERT INTO evaluation_corrections (id, evaluation_id, corrected_by_id, corrected_at, reason) VALUES (gen_random_uuid(), '${fixture.evaluation}', '${fixture.employee}', now(), 'Synthetic reason ${i}')`;
-      await asActor(actor, i % 2 === 0 ? [visibleWrite(), hidden] : [visibleWrite()]);
+        i % 2 === 1
+          ? []
+          : k <= 10
+            ? [
+                `INSERT INTO evaluation_scores (id, evaluation_id, criterion_id, score) VALUES (gen_random_uuid(), '${fixture.evaluation}', '${fixture.criterionIds[k - 1]}', 4)`,
+              ]
+            : k <= 14
+              ? [
+                  `UPDATE evaluations SET version = version + 1, comment = 'Synthetic comment ${i}' WHERE id = '${fixture.evaluation}'`,
+                ]
+              : k === 15
+                ? [submitEvaluation(fixture)]
+                : correction(fixture, i, `'Synthetic reason ${i}'`);
+      await asActor(actor, [visibleWrite(), ...hidden]);
     }
     const ended = new Date(Date.now() + 1000).toISOString();
 
@@ -114,7 +135,8 @@ describe('audit log viewer: final evaluation events', () => {
     expect(internal.rows.map((r) => r.table_name)).toEqual(
       expect.arrayContaining(['evaluation_corrections', 'evaluation_scores', 'evaluations']),
     );
-    expect(internal.rows.reduce((sum, r) => sum + r.n, 0)).toBe(30); // the evaluation and 29 interleaved writes
+    // The evaluation, 10 scores, 4 draft updates, the submission and 14 corrections of 2 audited writes each.
+    expect(internal.rows.reduce((sum, r) => sum + r.n, 0)).toBe(1 + 10 + 4 + 1 + 14 * 2);
 
     // Pages are full of visible entries: hidden ones never take a place.
     const all = await readAll(admin.client, `?actorId=${actor}`);
@@ -152,21 +174,19 @@ describe('audit log viewer: final evaluation events', () => {
 
   it('says "no more" when the only older or newer entries are evaluation events', async () => {
     const admin = await signInStaff(api, 'Admin');
-    const older = crypto.randomUUID();
-    const newer = crypto.randomUUID();
     const first = await evaluationFixture();
     const second = await evaluationFixture();
-    const corrections = (f: typeof first) =>
-      Array.from(
-        { length: 5 },
-        () =>
-          `INSERT INTO evaluation_corrections (id, evaluation_id, corrected_by_id, corrected_at) VALUES (gen_random_uuid(), '${f.evaluation}', '${f.employee}', now())`,
-      );
+    const [older, newer] = [first.employee, second.employee]; // each correction's Staff actor (S2.4)
+    /** A submitted evaluation and 5 corrections (one per transaction, S2.4), all audited as `actor`. */
+    const hidden = async (actor: string, f: typeof first) => {
+      await asActor(actor, [newEvaluation(f), submitEvaluation(f)]);
+      for (let i = 0; i < 5; i++) await asActor(actor, correction(f, i));
+    };
     // Hidden entries older than the 50 visible ones, then hidden entries newer than them.
-    await asActor(older, [newEvaluation(first), ...corrections(first)]);
+    await hidden(older, first);
     for (let i = 0; i < AUDIT_PAGE_SIZE; i++) await asActor(older, [visibleWrite()]);
     for (let i = 0; i < AUDIT_PAGE_SIZE; i++) await asActor(newer, [visibleWrite()]);
-    await asActor(newer, [newEvaluation(second), ...corrections(second)]);
+    await hidden(newer, second);
 
     for (const actor of [older, newer]) {
       const page = await read(admin.client, `?actorId=${actor}`);

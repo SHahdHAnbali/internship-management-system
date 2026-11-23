@@ -182,3 +182,96 @@ export function missingForSubmission(
 
 export const isComplete = (missing: MissingForSubmission) =>
   !missing.comment && !missing.hiringRecommendation && missing.criteria.length === 0;
+
+/**
+ * Stage S2.4, correcting a submitted evaluation (R27; owner decisions of 2026-11-23, AD-72). Every field is sent:
+ * - `revision`: the evaluation's change counter the corrector last saw;
+ * - `comment`: required, trimmed, at most 4,000 code points;
+ * - `hiringRecommendation`: required, Yes / Maybe / No;
+ * - `scores`: by criterion id, a whole number from 1 to 5 for exactly the frozen criteria (`{}` when there are none):
+ *   checked against the frozen set inside the transaction;
+ * - `reason`: optional, trimmed (blank means none), at most 2,000 code points; a reason alone is not a change.
+ */
+export const CORRECTION_REASON_MAX_LENGTH = 2000;
+
+export interface CorrectionInput {
+  revision: number;
+  comment: string;
+  hiringRecommendation: HiringRecommendation;
+  /** Criterion id (lower case) → score. */
+  scores: Map<string, number>;
+  reason: string | null;
+}
+
+/** The fields as bound from JSON, and the (lower-case) names of the fields the request actually contained. */
+export function correctionInput(
+  value: {
+    revision: number;
+    comment: string | null;
+    hiringRecommendation: string | null;
+    scores: unknown;
+    reason: string | null;
+  },
+  present: readonly string[],
+): CorrectionInput {
+  const draft = draftInput(value, present);
+  if (!present.includes('reason')) throw new DomainError('validation.required', 'The reason field is required.');
+  if (draft.comment === null) throw new DomainError('validation.required', 'The comment is required.');
+  if (draft.hiringRecommendation === null) {
+    throw new DomainError('validation.required', 'The hiring recommendation is required.');
+  }
+  const reason = isNullOrWhiteSpace(value.reason) ? null : trimDotnet(value.reason);
+  if (reason !== null && [...reason].length > CORRECTION_REASON_MAX_LENGTH) {
+    throw new DomainError(
+      'validation.too_long',
+      `The reason must be at most ${CORRECTION_REASON_MAX_LENGTH} characters.`,
+    );
+  }
+  return {
+    revision: draft.revision,
+    comment: draft.comment,
+    hiringRecommendation: draft.hiringRecommendation,
+    scores: draft.scores,
+    reason,
+  };
+}
+
+/** The current values of a submitted evaluation: its comment, recommendation and frozen scores (criterion id → score). */
+export interface CorrectableValues {
+  comment: string;
+  hiringRecommendation: string;
+  scores: ReadonlyMap<string, number>;
+}
+
+export interface CorrectionDiff {
+  comment: boolean;
+  hiringRecommendation: boolean;
+  /** Frozen criteria (lower case) whose score changes, with the new score. */
+  scores: Map<string, number>;
+}
+
+/**
+ * What a correction changes (AD-72). The scores must name exactly the frozen criteria (else `validation.invalid`); the
+ * reason is never part of the diff, so a request that only adds a reason changes nothing.
+ */
+export function correctionDiff(current: CorrectableValues, input: CorrectionInput): CorrectionDiff {
+  const frozen = [...current.scores.keys()].map((k) => k.toLowerCase());
+  if (input.scores.size !== frozen.length || frozen.some((id) => !input.scores.has(id))) {
+    throw new DomainError(
+      'validation.invalid',
+      'Scores must be given for exactly the criteria of the submitted evaluation.',
+    );
+  }
+  const scores = new Map<string, number>();
+  for (const [id, score] of current.scores) {
+    const next = input.scores.get(id.toLowerCase())!;
+    if (next !== score) scores.set(id.toLowerCase(), next);
+  }
+  return {
+    comment: input.comment !== current.comment,
+    hiringRecommendation: input.hiringRecommendation !== current.hiringRecommendation,
+    scores,
+  };
+}
+
+export const hasChanges = (diff: CorrectionDiff) => diff.comment || diff.hiringRecommendation || diff.scores.size > 0;

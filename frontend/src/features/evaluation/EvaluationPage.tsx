@@ -13,6 +13,9 @@ import type { EvaluationDetail } from './models';
  * submitted and when, and the verbal grade (S2.3, AD-71; none for a comment-only evaluation). Without criteria the
  * evaluation is a written comment only. There is never a numeric average (AD-68 G8). A 404 says only "not found" (G4:
  * nothing about why).
+ *
+ * Stage S2.4 (AD-72): a submitted evaluation offers "Correct Evaluation", a separate page (`CorrectionPage`), and shows
+ * the latest correction only (when, by whom, why): never an earlier one or an old value.
  */
 export function EvaluationPage({ base }: { base: string }) {
   const { t, language } = useI18n();
@@ -184,7 +187,46 @@ export function EvaluationPage({ base }: { base: string }) {
                   </div>
                 </dl>
               )}
+              {e.submission?.latestCorrection && (
+                // The latest correction only (AD-72): who, when and why, as the submission's own details are shown.
+                <section
+                  className="mt-6 rounded-card border border-border px-4 py-3"
+                  aria-labelledby="evaluation-latest-correction"
+                >
+                  <h3 id="evaluation-latest-correction" className="mb-2 font-semibold text-heading">
+                    {t('evaluation.correction.latest')}
+                  </h3>
+                  <dl className="grid gap-4 sm:grid-cols-2">
+                    {item(
+                      'evaluation.correction.correctedBy',
+                      e.submission.latestCorrection.correctedBy.name,
+                    )}
+                    {item(
+                      'evaluation.correction.correctedAt',
+                      new Date(e.submission.latestCorrection.correctedAt).toLocaleString(language),
+                    )}
+                    {e.submission.latestCorrection.reason && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-small text-muted">
+                          {t('evaluation.correction.reasonShown')}
+                        </dt>
+                        <dd className="whitespace-pre-line break-words text-heading" dir="auto">
+                          {e.submission.latestCorrection.reason}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </section>
+              )}
               <p className="mt-4 text-small text-muted">{t('evaluation.readOnly')}</p>
+              {submitted && (
+                <Link
+                  to={`${base}/${encodeURIComponent(e.applicationId)}/correct`}
+                  className="ims-btn-outline mt-4 inline-flex"
+                >
+                  {t('evaluation.correction.action')}
+                </Link>
+              )}
             </>
           )}
         </section>

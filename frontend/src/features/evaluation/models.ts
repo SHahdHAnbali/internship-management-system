@@ -74,6 +74,34 @@ export interface EvaluationSubmission {
   hiringRecommendation: HiringRecommendation;
   scores: Record<string, number>;
   grade: VerbalGrade | null;
+  /** S2.4 (AD-72): the latest correction only (when, by whom, why); null when never corrected. Never an id or history. */
+  latestCorrection: LatestCorrection | null;
+}
+
+export interface LatestCorrection {
+  correctedAt: string;
+  correctedBy: { name: string };
+  reason: string | null;
+}
+
+/** What the correction page starts from (S2.4): the frozen criteria and the current values, with the revision. */
+export interface CorrectionStart extends EvaluationSummary {
+  startDate: string;
+  commentOnly: boolean;
+  criteria: EvaluationCriterion[];
+  revision: number;
+  comment: string;
+  hiringRecommendation: HiringRecommendation;
+  scores: Record<string, number>;
+}
+
+/** A correction: every value in full (exactly the frozen criteria's scores), the revision seen and an optional reason. */
+export interface CorrectEvaluationRequest {
+  revision: number;
+  comment: string;
+  hiringRecommendation: HiringRecommendation;
+  scores: Record<string, number>;
+  reason: string | null;
 }
 
 /** A submission: only what the evaluator saw (the saved draft's revision and the criteria's fingerprint). */

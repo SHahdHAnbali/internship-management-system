@@ -2,11 +2,12 @@ import type { Context } from 'hono';
 import type { AppEnv } from '../../context';
 import type { Queryable } from '../../db';
 import { NotFoundError, StateConflictError } from '../../domain/errors';
-import { criteriaVersion, draftInput, submitInput, verbalGrade } from '../../domain/evaluation';
+import { correctionInput, criteriaVersion, draftInput, submitInput, verbalGrade } from '../../domain/evaluation';
 import { bindJson, type RequestSchema } from '../../http/body';
 import { statusProblem, json } from '../../http/problems';
 import type { Route } from '../../http/routes';
 import { capacities, EVALUATOR_ROLES, evaluableTrainings, type EvaluableTraining, isAvailable } from './access';
+import { CorrectorRoleError, correctEvaluation, correctionRefusal, notSubmitted, readCorrectable } from './correct';
 import { readDraft, saveDraft } from './draft';
 import { submitEvaluation } from './submit';
 
@@ -31,6 +32,12 @@ import { submitEvaluation } from './submit';
  * (`submit.ts`). Once submitted, the detail carries `submission` instead of the draft: the frozen scores, the comment,
  * the recommendation, the submitter's name (from the staff record), the submission time and the verbal grade from the
  * frozen scores (none for a comment-only evaluation). The list never carries a grade.
+ *
+ * Stage S2.4 (owner decisions of 2026-11-23, AD-72): `GET /api/evaluations/:id/correction` gives the correction page its
+ * starting values (the frozen criteria, the current scores, comment, recommendation and `revision`), and
+ * `POST /api/evaluations/:id/corrections` corrects the submitted evaluation at once (`correct.ts`). The submission then
+ * also carries `latestCorrection`: when, by whom (name only) and why, of the latest correction only; never an id, an
+ * earlier correction or an old value.
  */
 const NOT_FOUND = 'The evaluation was not found.';
 
@@ -103,6 +110,7 @@ async function detail(q: Queryable, training: EvaluableTraining) {
  * when, and the verbal grade from the frozen scores. The total and count stay here: no mean leaves this function.
  */
 async function readSubmission(q: Queryable, evaluationId: string) {
+  const latestCorrection = await readLatestCorrection(q, evaluationId);
   const { rows } = await q.query<{
     submitted_at: Date;
     submitter_name: string;
@@ -131,7 +139,27 @@ async function readSubmission(q: Queryable, evaluationId: string) {
     hiringRecommendation: row.hiring_recommendation,
     scores: row.scores ?? {},
     grade: verbalGrade(row.total ?? 0, row.scored),
+    latestCorrection,
   };
+}
+
+/**
+ * The latest correction (AD-72): the one whose audited INSERT is the latest (`audit_logs.id`, in commit-safe order under
+ * the evaluation's row lock; never the correction time, which two corrections can share). Its time, the corrector's name
+ * (the staff record) and the reason only.
+ */
+async function readLatestCorrection(q: Queryable, evaluationId: string) {
+  const { rows } = await q.query<{ corrected_at: Date; corrector_name: string; reason: string | null }>(
+    `SELECT c.corrected_at, m.full_name AS corrector_name, c.reason
+       FROM evaluation_corrections c
+       JOIN audit_logs a ON a.table_name = 'evaluation_corrections' AND a.entity_id = c.id::text AND a.operation = 'INSERT'
+       JOIN employees m ON m.id = c.corrected_by_id
+      WHERE c.evaluation_id = $1
+      ORDER BY a.id DESC LIMIT 1`,
+    [evaluationId],
+  );
+  const row = rows[0];
+  return row ? { correctedAt: row.corrected_at, correctedBy: { name: row.corrector_name }, reason: row.reason } : null;
 }
 
 interface DraftRequest {
@@ -164,6 +192,27 @@ const submitRequest: RequestSchema = {
   properties: [
     { name: 'Revision', kind: 'int' },
     { name: 'CriteriaVersion', kind: 'string' },
+  ],
+};
+
+interface CorrectionRequest {
+  revision: number;
+  comment: string | null;
+  hiringRecommendation: string | null;
+  scores: Record<string, unknown> | null;
+  reason: string | null;
+}
+
+/** The corrected values in full (frozen scores, comment, recommendation), the revision seen and an optional reason. */
+const correctionRequest: RequestSchema = {
+  typeName: 'Ims.Workers.Evaluations.CorrectEvaluationRequest',
+  rejectUnmapped: true,
+  properties: [
+    { name: 'Revision', kind: 'int' },
+    { name: 'Comment', kind: 'string' },
+    { name: 'HiringRecommendation', kind: 'string' },
+    { name: 'Scores', kind: 'object' },
+    { name: 'Reason', kind: 'string' },
   ],
 };
 
@@ -247,6 +296,53 @@ export const evaluationRoutes: Route[] = [
         return detail(tx, await availableTraining(tx, user, applicationId));
       });
       return json(result);
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/evaluations/:id/correction',
+    policy: 'authenticated',
+    async handle(c) {
+      const user = evaluator(c);
+      if (!user) return statusProblem(403, c.var.traceId, true);
+      const training = await availableTraining(c.var.db, user, c.req.param('id')!);
+      const current = training.evaluation_id === null ? null : await readCorrectable(c.var.db, training.evaluation_id);
+      if (!current) throw notSubmitted();
+      const { criteria } = await detail(c.var.db, training);
+      return json({
+        ...summary(training),
+        startDate: training.start_date,
+        commentOnly: criteria.length === 0,
+        criteria,
+        ...current,
+      });
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/evaluations/:id/corrections',
+    policy: 'authenticated',
+    async handle(c) {
+      const user = evaluator(c);
+      if (!user) return statusProblem(403, c.var.traceId, true);
+      const present = await presentFields(c.req.raw.clone());
+      const body = await bindJson<CorrectionRequest>(c.req.raw, correctionRequest, c.var.traceId);
+      if (!body.ok) return body.response;
+      const input = correctionInput(body.value, present);
+
+      const applicationId = c.req.param('id')!;
+      try {
+        const result = await c.var.db.transaction(c.var.actor, async (tx) =>
+          // The corrector's rights and the training are decided inside the transaction, under the locks that keep them
+          // until it commits (application, evaluation, staff row: correct.ts).
+          detail(tx, await correctEvaluation(tx, applicationId, user, input, c.var.deps.now(), availableTraining)),
+        );
+        return json(result);
+      } catch (error) {
+        // The role became one that may not correct (Admin) while the request waited: 403, as before the transaction.
+        if (error instanceof CorrectorRoleError) return statusProblem(403, c.var.traceId, true);
+        throw correctionRefusal(error); // a refusal at COMMIT (H2) is the same 409
+      }
     },
   },
 ];

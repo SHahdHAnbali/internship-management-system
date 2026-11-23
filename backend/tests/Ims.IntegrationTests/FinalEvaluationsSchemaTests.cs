@@ -133,14 +133,21 @@ public sealed class FinalEvaluationsSchemaTests(ImsApiFactory factory) : IClassF
         await using var connection = await OpenAsync();
         var (application, assignment, employee) = await EvaluationSql.TrainingAsync(connection);
         var evaluation = await EvaluationSql.EvaluationAsync(connection, application, assignment);
+        // A correction record exists only for a submitted evaluation, by its Staff actor, with a real change (S2.4, AD-72).
         await EvaluationSql.ExecuteAsync(connection, $"""
             INSERT INTO evaluation_scores (id, evaluation_id, criterion_id) VALUES (gen_random_uuid(), '{evaluation}', '{await EvaluationSql.CriterionAsync(connection)}');
+            UPDATE evaluations SET status = 'Submitted', comment = 'Final', hiring_recommendation = 'Yes', submitted_by_id = '{employee}', submitted_at = now() WHERE id = '{evaluation}';
+            BEGIN;
+            SELECT set_config('ims.actor_type', 'Staff', true), set_config('ims.actor_id', '{employee}', true);
             INSERT INTO evaluation_corrections (id, evaluation_id, corrected_by_id, corrected_at) VALUES (gen_random_uuid(), '{evaluation}', '{employee}', now());
+            UPDATE evaluations SET comment = 'Corrected' WHERE id = '{evaluation}';
+            COMMIT;
             """);
 
         Assert.Equal(
-            // The S2.2 write guards (migration EvaluationWriteGuards) sit between the audit and the no-delete triggers.
-            "evaluation_corrections:audit_row_change,no_delete,no_truncate;" +
+            // The S2.2 write guards (migration EvaluationWriteGuards) sit between the audit and the no-delete triggers; S2.4's
+            // correction guard and net-change constraint trigger (migration EvaluationCorrections) on the correction records.
+            "evaluation_corrections:audit_row_change,evaluation_corrections_guard,evaluation_corrections_net_change,no_delete,no_truncate;" +
             "evaluation_scores:audit_row_change,evaluation_scores_guard,no_delete,no_truncate;" +
             "evaluations:audit_row_change,evaluations_guard,no_delete,no_truncate",
             await EvaluationSql.ScalarAsync(connection, """
@@ -322,12 +329,21 @@ public sealed class FinalEvaluationsSchemaTests(ImsApiFactory factory) : IClassF
         await using var connection = await OpenAsync();
         var (application, assignment, employee) = await EvaluationSql.TrainingAsync(connection);
         var evaluation = await EvaluationSql.EvaluationAsync(connection, application, assignment);
-        string Insert(string reason) =>
-            $"INSERT INTO evaluation_corrections (id, evaluation_id, corrected_by_id, corrected_at, reason) VALUES (gen_random_uuid(), '{evaluation}', '{employee}', now(), {reason})";
+        await EvaluationSql.ExecuteAsync(connection,
+            $"UPDATE evaluations SET status = 'Submitted', comment = 'Final', hiring_recommendation = 'Yes', submitted_by_id = '{employee}', submitted_at = now() WHERE id = '{evaluation}'");
+        // Each record in a valid correction (S2.4, AD-72): its Staff actor and a real change in the same transaction.
+        string Correction(string reason, string comment) => $"""
+            BEGIN;
+            SELECT set_config('ims.actor_type', 'Staff', true), set_config('ims.actor_id', '{employee}', true);
+            INSERT INTO evaluation_corrections (id, evaluation_id, corrected_by_id, corrected_at, reason) VALUES (gen_random_uuid(), '{evaluation}', '{employee}', now(), {reason});
+            UPDATE evaluations SET comment = '{comment}' WHERE id = '{evaluation}';
+            COMMIT;
+            """;
 
-        await EvaluationSql.ExecuteAsync(connection, Insert("NULL"));
-        await EvaluationSql.ExecuteAsync(connection, Insert("repeat('ع', 2000)"));
-        var error = await EvaluationSql.RefusedAsync(connection, Insert("repeat('ع', 2001)"));
+        await EvaluationSql.ExecuteAsync(connection, Correction("NULL", "First correction"));
+        await EvaluationSql.ExecuteAsync(connection, Correction("repeat('ع', 2000)", "Second correction"));
+        var error = await EvaluationSql.RefusedAsync(connection, Correction("repeat('ع', 2001)", "Third correction"));
+        await EvaluationSql.ExecuteAsync(connection, "ROLLBACK");
 
         Assert.Equal(PostgresErrorCodes.StringDataRightTruncation, error.SqlState);
         Assert.Equal(2L, await EvaluationSql.ScalarAsync(connection, $"SELECT count(*) FROM evaluation_corrections WHERE evaluation_id = '{evaluation}'"));

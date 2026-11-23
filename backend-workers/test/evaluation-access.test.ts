@@ -136,6 +136,29 @@ const activeCriteria = () =>
     ),
   ).then((r) => r.rows);
 
+/**
+ * `count` criteria of this test's own, created inactive (seeded as the database owner, actor System): a submitted
+ * evaluation shows only its frozen scores, whatever criteria are active today, so the test needs no criterion created by
+ * another test file, and the active set every other test sees is unchanged. Their order comes from the database.
+ */
+async function ownCriteria(count: number) {
+  return withDb(async (db) => {
+    await db.query('BEGIN');
+    await db.query("SELECT set_config('ims.actor_type', 'System', true)");
+    const created: { id: string; sortOrder: number }[] = [];
+    for (let i = 0; i < count; i++) {
+      const { rows } = await db.query<{ id: string; sortOrder: number }>(
+        `INSERT INTO evaluation_criteria (id, name_ar, name_en, is_active) VALUES (gen_random_uuid(), 'معيار مجمد', $1, false)
+         RETURNING id, sort_order AS "sortOrder"`,
+        [`Frozen ${crypto.randomUUID()}`],
+      );
+      created.push(rows[0]!);
+    }
+    await db.query('COMMIT');
+    return created;
+  });
+}
+
 describe('final evaluation (S2.1): who sees it', () => {
   it('the final mentor and the current responsible HR see the ended training, each in their capacity', async () => {
     const admin = await signInStaff(api, 'Admin');
@@ -356,11 +379,11 @@ describe('final evaluation (S2.1): what is returned', () => {
 
   it('a submitted evaluation: its evaluators get exactly the approved details, others nothing; never a mean, a version or the trainee’s contact data (G8, AD-71)', async () => {
     const t = await endedTraining();
-    const criteria = await activeCriteria();
+    const criteria = await ownCriteria(2); // self-contained: never the criteria other test files leave active
     await seedEvaluation(t.applicationId, t.assignmentId, {
       status: 'Submitted',
       submittedBy: t.mentor.user.id,
-      frozen: criteria.slice(0, 2).map((c, i) => ({ criterion: c.id, score: 3 + i, order: c.sortOrder })),
+      frozen: criteria.map((c, i) => ({ criterion: c.id, score: 3 + i, order: c.sortOrder })),
     });
     const trainee = await withDb((db) =>
       db.query<{ email: string; phone: string }>(
@@ -393,10 +416,12 @@ describe('final evaluation (S2.1): what is returned', () => {
         'comment',
         'grade',
         'hiringRecommendation',
+        'latestCorrection',
         'scores',
         'submittedAt',
         'submittedBy',
       ]);
+      expect(submission.latestCorrection).toBeNull(); // S2.4 (AD-72): never corrected
       expect(submission).toMatchObject({
         comment: 'SECRET-EVALUATION-COMMENT',
         hiringRecommendation: 'Maybe',

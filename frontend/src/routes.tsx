@@ -101,6 +101,14 @@ export const routes: RouteObject[] = [
                 Component: () => <m.EvaluationPage base="/employee/evaluations" />,
               })),
           },
+          // Correcting a submitted evaluation (R27, S2.4): its own page; the evaluation page stays read-only.
+          {
+            path: 'evaluations/:applicationId/correct',
+            lazy: () =>
+              import('./features/evaluation/CorrectionPage').then((m) => ({
+                Component: () => <m.CorrectionPage base="/employee/evaluations" />,
+              })),
+          },
         ],
       },
     ],
@@ -155,6 +163,14 @@ export const routes: RouteObject[] = [
             lazy: () =>
               import('./features/evaluation/EvaluationPage').then((m) => ({
                 Component: () => <m.EvaluationPage base="/hr/evaluations" />,
+              })),
+          },
+          // Correcting a submitted evaluation (R27, S2.4): its own page; the evaluation page stays read-only.
+          {
+            path: 'evaluations/:applicationId/correct',
+            lazy: () =>
+              import('./features/evaluation/CorrectionPage').then((m) => ({
+                Component: () => <m.CorrectionPage base="/hr/evaluations" />,
               })),
           },
           {

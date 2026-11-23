@@ -1112,6 +1112,34 @@
       "Good": "Good",
       "Pass": "Pass",
       "Poor": "Poor"
+    },
+    "correction": {
+      "action": "Correct Evaluation",
+      "title": "Correct Final Evaluation",
+      "save": "Save Correction",
+      "saving": "Saving…",
+      "confirmTitle": "Confirm Correction",
+      "confirmText": "The correction will be saved immediately, recording who made it and when. The original submitter and submission time will remain unchanged.",
+      "cancel": "Cancel",
+      "noChanges": "There are no changes to save.",
+      "success": "Evaluation correction saved successfully.",
+      "latest": "Latest Correction",
+      "correctedBy": "Corrected by:",
+      "correctedAt": "Corrected on:",
+      "reasonShown": "Reason",
+      "reason": "Reason (optional)",
+      "reasonCount": "{{count}} / {{max}}",
+      "reasonTooLong": "The reason must be at most {{max}} characters.",
+      "comment": "Comment",
+      "commentRequired": "Enter a comment.",
+      "recommendation": "Hiring recommendation",
+      "conflict": "This evaluation was updated by another user. Load the latest version before correcting it again.",
+      "reload": "Load Latest Version",
+      "unavailable": "You can no longer correct this evaluation.",
+      "invalid": "The correction could not be saved. Check the values and try again.",
+      "uncertain": "The correction could not be confirmed. Load the latest version to check it before trying again.",
+      "cancelEdit": "Back to the evaluation",
+      "leaveText": "Your correction has not been saved and will be lost if you leave this page."
     }
   }
 }
