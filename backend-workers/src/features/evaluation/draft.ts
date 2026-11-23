@@ -1,6 +1,7 @@
 import type { Queryable } from '../../db';
 import { ConcurrencyError, StateConflictError } from '../../domain/errors';
 import type { DraftInput } from '../../domain/evaluation';
+import { uuidV7 } from '../../domain/uuid';
 import { sqlState } from '../../db';
 import type { EvaluableTraining } from './access';
 
@@ -35,7 +36,7 @@ export async function saveDraft(
     await tx.query(
       `INSERT INTO evaluations (id, application_id, assignment_id, status, created_at, updated_at)
        VALUES ($1, $2, $3, 'Draft', $4, $4) ON CONFLICT (application_id) DO NOTHING`,
-      [crypto.randomUUID(), training.application_id, training.assignment_id, now],
+      [uuidV7(now), training.application_id, training.assignment_id, now], // ids are UUID v7 (docs/architecture.md)
     );
     const { rows } = await tx.query<{ id: string; status: string; version: number }>(
       'SELECT id, status, version FROM evaluations WHERE application_id = $1 FOR UPDATE',
@@ -63,7 +64,7 @@ export async function saveDraft(
            FROM unnest($2::uuid[], $3::uuid[], $4::smallint[]) AS s(id, criterion_id, score)
          ON CONFLICT (evaluation_id, criterion_id) DO UPDATE SET score = EXCLUDED.score
           WHERE evaluation_scores.score IS DISTINCT FROM EXCLUDED.score`,
-        [evaluation.id, criteria.map(() => crypto.randomUUID()), criteria, [...input.scores.values()]],
+        [evaluation.id, criteria.map(() => uuidV7(now)), criteria, [...input.scores.values()]],
       );
     }
 

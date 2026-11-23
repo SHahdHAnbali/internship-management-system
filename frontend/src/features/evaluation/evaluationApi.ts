@@ -1,5 +1,10 @@
 import { apiRequest } from '../../lib/api';
-import type { EvaluationDetail, EvaluationSummary, SaveDraftRequest } from './models';
+import type {
+  EvaluationDetail,
+  EvaluationSummary,
+  SaveDraftRequest,
+  SubmitEvaluationRequest,
+} from './models';
 
 /** The evaluators' final evaluation API (Employee and HR; the Admin and trainees are refused). */
 export const evaluationApi = {
@@ -12,5 +17,12 @@ export const evaluationApi = {
       'PUT',
       `/evaluations/${encodeURIComponent(applicationId)}/draft`,
       draft,
+    ),
+  /** Submits the saved draft (S2.3); answers with the submitted evaluation. Never retried automatically. */
+  submit: (applicationId: string, request: SubmitEvaluationRequest) =>
+    apiRequest<EvaluationDetail>(
+      'POST',
+      `/evaluations/${encodeURIComponent(applicationId)}/submit`,
+      request,
     ),
 };

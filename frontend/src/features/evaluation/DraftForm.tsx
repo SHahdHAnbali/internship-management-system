@@ -12,6 +12,15 @@ const SCORES = [1, 2, 3, 4, 5] as const;
 const RECOMMENDATIONS: HiringRecommendation[] = ['Yes', 'Maybe', 'No'];
 
 type Problem = 'conflict' | 'criteriaChanged' | 'alreadySubmitted' | 'failed';
+/** Why a submission did not happen (S2.3); a changed criteria set has its own dialog. */
+type SubmitProblem =
+  | 'saveFirst'
+  | 'missing'
+  | 'incomplete'
+  | 'conflict'
+  | 'alreadySubmitted'
+  | 'uncertain';
+const RELOAD_AFTER: SubmitProblem[] = ['incomplete', 'conflict', 'alreadySubmitted', 'uncertain'];
 
 /**
  * The shared final evaluation draft (R27 stage S2.2; AD-66, AD-68 G5/G8, owner decisions of 2026-11-22, AD-70), for the
@@ -19,7 +28,13 @@ type Problem = 'conflict' | 'criteriaChanged' | 'alreadySubmitted' | 'failed';
  * starts unselected, a saved score is selected and can change but never be cleared (there is no "no score" option); an
  * optional comment and hiring recommendation. "Save draft" sends the revision it was loaded with: when the other
  * evaluator saved in between, nothing is overwritten; what was typed stays on screen and the latest version replaces it
- * only after an explicit confirmation. Only the last-saved time is shown, never who saved. No submission, no grade.
+ * only after an explicit confirmation. Only the last-saved time is shown, never who saved.
+ *
+ * Submission (S2.3; owner decisions of 2026-11-23, AD-71): "Submit evaluation" submits what is saved, never what is on
+ * screen: with unsaved changes it asks to save first (no combined save and submit), and with anything missing it lists
+ * what (unscored criteria, comment, recommendation). An explicit confirmation sends the saved revision and the criteria
+ * fingerprint, once (the buttons are disabled meanwhile; never retried automatically). A changed criteria set opens its
+ * own dialog and reloads only on request; any other refusal or an unconfirmed result offers to reload the evaluation.
  */
 export function DraftForm({
   evaluation,
@@ -46,12 +61,22 @@ export function DraftForm({
   const [problem, setProblem] = useState<Problem | null>(null);
   const [commentTooLong, setCommentTooLong] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmingSubmit, setConfirmingSubmit] = useState(false);
+  const [submitProblem, setSubmitProblem] = useState<SubmitProblem | null>(null);
+  const [criteriaChanged, setCriteriaChanged] = useState(false);
 
   const commentLength = [...comment].length;
   const dirty =
     comment !== (baseline.comment ?? '') ||
     recommendation !== baseline.hiringRecommendation ||
     evaluation.criteria.some((c) => scores[c.id] !== baseline.scores[c.id]);
+
+  // What the saved draft still lacks (the server checks again, under lock): a submission uses what is saved.
+  const missingScores = evaluation.criteria.filter((c) => baseline.scores[c.id] === undefined);
+  const missingComment = (baseline.comment ?? '').trim() === '';
+  const missingRecommendation = baseline.hiringRecommendation === null;
+  const incomplete = missingComment || missingRecommendation || missingScores.length > 0;
 
   // In-app navigation to another page while something is unsaved asks first (UAT 2026-11-22): stay, or leave and lose it.
   const blocker = useBlocker(
@@ -97,6 +122,7 @@ export function DraftForm({
       setComment(draft.comment ?? '');
       setRecommendation(draft.hiringRecommendation);
       setJustSaved(true);
+      setSubmitProblem(null);
       onSaved(result);
     } catch (error) {
       const code = error instanceof ApiError && error.status === 409 ? error.code : undefined;
@@ -114,7 +140,49 @@ export function DraftForm({
     }
   };
 
-  const edited = () => setJustSaved(false);
+  const edited = () => {
+    setJustSaved(false);
+    setSubmitProblem(null);
+  };
+
+  const requestSubmit = () => {
+    if (saving || submitting) return;
+    if (dirty) return setSubmitProblem('saveFirst');
+    if (incomplete) return setSubmitProblem('missing');
+    setSubmitProblem(null);
+    setConfirmingSubmit(true);
+  };
+
+  const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const result = await evaluationApi.submit(evaluation.applicationId, {
+        revision,
+        criteriaVersion: evaluation.criteriaVersion ?? '',
+      });
+      setConfirmingSubmit(false);
+      onSaved(result); // submitted: the page shows it read-only
+    } catch (error) {
+      setConfirmingSubmit(false);
+      const code = error instanceof ApiError && error.status === 409 ? error.code : undefined;
+      if (code === 'evaluation.criteria_changed') {
+        setCriteriaChanged(true);
+      } else {
+        setSubmitProblem(
+          code === 'evaluation.incomplete'
+            ? 'incomplete'
+            : code === 'conflict.concurrent_update'
+              ? 'conflict'
+              : code === 'evaluation.already_submitted'
+                ? 'alreadySubmitted'
+                : 'uncertain', // not confirmed either way: reload to see, never resend automatically
+        );
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
   const status = saving
     ? t('evaluation.draft.saving')
     : dirty
@@ -138,12 +206,18 @@ export function DraftForm({
             const [main, other] = language === 'ar' ? [arabic, english] : [english, arabic];
             return (
               <fieldset key={c.id} className="rounded-card border border-border px-4 py-3">
-                <legend className="flex flex-col px-1">
-                  <span lang={main.lang} dir={main.dir} className="text-heading">
-                    {main.text}
+                {/* As in the submitted view: each line keeps the page's direction, so it starts at the page's
+                    start edge (wrapped lines too), and holds the name inline in its own language and direction. */}
+                <legend className="flex flex-col items-start px-1">
+                  <span className="text-heading">
+                    <span lang={main.lang} dir={main.dir}>
+                      {main.text}
+                    </span>
                   </span>
-                  <span lang={other.lang} dir={other.dir} className="text-small text-muted">
-                    {other.text}
+                  <span className="text-small text-muted">
+                    <span lang={other.lang} dir={other.dir}>
+                      {other.text}
+                    </span>
                   </span>
                 </legend>
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
@@ -254,6 +328,60 @@ export function DraftForm({
           {status}
         </span>
       </div>
+      <div className="flex flex-col items-start gap-2 border-t border-divider pt-4">
+        <button
+          type="button"
+          className="ims-btn-primary"
+          aria-disabled={dirty || incomplete || saving || submitting}
+          aria-describedby={submitProblem ? `${id}-submit-problem` : undefined}
+          disabled={submitting}
+          onClick={requestSubmit}
+        >
+          {submitting ? t('evaluation.submit.submitting') : t('evaluation.submit.action')}
+        </button>
+        {submitProblem && (
+          <div
+            id={`${id}-submit-problem`}
+            role="alert"
+            className="ims-error flex flex-col items-start gap-2"
+          >
+            {submitProblem === 'missing' ? (
+              <>
+                <p>{t('evaluation.submit.missingTitle')}</p>
+                <ul className="list-disc ps-5">
+                  {missingScores.map((c) => (
+                    <li key={c.id}>
+                      {t('evaluation.submit.missingScore', {
+                        name: language === 'ar' ? c.nameAr : c.nameEn,
+                      })}
+                    </li>
+                  ))}
+                  {missingComment && <li>{t('evaluation.submit.missingComment')}</li>}
+                  {missingRecommendation && <li>{t('evaluation.submit.missingRecommendation')}</li>}
+                </ul>
+              </>
+            ) : (
+              <p>
+                {t(
+                  {
+                    saveFirst: 'evaluation.submit.saveFirst',
+                    incomplete: 'evaluation.submit.incomplete',
+                    conflict: 'evaluation.submit.conflict',
+                    alreadySubmitted: 'evaluation.submit.alreadySubmitted',
+                    uncertain: 'evaluation.submit.uncertain',
+                  }[submitProblem],
+                )}
+              </p>
+            )}
+            {RELOAD_AFTER.includes(submitProblem) && (
+              <button type="button" className="ims-btn-outline" onClick={onReload}>
+                {t('evaluation.submit.reload')}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {baseline.lastSavedAt && (
         <p className="text-small text-muted">
           {t('evaluation.draft.lastSaved', {
@@ -275,6 +403,67 @@ export function DraftForm({
             </button>
             <button type="button" className="ims-btn-primary" onClick={() => blocker.proceed?.()}>
               {t('evaluation.draft.leave')}
+            </button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={confirmingSubmit}
+        title={t('evaluation.submit.confirmTitle')}
+        onClose={() => {
+          if (!submitting) setConfirmingSubmit(false);
+        }}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-heading">{t('evaluation.submit.confirmText')}</p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className="ims-btn-text"
+              disabled={submitting}
+              onClick={() => setConfirmingSubmit(false)}
+            >
+              {t('evaluation.submit.cancel')}
+            </button>
+            <button
+              type="button"
+              className="ims-btn-primary"
+              disabled={submitting}
+              onClick={() => void submit()}
+            >
+              {submitting ? t('evaluation.submit.submitting') : t('evaluation.submit.confirm')}
+            </button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={criteriaChanged}
+        title={t('evaluation.submit.criteriaChangedTitle')}
+        onClose={() => setCriteriaChanged(false)}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-heading">{t('evaluation.submit.criteriaChangedText')}</p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className="ims-btn-text"
+              onClick={() => setCriteriaChanged(false)}
+            >
+              {t('evaluation.submit.close')}
+            </button>
+            <button
+              type="button"
+              className="ims-btn-primary"
+              onClick={() => {
+                setCriteriaChanged(false);
+                // Saved scores stay on the server; unsaved edits (none when submitting) are never dropped silently.
+                if (dirty) setConfirming(true);
+                else onReload();
+              }}
+            >
+              {t('evaluation.submit.showUpdated')}
             </button>
           </div>
         </div>

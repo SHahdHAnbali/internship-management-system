@@ -54,4 +54,30 @@ export interface EvaluationDetail extends EvaluationSummary {
   /** Not submitted (NotStarted or Draft) only: the change counter the next save must send, and the draft. */
   revision?: number;
   draft?: EvaluationDraft;
+  /** Not submitted only (S2.3): the fingerprint of the criteria shown, sent back on submission. */
+  criteriaVersion?: string;
+  /** Submitted only (S2.3): what was submitted, for its evaluators. */
+  submission?: EvaluationSubmission;
+}
+
+/** The verbal grade (AD-66, AD-68 G3/G8); the numeric mean never exists outside the server. */
+export type VerbalGrade = 'Excellent' | 'VeryGood' | 'Good' | 'Pass' | 'Poor';
+
+/**
+ * A submitted evaluation (S2.3; owner decisions of 2026-11-23, AD-71): the frozen scores by criterion id, the comment,
+ * the recommendation, who submitted (name only) and when, and the verbal grade (none for a comment-only evaluation).
+ */
+export interface EvaluationSubmission {
+  submittedAt: string;
+  submittedBy: { name: string };
+  comment: string;
+  hiringRecommendation: HiringRecommendation;
+  scores: Record<string, number>;
+  grade: VerbalGrade | null;
+}
+
+/** A submission: only what the evaluator saw (the saved draft's revision and the criteria's fingerprint). */
+export interface SubmitEvaluationRequest {
+  revision: number;
+  criteriaVersion: string;
 }

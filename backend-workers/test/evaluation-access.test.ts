@@ -37,8 +37,17 @@ interface Detail extends ListItem {
 }
 
 const LIST_KEYS = ['applicationId', 'capacities', 'endDate', 'endStatus', 'fieldName', 'status', 'traineeName'];
-// S2.2 (AD-70): while not submitted, the detail also carries the shared draft (revision and draft values).
-const DETAIL_KEYS = [...LIST_KEYS, 'commentOnly', 'criteria', 'draft', 'revision', 'startDate'].sort();
+// S2.2 (AD-70): while not submitted, the detail also carries the shared draft (revision and draft values); S2.3 (AD-71)
+// the fingerprint of the active criteria shown.
+const DETAIL_KEYS = [
+  ...LIST_KEYS,
+  'commentOnly',
+  'criteria',
+  'criteriaVersion',
+  'draft',
+  'revision',
+  'startDate',
+].sort();
 
 const list = async (client: TestClient) => {
   const response = await client.get('/api/evaluations');
@@ -345,7 +354,7 @@ describe('final evaluation (S2.1): what is returned', () => {
     expect((await listed(commentOnly.hr.client, commentOnly.applicationId))?.status).toBe('Submitted');
   });
 
-  it('never returns a mean, a grade, scores, comments, recommendations, versions or the trainee’s contact data (G8)', async () => {
+  it('a submitted evaluation: its evaluators get exactly the approved details, others nothing; never a mean, a version or the trainee’s contact data (G8, AD-71)', async () => {
     const t = await endedTraining();
     const criteria = await activeCriteria();
     await seedEvaluation(t.applicationId, t.assignmentId, {
@@ -359,31 +368,66 @@ describe('final evaluation (S2.1): what is returned', () => {
         [t.applicationId],
       ),
     ).then((r) => r.rows[0]!);
-    const responses = [
-      await body<unknown>(await t.mentor.client.get('/api/evaluations')),
-      await body<unknown>(await detail(t.mentor.client, t.applicationId)),
-      await body<unknown>(await t.hr.client.get('/api/evaluations')),
-      await body<unknown>(await detail(t.hr.client, t.applicationId)),
+    const mentorName = await withDb((db) =>
+      db.query<{ full_name: string }>('SELECT full_name FROM employees WHERE id = $1', [t.mentor.user.id]),
+    ).then((r) => r.rows[0]!.full_name);
+
+    const lists = [
+      await body<Record<string, unknown>[]>(await t.mentor.client.get('/api/evaluations')),
+      await body<Record<string, unknown>[]>(await t.hr.client.get('/api/evaluations')),
     ];
+    for (const list of lists) {
+      const item = list.find((i) => i.applicationId === t.applicationId)!;
+      expect(Object.keys(item).sort()).toEqual(LIST_KEYS); // never a grade in a list (AD-71 decision 2)
+    }
+    const details = [
+      await body<Record<string, unknown>>(await detail(t.mentor.client, t.applicationId)),
+      await body<Record<string, unknown>>(await detail(t.hr.client, t.applicationId)),
+    ];
+    for (const d of details) {
+      expect(Object.keys(d).sort()).toEqual(
+        [...LIST_KEYS, 'commentOnly', 'criteria', 'startDate', 'submission'].sort(),
+      );
+      const submission = d.submission as Record<string, unknown>;
+      expect(Object.keys(submission).sort()).toEqual([
+        'comment',
+        'grade',
+        'hiringRecommendation',
+        'scores',
+        'submittedAt',
+        'submittedBy',
+      ]);
+      expect(submission).toMatchObject({
+        comment: 'SECRET-EVALUATION-COMMENT',
+        hiringRecommendation: 'Maybe',
+        scores: { [criteria[0]!.id]: 3, [criteria[1]!.id]: 4 },
+        grade: 'Good', // (3 + 4) / 2 = 3.5, never shown as a number
+        submittedBy: { name: mentorName },
+      });
+      expect(Object.keys(submission.submittedBy as object)).toEqual(['name']);
+      expect(new Date(submission.submittedAt as string).toISOString()).toBe(submission.submittedAt);
+    }
     const keys: string[] = [];
-    const walk = (node: unknown) => {
-      if (Array.isArray(node)) node.forEach(walk);
+    const walk = (node: unknown, inScores = false) => {
+      if (Array.isArray(node)) node.forEach((n) => walk(n));
       else if (node && typeof node === 'object')
         for (const [key, value] of Object.entries(node)) {
-          keys.push(key);
-          walk(value);
+          if (!inScores) keys.push(key);
+          walk(value, key === 'scores');
         }
     };
-    responses.forEach(walk);
+    [...lists, ...details].forEach((r) => walk(r));
     expect(
-      keys.filter((k) =>
-        /mean|average|avg|total|sum|score|grade|comment(?!Only)|recommend|version|submitted|email|phone/i.test(k),
-      ),
+      keys.filter((k) => /mean|average|avg|total|sum|count|version|revision|draft|email|phone|audit/i.test(k)),
     ).toEqual([]);
-    const text = JSON.stringify(responses);
-    for (const secret of ['SECRET-EVALUATION-COMMENT', 'Maybe', trainee.email, trainee.phone]) {
-      expect(text).not.toContain(secret);
-    }
+    const text = JSON.stringify([...lists, ...details]);
+    for (const secret of [trainee.email, trainee.phone]) expect(text).not.toContain(secret);
+
+    // Not an evaluator: the same 404 as a missing training, nothing of the evaluation.
+    const other = await signInStaff(api, 'HR');
+    const refused = await detail(other.client, t.applicationId);
+    expect(refused.status).toBe(404);
+    expect(await refused.text()).not.toMatch(/SECRET-EVALUATION-COMMENT|Maybe|grade/);
   });
 
   it('reads only: nothing is written when evaluations are listed or opened', async () => {

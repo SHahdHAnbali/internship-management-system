@@ -218,6 +218,33 @@ describe('final evaluation draft (S2.2): saving', () => {
   });
 });
 
+describe('final evaluation draft (S2.2): identifiers', () => {
+  const V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const millis = (id: string) => parseInt(id.replace(/-/g, '').slice(0, 12), 16);
+
+  it('a new draft and its scores get UUID v7 ids, time-ordered from the save (docs/architecture.md)', async () => {
+    const t = await endedTraining();
+    const [c1, c2] = [await criterion(t.admin.client), await criterion(t.admin.client)];
+    const before = api.clock.now().getTime();
+    expect((await save(t.mentor.client, t.applicationId, { scores: { [c1.id]: 3, [c2.id]: 4 } })).status).toBe(200);
+    const after = api.clock.now().getTime();
+    const ids = await withDb((db) =>
+      db.query<{ id: string; kind: string }>(
+        `SELECT e.id::text, 'evaluation' AS kind FROM evaluations e WHERE e.application_id = $1
+         UNION ALL
+         SELECT s.id::text, 'score' FROM evaluation_scores s JOIN evaluations e ON e.id = s.evaluation_id
+          WHERE e.application_id = $1`,
+        [t.applicationId],
+      ),
+    ).then((r) => r.rows);
+    expect(ids.map((r) => r.kind).sort()).toEqual(['evaluation', 'score', 'score']);
+    for (const { id } of ids) {
+      expect(id).toMatch(V7);
+      expect(millis(id) >= before && millis(id) <= after).toBe(true);
+    }
+  });
+});
+
 describe('final evaluation draft (S2.2): concurrency (optimistic, atomic)', () => {
   it('a stale revision is refused with 409 conflict.concurrent_update and changes nothing', async () => {
     const t = await endedTraining();
@@ -486,6 +513,7 @@ describe('final evaluation draft (S2.2): privacy', () => {
         'capacities',
         'commentOnly',
         'criteria',
+        'criteriaVersion',
         'draft',
         'endDate',
         'endStatus',
@@ -499,6 +527,7 @@ describe('final evaluation draft (S2.2): privacy', () => {
       expect(Object.keys(draft).sort()).toEqual(['comment', 'hiringRecommendation', 'lastSavedAt', 'scores']);
       expect(draft.scores).toEqual({ [c1.id]: 2, [c2.id]: 4 });
       expect(Number.isInteger(d.revision) && (d.revision as number) >= 1).toBe(true);
+      expect(d.criteriaVersion).toMatch(/^c1\.[A-Za-z0-9_-]{43}$/); // a fingerprint of the criteria, not a number
       for (const c of d.criteria as Record<string, unknown>[]) {
         expect(Object.keys(c).sort()).toEqual(['id', 'nameAr', 'nameEn', 'sortOrder']);
         expect(Number.isInteger(c.sortOrder)).toBe(true);

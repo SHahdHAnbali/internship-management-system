@@ -76,3 +76,109 @@ export function draftInput(
     scores,
   };
 }
+
+/**
+ * Stage S2.3, submission (R27; AD-66, AD-68 G3/G8, AD-71). The request carries only what the evaluator saw: the draft's
+ * revision and the fingerprint of the active criteria (`criteriaVersion`). Scores, comment, recommendation, submitter and
+ * grade are never taken from the request: they are read from the saved draft and the signed-in user, under lock.
+ */
+export const CRITERIA_VERSION_PATTERN = /^c1\.[A-Za-z0-9_-]{43}$/;
+
+export interface SubmitInput {
+  revision: number;
+  criteriaVersion: string;
+}
+
+/** The fields as bound from JSON, and the (lower-case) names of the fields the request actually contained. */
+export function submitInput(
+  value: { revision: number; criteriaVersion: string | null },
+  present: readonly string[],
+): SubmitInput {
+  for (const field of ['revision', 'criteriaVersion']) {
+    if (!present.includes(field.toLowerCase()) && !present.includes(field)) {
+      throw new DomainError('validation.required', `The ${field} field is required.`);
+    }
+  }
+  if (!Number.isInteger(value.revision) || value.revision < 0) {
+    throw new DomainError('validation.range', 'The revision must be a whole number of 0 or more.');
+  }
+  if (typeof value.criteriaVersion !== 'string' || !CRITERIA_VERSION_PATTERN.test(value.criteriaVersion)) {
+    throw new DomainError('validation.invalid', 'The criteria version is not valid.');
+  }
+  return { revision: value.revision, criteriaVersion: value.criteriaVersion };
+}
+
+/** An active criterion as the evaluator sees it; all four values are frozen at submission. */
+export interface CriterionIdentity {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  sortOrder: number;
+}
+
+/**
+ * The fingerprint of the active criteria (AD-71): `c1.` + base64url (unpadded) of SHA-256 of the canonical JSON
+ * `[[id, nameAr, nameEn, sortOrder], …]` in the (unique, immutable) order. Any insertion, activation, deactivation or
+ * rename in either language changes it. Computed by the server each time; never stored.
+ */
+export async function criteriaVersion(criteria: readonly CriterionIdentity[]): Promise<string> {
+  const ordered = [...criteria].sort((a, b) => a.sortOrder - b.sortOrder);
+  const canonical = JSON.stringify(ordered.map((c) => [c.id.toLowerCase(), c.nameAr, c.nameEn, c.sortOrder]));
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical)));
+  let text = '';
+  for (const b of digest) text += String.fromCharCode(b);
+  return `c1.${btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+}
+
+export const VERBAL_GRADES = ['Excellent', 'VeryGood', 'Good', 'Pass', 'Poor'] as const;
+export type VerbalGrade = (typeof VERBAL_GRADES)[number];
+
+/**
+ * The verbal grade of `count` frozen scores totalling `sum` (AD-66, AD-68 G3/G8): the equal-weight mean compared without
+ * rounding, by exact whole-number arithmetic, so the mean itself never exists as a value. Excellent ≥ 4.5; Very Good ≥ 4.0;
+ * Good ≥ 3.0; Pass ≥ 2.0; Poor otherwise (no Fail). No frozen score (a comment-only evaluation): no grade.
+ */
+export function verbalGrade(sum: number, count: number): VerbalGrade | null {
+  if (
+    !Number.isInteger(sum) ||
+    !Number.isInteger(count) ||
+    count < 0 ||
+    sum < MIN_SCORE * count ||
+    sum > MAX_SCORE * count
+  ) {
+    throw new Error('The frozen scores are out of range.');
+  }
+  if (count === 0) return null;
+  if (2 * sum >= 9 * count) return 'Excellent';
+  if (sum >= 4 * count) return 'VeryGood';
+  if (sum >= 3 * count) return 'Good';
+  if (sum >= 2 * count) return 'Pass';
+  return 'Poor';
+}
+
+/** What a saved draft still lacks for submission (AD-66; AD-71 decision 9: comment and recommendation always required). */
+export interface MissingForSubmission {
+  comment: boolean;
+  hiringRecommendation: boolean;
+  /** Active criteria without a saved score, in the given order. */
+  criteria: string[];
+}
+
+export function missingForSubmission(
+  draft: { comment: string | null; hiringRecommendation: string | null; scores: ReadonlyMap<string, number> },
+  activeCriterionIds: readonly string[],
+): MissingForSubmission {
+  const comment = draft.comment;
+  const commentMissing = isNullOrWhiteSpace(comment) || [...comment!].length > EVALUATION_COMMENT_MAX_LENGTH;
+  const recommendation = draft.hiringRecommendation;
+  const recommendationMissing =
+    recommendation === null || !(HIRING_RECOMMENDATIONS as readonly string[]).includes(recommendation);
+  const criteria = activeCriterionIds.filter((id) => {
+    const score = draft.scores.get(id.toLowerCase());
+    return score === undefined || !Number.isInteger(score) || score < MIN_SCORE || score > MAX_SCORE;
+  });
+  return { comment: commentMissing, hiringRecommendation: recommendationMissing, criteria };
+}
+
+export const isComplete = (missing: MissingForSubmission) =>
+  !missing.comment && !missing.hiringRecommendation && missing.criteria.length === 0;

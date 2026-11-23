@@ -9,9 +9,10 @@ import type { EvaluationDetail } from './models';
 /**
  * One final evaluation (R27; AD-66): the training and the criteria the evaluation uses. While it is not submitted these
  * are the active criteria in their order, and its evaluators edit the shared draft (stage S2.2, `DraftForm`); once
- * submitted, it is read-only with the criteria frozen at submission. Without criteria the evaluation is a written comment
- * only. Submitting comes in a later stage; there is never a numeric average (AD-68 G8). A 404 says only "not found"
- * (G4: nothing about why).
+ * submitted, it is read-only: the criteria frozen at submission with their scores, the comment, the recommendation, who
+ * submitted and when, and the verbal grade (S2.3, AD-71; none for a comment-only evaluation). Without criteria the
+ * evaluation is a written comment only. There is never a numeric average (AD-68 G8). A 404 says only "not found" (G4:
+ * nothing about why).
  */
 export function EvaluationPage({ base }: { base: string }) {
   const { t, language } = useI18n();
@@ -125,22 +126,63 @@ export function EvaluationPage({ base }: { base: string }) {
                       const english = { lang: 'en', dir: 'ltr', text: c.nameEn } as const;
                       const [main, other] =
                         language === 'ar' ? [arabic, english] : [english, arabic];
+                      const score = e.submission?.scores[c.id];
                       return (
                         <li
                           key={c.id}
-                          className="flex flex-col rounded-card border border-border px-4 py-2"
+                          className="flex items-start justify-between gap-4 rounded-card border border-border px-4 py-2"
                         >
-                          <span lang={main.lang} dir={main.dir} className="text-heading">
-                            {main.text}
+                          {/* The names fill the row beside the score. Each line keeps the page's direction, so it
+                              starts at the page's start edge (wrapped lines too), and holds the name inline in its
+                              own language and direction (as on the Admin criteria page): never centred, no
+                              left or right. */}
+                          <span className="flex min-w-0 flex-1 flex-col items-start">
+                            <span className="text-heading">
+                              <span lang={main.lang} dir={main.dir}>
+                                {main.text}
+                              </span>
+                            </span>
+                            <span className="text-small text-muted">
+                              <span lang={other.lang} dir={other.dir}>
+                                {other.text}
+                              </span>
+                            </span>
                           </span>
-                          <span lang={other.lang} dir={other.dir} className="text-small text-muted">
-                            {other.text}
-                          </span>
+                          {score !== undefined && (
+                            <span className="ims-badge flex-none whitespace-nowrap">
+                              {t('evaluation.submitted.score', { score })}
+                            </span>
+                          )}
                         </li>
                       );
                     })}
                   </ol>
                 </>
+              )}
+              {e.submission && (
+                <dl className="mt-6 grid gap-4 sm:grid-cols-2">
+                  {item(
+                    'evaluation.submitted.grade',
+                    e.submission.grade
+                      ? t(`evaluation.grades.${e.submission.grade}`)
+                      : t('evaluation.submitted.noGrade'),
+                  )}
+                  {item(
+                    'evaluation.submitted.recommendation',
+                    t(`evaluation.draft.recommendations.${e.submission.hiringRecommendation}`),
+                  )}
+                  {item('evaluation.submitted.by', e.submission.submittedBy.name)}
+                  {item(
+                    'evaluation.submitted.at',
+                    new Date(e.submission.submittedAt).toLocaleString(language),
+                  )}
+                  <div className="sm:col-span-2">
+                    <dt className="text-small text-muted">{t('evaluation.submitted.comment')}</dt>
+                    <dd className="whitespace-pre-line break-words text-heading" dir="auto">
+                      {e.submission.comment}
+                    </dd>
+                  </div>
+                </dl>
               )}
               <p className="mt-4 text-small text-muted">{t('evaluation.readOnly')}</p>
             </>

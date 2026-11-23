@@ -11,8 +11,9 @@ import { EvaluationPage } from './EvaluationPage';
 import { EvaluationsPage } from './EvaluationsPage';
 
 /**
- * Final evaluation, stage S2.1 (R27; AD-66, AD-68): the evaluators' read-only Evaluations pages in the Employee and HR
- * areas, never the Admin's. No editing, no submission, no score, comment, recommendation or average. Synthetic data.
+ * Final evaluation (R27; AD-66, AD-68): the evaluators' Evaluations pages in the Employee and HR areas, never the Admin's
+ * (S2.1), the shared draft (S2.2, AD-70) and the submission with its read-only result and verbal grade (S2.3, AD-71).
+ * Never an average. Synthetic data.
  */
 afterEach(() => vi.unstubAllGlobals());
 
@@ -29,7 +30,18 @@ const item = (overrides: object = {}) => ({
 });
 const C1 = '01a1cccc-0000-7000-8000-000000000001';
 const C2 = '01a1cccc-0000-7000-8000-000000000002';
-/** As the API returns it: a draft (S2.2) unless the evaluation is submitted. */
+const VERSION = `c1.${'A'.repeat(43)}`;
+/** What a submitted evaluation carries for its evaluators (S2.3). */
+const submission = (overrides: Record<string, unknown> = {}) => ({
+  submittedAt: '2031-03-05T08:30:00Z',
+  submittedBy: { name: 'Synthetic Mentor' },
+  comment: 'Submitted comment',
+  hiringRecommendation: 'Maybe',
+  scores: { [C1]: 5, [C2]: 4 },
+  grade: 'Excellent',
+  ...overrides,
+});
+/** As the API returns it: a draft (S2.2, with the criteria fingerprint of S2.3) unless the evaluation is submitted. */
 const detail = (overrides: Record<string, unknown> = {}) => {
   const value: Record<string, unknown> = {
     ...item(),
@@ -41,11 +53,14 @@ const detail = (overrides: Record<string, unknown> = {}) => {
     ],
     revision: 0,
     draft: { comment: null, hiringRecommendation: null, scores: {}, lastSavedAt: null },
+    criteriaVersion: VERSION,
     ...overrides,
   };
   if (value.status === 'Submitted') {
     delete value.revision;
     delete value.draft;
+    delete value.criteriaVersion;
+    value.submission ??= submission(value.commentOnly ? { scores: {}, grade: null } : {});
   }
   return value;
 };
@@ -170,15 +185,26 @@ describe('EvaluationPage (read-only once submitted)', () => {
     );
   });
 
-  it('a submitted evaluation is read-only: no field, no button, no score, comment, recommendation or average', async () => {
+  it('a submitted evaluation is read-only: its frozen scores, comment, recommendation, submitter, time and grade, never an average', async () => {
     open(detail({ status: 'Submitted' }));
-    await screen.findByRole('list', { name: 'Criteria' });
+    const list = await screen.findByRole('list', { name: 'Criteria' });
     expect(screen.queryAllByRole('textbox')).toEqual([]);
     expect(screen.queryAllByRole('spinbutton')).toEqual([]);
     expect(screen.queryAllByRole('radio')).toEqual([]);
     expect(screen.queryAllByRole('combobox')).toEqual([]);
     expect(screen.queryAllByRole('button')).toEqual([]);
-    expect(document.body.textContent).not.toMatch(/score|average|mean|grade|recommend|comment:/i);
+    const items = within(list).getAllByRole('listitem');
+    expect(within(items[0]!).getByText('5 of 5')).toBeInTheDocument();
+    expect(within(items[1]!).getByText('4 of 5')).toBeInTheDocument();
+    const value = (label: string) => screen.getByText(label).nextElementSibling;
+    expect(value('Grade')).toHaveTextContent('Excellent');
+    expect(value('Hiring recommendation')).toHaveTextContent('Maybe');
+    expect(value('Submitted by')).toHaveTextContent('Synthetic Mentor');
+    expect(value('Submitted on')).toHaveTextContent(
+      new Date('2031-03-05T08:30:00Z').toLocaleString('en'),
+    );
+    expect(value('Comment')).toHaveTextContent('Submitted comment');
+    expect(document.body.textContent).not.toMatch(/average|mean|4\.5/i);
   });
 
   it('explains a comment-only evaluation, before and after submission', async () => {
@@ -273,7 +299,7 @@ describe('Draft form (S2.2: shared draft, no submission)', () => {
     expect(screen.getByText(/^Last saved: /)).toHaveTextContent(
       new Date('2031-03-02T10:15:00Z').toLocaleString('en'),
     );
-    expect(screen.queryByRole('button', { name: /submit/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Submit evaluation' })).toBeInTheDocument(); // S2.3
     expect(document.body.textContent).not.toMatch(/average|mean|grade|saved by/i);
     // Each name keeps its own language and direction.
     const arabic = within(punctuality).getByText('التزام بالمواعيد');
@@ -531,6 +557,462 @@ describe('Draft form (S2.2: shared draft, no submission)', () => {
     expect(await screen.findByRole('button', { name: 'حفظ المسودة' })).toBeInTheDocument();
     expect(screen.getByText(/^آخر حفظ: /)).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /التعليق/ })).toBeInTheDocument();
+  });
+});
+
+describe('Submission (S2.3: submit the saved draft, read-only afterwards)', () => {
+  const complete = (overrides: Record<string, unknown> = {}) =>
+    detail({
+      status: 'Draft',
+      revision: 2,
+      draft: {
+        comment: 'Complete comment',
+        hiringRecommendation: 'Yes',
+        scores: { [C1]: 4, [C2]: 5 },
+        lastSavedAt: '2031-03-02T10:15:00Z',
+      },
+      ...overrides,
+    });
+  const open = (respond: Parameters<typeof mockFetch>[0], i18n = en()) => {
+    const fetchMock = mockFetch(respond);
+    renderRoutes(
+      [
+        {
+          path: '/employee/evaluations/:applicationId',
+          element: <EvaluationPage base="/employee/evaluations" />,
+        },
+      ],
+      { url: `/employee/evaluations/${APP}`, i18n },
+    );
+    return fetchMock;
+  };
+  const posts = (fetchMock: ReturnType<typeof mockFetch>) =>
+    fetchMock.mock.calls
+      .filter((c) => c[1]?.method === 'POST')
+      .map((c) => [c[0], JSON.parse(String(c[1]!.body))]);
+  const gets = (fetchMock: ReturnType<typeof mockFetch>) =>
+    fetchMock.mock.calls.filter((c) => (c[1]?.method ?? 'GET') === 'GET').length;
+
+  it('submits the saved draft after an explicit confirmation, with its revision and criteria version, then shows it read-only', async () => {
+    const user = userEvent.setup();
+    const fetchMock = open((method) =>
+      method === 'POST'
+        ? [200, detail({ status: 'Submitted', submission: submission({ grade: 'VeryGood' }) })]
+        : [200, complete()],
+    );
+    await user.click(await screen.findByRole('button', { name: 'Submit evaluation' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Submit the evaluation?' });
+    expect(dialog).toHaveTextContent(
+      'After submission, you will not be able to edit this evaluation from this page.',
+    );
+    expect(posts(fetchMock)).toEqual([]);
+    await user.click(within(dialog).getByRole('button', { name: 'Submit' }));
+
+    expect(await screen.findByText('Very Good')).toBeInTheDocument();
+    expect(posts(fetchMock)).toEqual([
+      [`/api/evaluations/${APP}/submit`, { revision: 2, criteriaVersion: VERSION }],
+    ]);
+    expect(screen.queryAllByRole('radio')).toEqual([]);
+    expect(screen.queryAllByRole('textbox')).toEqual([]);
+    expect(screen.queryByRole('button', { name: 'Submit evaluation' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('This evaluation has been submitted and is read-only.'),
+    ).toBeInTheDocument();
+  });
+
+  it('cancelling the confirmation sends nothing', async () => {
+    const user = userEvent.setup();
+    const fetchMock = open(() => [200, complete()]);
+    await user.click(await screen.findByRole('button', { name: 'Submit evaluation' }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel' }),
+    );
+    expect(posts(fetchMock)).toEqual([]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('with unsaved changes asks to save first and sends nothing (no combined save and submit)', async () => {
+    const user = userEvent.setup();
+    const fetchMock = open(() => [200, complete()]);
+    await user.type(await screen.findByRole('textbox', { name: /Comment/ }), ' edited');
+    const button = screen.getByRole('button', { name: 'Submit evaluation' });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    await user.click(button);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Save your changes before submitting the evaluation.',
+    );
+    expect(button).toHaveAttribute('aria-describedby', screen.getByRole('alert').id);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.filter((c) => c[1]?.method === 'POST' || c[1]?.method === 'PUT'),
+    ).toEqual([]);
+  });
+
+  it('lists what the saved draft lacks: unscored criteria by name, the comment, the recommendation', async () => {
+    const user = userEvent.setup();
+    const fetchMock = open(() => [
+      200,
+      complete({
+        draft: {
+          comment: '  ',
+          hiringRecommendation: null,
+          scores: { [C1]: 3 },
+          lastSavedAt: '2031-03-02T10:15:00Z',
+        },
+      }),
+    ]);
+    const button = await screen.findByRole('button', { name: 'Submit evaluation' });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    await user.click(button);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Before submitting, complete:');
+    expect(
+      within(alert)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['A score for: Attendance and Absence', 'The comment', 'The hiring recommendation']);
+    expect(posts(fetchMock)).toEqual([]);
+  });
+
+  it('sends one submission only, however often it is confirmed while in progress; never retried', async () => {
+    const user = userEvent.setup();
+    let release: (value: [number, unknown]) => void = () => undefined;
+    const pending = new Promise<[number, unknown]>((resolve) => (release = resolve));
+    const fetchMock = mockFetch(() => [200, complete()]);
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        const [status, payload] = await pending;
+        return new Response(JSON.stringify(payload), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(complete()), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderRoutes(
+      [
+        {
+          path: '/employee/evaluations/:applicationId',
+          element: <EvaluationPage base="/employee/evaluations" />,
+        },
+      ],
+      { url: `/employee/evaluations/${APP}`, i18n: en() },
+    );
+    await user.click(await screen.findByRole('button', { name: 'Submit evaluation' }));
+    const confirm = within(await screen.findByRole('dialog')).getByRole('button', {
+      name: 'Submit',
+    });
+    await user.click(confirm);
+    expect(
+      await within(screen.getByRole('dialog')).findByRole('button', { name: 'Submitting…' }),
+    ).toBeDisabled();
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Submitting…' }),
+    );
+    release([500, { status: 500 }]);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The submission could not be confirmed. Reload the evaluation to check its status before trying again.',
+    );
+    expect(fetchMock.mock.calls.filter((c) => c[1]?.method === 'POST')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Reload the evaluation' })).toBeInTheDocument();
+  });
+
+  it('a changed criteria set: its own dialog; Close keeps the page, “View the updated criteria” reloads them with the saved scores', async () => {
+    const user = userEvent.setup();
+    const C3 = '01a1cccc-0000-7000-8000-000000000003';
+    let loads = 0;
+    const fetchMock = open((method) => {
+      if (method === 'POST') return [409, { status: 409, code: 'evaluation.criteria_changed' }];
+      loads += 1;
+      return [
+        200,
+        loads === 1
+          ? complete()
+          : complete({
+              criteria: [
+                { id: C1, nameAr: 'التزام بالمواعيد', nameEn: 'Punctuality', sortOrder: 1 },
+                { id: C2, nameAr: 'حضور وغياب', nameEn: 'Attendance and Absence', sortOrder: 3 },
+                { id: C3, nameAr: 'معيار جديد', nameEn: 'New criterion', sortOrder: 4 },
+              ],
+              criteriaVersion: `c1.${'B'.repeat(43)}`,
+            }),
+      ];
+    });
+    const submitAndRefuse = async () => {
+      await user.click(await screen.findByRole('button', { name: 'Submit evaluation' }));
+      await user.click(
+        within(await screen.findByRole('dialog')).getByRole('button', { name: 'Submit' }),
+      );
+      return screen.findByRole('dialog', { name: 'The evaluation criteria have been updated' });
+    };
+    let dialog = await submitAndRefuse();
+    expect(dialog).toHaveTextContent('The evaluation was not submitted.');
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(gets(fetchMock)).toBe(1);
+
+    dialog = await submitAndRefuse();
+    await user.click(within(dialog).getByRole('button', { name: 'View the updated criteria' }));
+    const added = await screen.findByRole('group', { name: /New criterion/ });
+    expect(
+      within(added)
+        .getAllByRole('radio')
+        .some((r) => (r as HTMLInputElement).checked),
+    ).toBe(false);
+    expect(
+      within(screen.getByRole('group', { name: /Punctuality/ })).getByRole('radio', { name: '4' }),
+    ).toBeChecked();
+    expect(gets(fetchMock)).toBe(2);
+    // Reviewing is required: the new criterion has no score, so a new submission lists it first.
+    await user.click(screen.getByRole('button', { name: 'Submit evaluation' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('A score for: New criterion');
+    expect(posts(fetchMock)).toHaveLength(2);
+  });
+
+  it.each([
+    ['evaluation.incomplete', 'The evaluation is incomplete and was not submitted.'],
+    [
+      'conflict.concurrent_update',
+      'Another evaluator saved changes to this draft. The evaluation was not submitted.',
+    ],
+    ['evaluation.already_submitted', 'This evaluation has already been submitted.'],
+  ])('explains a %s refusal and offers to reload the evaluation', async (code, message) => {
+    const user = userEvent.setup();
+    let loads = 0;
+    const fetchMock = open((method) => {
+      if (method === 'POST') return [409, { status: 409, code }];
+      loads += 1;
+      return [200, complete()];
+    });
+    await user.click(await screen.findByRole('button', { name: 'Submit evaluation' }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Submit' }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    await user.click(screen.getByRole('button', { name: 'Reload the evaluation' }));
+    await waitFor(() => expect(loads).toBe(2));
+    expect(posts(fetchMock)).toHaveLength(1);
+  });
+
+  it('a comment-only submitted evaluation shows no grade', async () => {
+    open(() => [200, detail({ status: 'Submitted', commentOnly: true, criteria: [] })]);
+    expect((await screen.findByText('Grade')).nextElementSibling).toHaveTextContent(
+      'No grade (an evaluation without criteria)',
+    );
+  });
+
+  it('reads in Arabic: the approved wording and the five grades', async () => {
+    const user = userEvent.setup();
+    open(
+      (method) =>
+        method === 'POST'
+          ? [409, { status: 409, code: 'evaluation.criteria_changed' }]
+          : [200, complete()],
+      ar(),
+    );
+    await user.click(await screen.findByRole('button', { name: 'تقديم التقييم' }));
+    const confirm = await screen.findByRole('dialog', { name: 'تقديم التقييم؟' });
+    expect(confirm).toHaveTextContent('بعد تقديم التقييم، لن تتمكن من تعديله من هذه الصفحة.');
+    await user.click(within(confirm).getByRole('button', { name: 'تقديم' }));
+    const changed = await screen.findByRole('dialog', { name: 'تم تحديث معايير التقييم' });
+    expect(changed).toHaveTextContent(
+      'طرأت تغييرات على معايير التقييم منذ فتح هذه الصفحة. لم يتم تقديم التقييم. يُرجى مراجعة المعايير المحدّثة قبل المحاولة مرة أخرى.',
+    );
+    expect(within(changed).getByRole('button', { name: 'إغلاق' })).toBeInTheDocument();
+    expect(
+      within(changed).getByRole('button', { name: 'عرض المعايير المحدّثة' }),
+    ).toBeInTheDocument();
+    const grades = JSON.parse(arMessages).evaluation.grades;
+    expect(grades).toEqual({
+      Excellent: 'ممتاز',
+      VeryGood: 'جيد جدًا',
+      Good: 'جيد',
+      Pass: 'مقبول',
+      Poor: 'ضعيف',
+    });
+  });
+
+  it.each([
+    ['Excellent', 'ممتاز'],
+    ['VeryGood', 'جيد جدًا'],
+    ['Good', 'جيد'],
+    ['Pass', 'مقبول'],
+    ['Poor', 'ضعيف'],
+  ])('shows the %s grade in Arabic as %s', async (grade, label) => {
+    open(() => [200, detail({ status: 'Submitted', submission: submission({ grade }) })], ar());
+    await screen.findByRole('list', { name: 'المعايير' });
+    expect(screen.getByText('التقدير').nextElementSibling).toHaveTextContent(label);
+  });
+});
+
+describe('Post-UAT corrections (S2.3)', () => {
+  const openSubmitted = (i18n = en()) => {
+    mockFetch(() => [200, detail({ status: 'Submitted' })]);
+    renderRoutes(
+      [
+        {
+          path: '/employee/evaluations/:applicationId',
+          element: <EvaluationPage base="/employee/evaluations" />,
+        },
+      ],
+      { url: `/employee/evaluations/${APP}`, i18n },
+    );
+  };
+
+  it('the Arabic evaluation texts say «تقديم» (submission), never «إرسال» (sending)', () => {
+    const messages = JSON.parse(arMessages).evaluation;
+    const texts: string[] = [];
+    const walk = (node: unknown) =>
+      typeof node === 'string' ? texts.push(node) : Object.values(node as object).forEach(walk);
+    walk(messages);
+    expect(texts.filter((x) => /إرسال|أُرسل|أرسل|مُرسَل|مرسل/.test(x))).toEqual([]);
+    expect([
+      messages.statuses.Submitted,
+      messages.frozen,
+      messages.commentOnlySubmitted,
+      messages.readOnly,
+      messages.draft.alreadySubmitted,
+      messages.submit.alreadySubmitted,
+    ]).toEqual([
+      'مُقدَّم',
+      'المعايير كما كانت عند تقديم التقييم.',
+      'تم تقديم هذا التقييم بتعليق مكتوب فقط.',
+      'تم تقديم هذا التقييم، وهو للقراءة فقط.',
+      'تم تقديم هذا التقييم مسبقاً. ما أدخلته لم يُحفظ.',
+      'تم تقديم هذا التقييم مسبقاً.',
+    ]);
+  });
+
+  it('shows the submitted evaluation in Arabic with the «تقديم» wording', async () => {
+    openSubmitted(ar());
+    await screen.findByRole('list', { name: 'المعايير' });
+    expect(screen.getByText('مُقدَّم')).toHaveClass('ims-badge');
+    expect(screen.getByText('المعايير كما كانت عند تقديم التقييم.')).toBeInTheDocument();
+    expect(screen.getByText('تم تقديم هذا التقييم، وهو للقراءة فقط.')).toBeInTheDocument();
+  });
+
+  it('each criterion’s names fill the row beside the score and start at the page’s start edge, in their own language', async () => {
+    openSubmitted();
+    const items = within(await screen.findByRole('list', { name: 'Criteria' })).getAllByRole(
+      'listitem',
+    );
+    for (const item of items) {
+      const [names, score] = [...item.children] as HTMLElement[];
+      expect(names).toHaveClass('flex-1', 'min-w-0', 'flex-col', 'items-start');
+      // Each line keeps the page's direction (no dir of its own); the name inside keeps its own language and direction.
+      expect([...names!.children].map((line) => line.hasAttribute('dir'))).toEqual([false, false]);
+      expect(
+        [...names!.children].map((line) => [
+          line.firstElementChild!.getAttribute('lang'),
+          line.firstElementChild!.getAttribute('dir'),
+        ]),
+      ).toEqual([
+        ['en', 'ltr'],
+        ['ar', 'rtl'],
+      ]);
+      expect(score).toHaveTextContent(/of 5$/);
+    }
+  });
+});
+
+describe('Draft form criterion names (pre-commit correction)', () => {
+  const LONG_EN =
+    'Effective communication with the team, the stakeholders and the mentor throughout every phase of the project';
+  const LONG_AR =
+    'التواصل الفعّال مع الفريق والجهات المعنية والمرشد في جميع مراحل المشروع والتدريب العملي';
+  const C3 = '01a1cccc-0000-7000-8000-000000000003';
+  const draft = () =>
+    detail({
+      status: 'Draft',
+      revision: 1,
+      criteria: [
+        { id: C1, nameAr: 'التزام بالمواعيد', nameEn: 'Punctuality', sortOrder: 1 },
+        { id: C3, nameAr: LONG_AR, nameEn: LONG_EN, sortOrder: 2 },
+      ],
+      draft: {
+        comment: 'Saved',
+        hiringRecommendation: 'Yes',
+        scores: { [C1]: 4 },
+        lastSavedAt: '2031-03-02T10:15:00Z',
+      },
+    });
+  const open = (respond: Parameters<typeof mockFetch>[0], i18n = en()) => {
+    const fetchMock = mockFetch(respond);
+    renderRoutes(
+      [
+        {
+          path: '/hr/evaluations/:applicationId',
+          element: <EvaluationPage base="/hr/evaluations" />,
+        },
+      ],
+      { url: `/hr/evaluations/${APP}`, i18n },
+    );
+    return fetchMock;
+  };
+  /** Each legend line: [has its own dir, the name's lang, the name's dir, the name's text]. */
+  const lines = (group: HTMLElement) => {
+    const legend = group.querySelector('legend')!;
+    expect(legend).toHaveClass('flex', 'flex-col', 'items-start');
+    return [...legend.children].map((line) => [
+      line.hasAttribute('dir'),
+      line.firstElementChild!.getAttribute('lang'),
+      line.firstElementChild!.getAttribute('dir'),
+      line.textContent,
+    ]);
+  };
+
+  it('in English: the English name, then the Arabic name, each line in the page’s direction, long names whole', async () => {
+    open(() => [200, draft()]);
+    expect(lines(await screen.findByRole('group', { name: /Punctuality/ }))).toEqual([
+      [false, 'en', 'ltr', 'Punctuality'],
+      [false, 'ar', 'rtl', 'التزام بالمواعيد'],
+    ]);
+    expect(lines(screen.getByRole('group', { name: /Effective communication/ }))).toEqual([
+      [false, 'en', 'ltr', LONG_EN],
+      [false, 'ar', 'rtl', LONG_AR],
+    ]);
+  });
+
+  it('in Arabic: the Arabic name, then the English name, each line in the page’s direction', async () => {
+    open(() => [200, draft()], ar());
+    expect(lines(await screen.findByRole('group', { name: /التزام بالمواعيد/ }))).toEqual([
+      [false, 'ar', 'rtl', 'التزام بالمواعيد'],
+      [false, 'en', 'ltr', 'Punctuality'],
+    ]);
+    expect(lines(screen.getByRole('group', { name: new RegExp(LONG_AR) }))).toEqual([
+      [false, 'ar', 'rtl', LONG_AR],
+      [false, 'en', 'ltr', LONG_EN],
+    ]);
+  });
+
+  it('scoring, the missing list and saving are unchanged for a long-named criterion', async () => {
+    const user = userEvent.setup();
+    const fetchMock = open((method, _url, body) =>
+      method === 'PUT'
+        ? [
+            200,
+            detail({
+              ...draft(),
+              revision: 2,
+              draft: { ...(draft().draft as object), scores: (body as { scores: object }).scores },
+            }),
+          ]
+        : [200, draft()],
+    );
+    const long = await screen.findByRole('group', { name: /Effective communication/ });
+    await user.click(screen.getByRole('button', { name: 'Submit evaluation' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(`A score for: ${LONG_EN}`);
+    await user.click(within(long).getByRole('radio', { name: '5' }));
+    expect(within(long).getByRole('radio', { name: '5' })).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((c) => c[1]?.method === 'PUT')).toBe(true),
+    );
+    const put = fetchMock.mock.calls.find((c) => c[1]?.method === 'PUT')!;
+    expect(JSON.parse(String(put[1]!.body)).scores).toEqual({ [C1]: 4, [C3]: 5 });
   });
 });
 

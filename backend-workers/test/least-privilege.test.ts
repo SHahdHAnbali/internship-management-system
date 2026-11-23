@@ -229,7 +229,7 @@ describe('ims_app: exactly the privileges the Worker needs', () => {
     ]);
   });
 
-  it("may write only a final evaluation draft's columns (R27 S2.2), never its submission, snapshot or corrections", async () => {
+  it("may write only a final evaluation draft's and submission's columns (R27 S2.2, S2.3), never corrections", async () => {
     const columns = await withDb((db) =>
       db.query<{ table: string; column: string; insert: boolean; update: boolean }>(
         `SELECT c.relname AS table, a.attname AS column,
@@ -251,9 +251,22 @@ describe('ims_app: exactly the privileges the Worker needs', () => {
       'status',
       'updated_at',
     ]);
-    expect(granted('evaluations', 'update')).toEqual(['comment', 'hiring_recommendation', 'updated_at', 'version']);
+    expect(granted('evaluations', 'update')).toEqual([
+      'comment',
+      'hiring_recommendation',
+      'status',
+      'submitted_at',
+      'submitted_by_id',
+      'updated_at',
+      'version',
+    ]);
     expect(granted('evaluation_scores', 'insert')).toEqual(['criterion_id', 'evaluation_id', 'id', 'score']);
-    expect(granted('evaluation_scores', 'update')).toEqual(['score']);
+    expect(granted('evaluation_scores', 'update')).toEqual([
+      'frozen_name_ar',
+      'frozen_name_en',
+      'frozen_sort_order',
+      'score',
+    ]);
     expect(granted('evaluation_corrections', 'insert')).toEqual([]);
     expect(granted('evaluation_corrections', 'update')).toEqual([]);
   });
@@ -297,23 +310,26 @@ describe('ims_app: refused (negative tests, disposable test database only)', () 
     ["UPDATE a reminder's attempt time", 'UPDATE pending_reminders SET attempted_at = attempted_at'],
     ['DELETE a pending-request reminder', 'DELETE FROM pending_reminders'],
     ['TRUNCATE pending-request reminders', 'TRUNCATE pending_reminders'],
-    // R27 S2.2 (owner, 2026-11-22): only a draft's columns are writable; never submission, snapshot or corrections.
+    // R27 S2.2 and S2.3 (owner, 2026-11-22/23): a draft's columns and, by UPDATE only, the submission's; never the
+    // submission or snapshot on INSERT, an evaluation's identity, or corrections.
     ...['submitted_by_id', 'submitted_at', 'comment', 'hiring_recommendation', 'version'].map((column) => [
       `INSERT an evaluation with ${column}`,
       `INSERT INTO evaluations (id, application_id, assignment_id, status, created_at, updated_at, ${column}) VALUES ('${tamper}', '${tamper}', '${tamper}', 'Draft', now(), now(), NULL)`,
     ]),
-    ...['status', 'submitted_by_id', 'submitted_at', 'application_id', 'assignment_id', 'created_at', 'id'].map(
-      (column) => [`UPDATE an evaluation's ${column}`, `UPDATE evaluations SET ${column} = ${column}`],
-    ),
+    ...['application_id', 'assignment_id', 'created_at', 'id'].map((column) => [
+      `UPDATE an evaluation's ${column}`,
+      `UPDATE evaluations SET ${column} = ${column}`,
+    ]),
     ['DELETE an evaluation', 'DELETE FROM evaluations'],
     ['TRUNCATE evaluations', 'TRUNCATE evaluations'],
     ...['frozen_name_ar', 'frozen_name_en', 'frozen_sort_order'].map((column) => [
       `INSERT an evaluation score with ${column}`,
       `INSERT INTO evaluation_scores (id, evaluation_id, criterion_id, score, ${column}) VALUES ('${tamper}', '${tamper}', '${tamper}', 5, NULL)`,
     ]),
-    ...['frozen_name_ar', 'frozen_name_en', 'frozen_sort_order', 'evaluation_id', 'criterion_id', 'id'].map(
-      (column) => [`UPDATE an evaluation score's ${column}`, `UPDATE evaluation_scores SET ${column} = ${column}`],
-    ),
+    ...['evaluation_id', 'criterion_id', 'id'].map((column) => [
+      `UPDATE an evaluation score's ${column}`,
+      `UPDATE evaluation_scores SET ${column} = ${column}`,
+    ]),
     ['DELETE an evaluation score', 'DELETE FROM evaluation_scores'],
     ['TRUNCATE evaluation scores', 'TRUNCATE evaluation_scores'],
     [
@@ -523,20 +539,41 @@ describe('ims_app and the final evaluation guards (R27 S2.2; K1 option B, owner 
       'evaluation_scores_not_cleared',
     ]);
 
-    // Submitted the S2.3 way (by the owner here: the Worker has no grant for it yet).
-    await withDb((db) =>
-      db.query(`
-        UPDATE evaluation_scores SET frozen_name_ar = 'معيار', frozen_name_en = 'Guard', frozen_sort_order = 1 WHERE evaluation_id = '${evaluation}';
-        UPDATE evaluations SET status = 'Submitted', comment = 'Final', hiring_recommendation = 'Yes',
-               submitted_by_id = '${t.employee}', submitted_at = now() WHERE id = '${evaluation}';
-      `),
-    );
+    // Submitted the S2.3 way, as ims_app (AD-71): snapshot first while still a Draft, then the status.
+    await connect(async (db) => {
+      await db.query('BEGIN');
+      await db.query("UPDATE evaluations SET comment = 'Final', hiring_recommendation = 'Yes' WHERE id = $1", [
+        evaluation,
+      ]);
+      await db.query('SELECT id FROM evaluations WHERE id = $1 FOR UPDATE', [evaluation]);
+      await db.query('LOCK TABLE evaluation_criteria IN SHARE MODE');
+      await db.query(
+        "UPDATE evaluation_scores SET frozen_name_ar = 'معيار', frozen_name_en = 'Guard', frozen_sort_order = 1 WHERE evaluation_id = $1",
+        [evaluation],
+      );
+      await db.query(
+        "UPDATE evaluations SET status = 'Submitted', submitted_by_id = $2, submitted_at = now(), version = version + 1, updated_at = now() WHERE id = $1",
+        [evaluation, t.employee],
+      );
+      await db.query('COMMIT');
+    });
     for (const sql of [
       `UPDATE evaluations SET comment = 'Changed' WHERE id = '${evaluation}'`,
       `UPDATE evaluations SET hiring_recommendation = 'No', version = version + 1, updated_at = now() WHERE id = '${evaluation}'`,
     ]) {
       expect(await refusal(sql), sql).toEqual(['23001', 'evaluations_submitted_readonly']);
     }
+    // S2.3's grants do not open a submitted evaluation: no return to Draft, no other submitter or time (AD-66).
+    for (const sql of [
+      `UPDATE evaluations SET status = 'Draft', submitted_by_id = NULL, submitted_at = NULL WHERE id = '${evaluation}'`,
+      `UPDATE evaluations SET submitted_by_id = '${(await training()).employee}' WHERE id = '${evaluation}'`,
+      `UPDATE evaluations SET submitted_at = now() - interval '1 day' WHERE id = '${evaluation}'`,
+    ]) {
+      expect(await refusal(sql), sql).toEqual(['23001', 'evaluations_submission_immutable']);
+    }
+    expect(
+      await refusal(`UPDATE evaluation_scores SET frozen_name_en = 'Renamed' WHERE evaluation_id = '${evaluation}'`),
+    ).toEqual(['23001', 'evaluation_scores_snapshot_immutable']);
     for (const sql of [
       `UPDATE evaluation_scores SET score = 1 WHERE evaluation_id = '${evaluation}'`,
       `INSERT INTO evaluation_scores (id, evaluation_id, criterion_id, score) VALUES (gen_random_uuid(), '${evaluation}', '${other}', 2)`,

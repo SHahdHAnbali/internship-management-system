@@ -1074,6 +1074,44 @@
       "leaveText": "Your changes to this draft have not been saved and will be lost if you leave this page.",
       "stay": "Stay on this page",
       "leave": "Leave without saving"
+    },
+    "submit": {
+      "action": "Submit evaluation",
+      "saveFirst": "Save your changes before submitting the evaluation.",
+      "missingTitle": "Before submitting, complete:",
+      "missingComment": "The comment",
+      "missingRecommendation": "The hiring recommendation",
+      "missingScore": "A score for: {{name}}",
+      "confirmTitle": "Submit the evaluation?",
+      "confirmText": "After submission, you will not be able to edit this evaluation from this page.",
+      "confirm": "Submit",
+      "cancel": "Cancel",
+      "submitting": "Submitting…",
+      "criteriaChangedTitle": "The evaluation criteria have been updated",
+      "criteriaChangedText": "The evaluation criteria have changed since this page was opened. The evaluation was not submitted. Please review the updated criteria before trying again.",
+      "close": "Close",
+      "showUpdated": "View the updated criteria",
+      "incomplete": "The evaluation is incomplete and was not submitted. Reload it and complete the missing parts.",
+      "conflict": "Another evaluator saved changes to this draft. The evaluation was not submitted.",
+      "alreadySubmitted": "This evaluation has already been submitted.",
+      "uncertain": "The submission could not be confirmed. Reload the evaluation to check its status before trying again.",
+      "reload": "Reload the evaluation"
+    },
+    "submitted": {
+      "by": "Submitted by",
+      "at": "Submitted on",
+      "grade": "Grade",
+      "noGrade": "No grade (an evaluation without criteria)",
+      "comment": "Comment",
+      "recommendation": "Hiring recommendation",
+      "score": "{{score}} of 5"
+    },
+    "grades": {
+      "Excellent": "Excellent",
+      "VeryGood": "Very Good",
+      "Good": "Good",
+      "Pass": "Pass",
+      "Poor": "Poor"
     }
   }
 }

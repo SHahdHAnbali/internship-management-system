@@ -80,6 +80,12 @@ GRANT INSERT (id, application_id, assignment_id, status, created_at, updated_at)
 GRANT UPDATE (comment, hiring_recommendation, version, updated_at) ON evaluations TO ims_app;
 GRANT INSERT (id, evaluation_id, criterion_id, score) ON evaluation_scores TO ims_app;
 GRANT UPDATE (score) ON evaluation_scores TO ims_app;
+-- Stage S2.3, submission (owner decisions 2026-11-23, AD-71): column-level only. The submission freezes the active
+-- criteria into the scores while the evaluation is still a Draft (the guards allow the snapshot to be set once), then
+-- records the status, the submitter and the time. Never corrections (S2.4), DELETE or TRUNCATE; the database guards keep
+-- refusing, for every role, any change to a submitted evaluation, its scores or its frozen snapshot.
+GRANT UPDATE (status, submitted_by_id, submitted_at) ON evaluations TO ims_app;
+GRANT UPDATE (frozen_name_ar, frozen_name_en, frozen_sort_order) ON evaluation_scores TO ims_app;
 
 -- Only the schema owner sets up audit protection on a table.
 REVOKE EXECUTE ON FUNCTION ims_protect_table(regclass) FROM PUBLIC;
