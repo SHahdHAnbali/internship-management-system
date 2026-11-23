@@ -9,7 +9,8 @@ import type { EvaluableTraining } from './access';
  * The shared draft of a final evaluation (R27 stage S2.2; AD-66, AD-68 G5, AD-69 and the owner decisions of 2026-11-22,
  * AD-70). One draft per training application, created by its first successful save, edited by the training's current
  * evaluators. A save is one transaction (the caller's, audited as the signed-in user), in this order:
- *  1. the caller has re-read the evaluator's rights and the training inside the transaction;
+ *  1. the caller has decided the evaluator's rights inside the transaction, under the application and staff-row locks
+ *     held until COMMIT (`lockedEvaluator`, access.ts; owner decisions of 2026-11-23), before anything here is written;
  *  2. the draft row is created if missing (ON CONFLICT: two first saves create one row);
  *  3. the row is locked (FOR UPDATE): a submitted evaluation is refused (409 evaluation.already_submitted), a revision
  *     other than the stored one too (409 conflict.concurrent_update): nothing is written for a stale form;

@@ -13,7 +13,8 @@ import { alreadySubmitted } from './draft';
 /**
  * Submitting the final evaluation (R27 stage S2.3; AD-66, AD-68 G3/G8, AD-70, owner decisions of 2026-11-23, AD-71). One
  * transaction (the caller's, audited as the signed-in user), in this order:
- *  1. the caller has re-read the evaluator's rights and the training inside the transaction;
+ *  1. the caller has decided the evaluator's rights inside the transaction, under the application and staff-row locks
+ *     held until COMMIT (`lockedEvaluator`, access.ts; owner decisions of 2026-11-23), before anything here is written;
  *  2. the evaluation row is locked (FOR UPDATE): none yet → 409 evaluation.incomplete (only a saved draft is submitted);
  *     submitted → 409 evaluation.already_submitted; another revision → 409 conflict.concurrent_update;
  *  3. `LOCK TABLE evaluation_criteria IN SHARE MODE`: until commit no criterion can be created, activated, deactivated

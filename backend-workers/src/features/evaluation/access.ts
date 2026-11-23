@@ -77,3 +77,43 @@ export function capacities(training: EvaluableTraining): Capacity[] {
     ...(training.responsible_hr ? (['ResponsibleHr'] as const) : []),
   ];
 }
+
+/**
+ * Writes to an evaluation (the S2.2 draft save, the S2.3 submission) decide the rights under locks held until COMMIT
+ * (owner decisions of 2026-11-23: solution C, the S2.4 locking applied to S2.2 and S2.3), in the caller's transaction:
+ *  1. the training application row FOR SHARE: an Admin's replacement of the responsible HR (FOR NO KEY UPDATE on it)
+ *     waits for the write, or the write waits for it and then sees it. The row always exists, also before the first draft;
+ *  2. the actor's staff row FOR SHARE: a role change (FOR NO KEY UPDATE, then UPDATE) waits likewise;
+ *  3. the rights from that locked state, never from the role read when the request started: a role other than Employee
+ *     or HR → `EvaluatorRoleError` (403); no longer the final mentor or the responsible HR → 404; not ended → 409.
+ * Only then does the caller write (the draft's INSERT and row lock; the submission's row lock and criteria table lock), so
+ * a refused actor writes nothing. Both locks come before any evaluation lock, in the project's order (the application
+ * first, the staff row after it, features/training/transfers.ts). S2.4 corrections keep their own locking (correct.ts).
+ */
+export class EvaluatorRoleError extends Error {
+  constructor() {
+    super('The signed-in user may not evaluate.');
+    this.name = 'EvaluatorRoleError';
+  }
+}
+
+/** Decides the rights for the application with the given (locked) role: 404 not an evaluator, 409 not ended. */
+export type TrainingResolver = (
+  q: Queryable,
+  user: { id: string; role: UserRole | null },
+  applicationId: string,
+) => Promise<EvaluableTraining>;
+
+export async function lockedEvaluator(
+  tx: Queryable,
+  applicationId: string,
+  actor: { id: string; role: UserRole | null },
+  resolve: TrainingResolver,
+): Promise<{ training: EvaluableTraining; user: { id: string; role: UserRole } }> {
+  await tx.query('SELECT id FROM training_applications WHERE id = $1 FOR SHARE', [applicationId]);
+  const { rows } = await tx.query<{ role: string }>('SELECT role FROM employees WHERE id = $1 FOR SHARE', [actor.id]);
+  const role = rows[0]?.role as UserRole | undefined;
+  if (role === undefined || !EVALUATOR_ROLES.includes(role)) throw new EvaluatorRoleError();
+  const user = { ...actor, role };
+  return { training: await resolve(tx, user, applicationId), user };
+}

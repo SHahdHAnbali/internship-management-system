@@ -6,7 +6,15 @@ import { correctionInput, criteriaVersion, draftInput, submitInput, verbalGrade 
 import { bindJson, type RequestSchema } from '../../http/body';
 import { statusProblem, json } from '../../http/problems';
 import type { Route } from '../../http/routes';
-import { capacities, EVALUATOR_ROLES, evaluableTrainings, type EvaluableTraining, isAvailable } from './access';
+import {
+  capacities,
+  EVALUATOR_ROLES,
+  EvaluatorRoleError,
+  evaluableTrainings,
+  type EvaluableTraining,
+  isAvailable,
+  lockedEvaluator,
+} from './access';
 import { CorrectorRoleError, correctEvaluation, correctionRefusal, notSubmitted, readCorrectable } from './correct';
 import { readDraft, saveDraft } from './draft';
 import { submitEvaluation } from './submit';
@@ -269,12 +277,19 @@ export const evaluationRoutes: Route[] = [
       const input = draftInput(body.value, present);
 
       const applicationId = c.req.param('id')!;
-      const result = await c.var.db.transaction(c.var.actor, async (tx) => {
-        // The evaluator's rights and the training are read again inside the transaction that writes.
-        await saveDraft(tx, await availableTraining(tx, user, applicationId), input, c.var.deps.now());
-        return detail(tx, await availableTraining(tx, user, applicationId));
-      });
-      return json(result);
+      try {
+        const result = await c.var.db.transaction(c.var.actor, async (tx) => {
+          // The evaluator's rights are decided inside the transaction that writes, under locks held until it commits.
+          const rights = await lockedEvaluator(tx, applicationId, user, availableTraining);
+          await saveDraft(tx, rights.training, input, c.var.deps.now());
+          return detail(tx, await availableTraining(tx, rights.user, applicationId));
+        });
+        return json(result);
+      } catch (error) {
+        // The role became one that may not evaluate (Admin) while the request waited: 403, as before the transaction.
+        if (error instanceof EvaluatorRoleError) return statusProblem(403, c.var.traceId, true);
+        throw error;
+      }
     },
   },
   {
@@ -290,12 +305,18 @@ export const evaluationRoutes: Route[] = [
       const input = submitInput(body.value, present);
 
       const applicationId = c.req.param('id')!;
-      const result = await c.var.db.transaction(c.var.actor, async (tx) => {
-        // The evaluator's rights and the training are read again inside the transaction that submits.
-        await submitEvaluation(tx, await availableTraining(tx, user, applicationId), user.id, input, c.var.deps.now());
-        return detail(tx, await availableTraining(tx, user, applicationId));
-      });
-      return json(result);
+      try {
+        const result = await c.var.db.transaction(c.var.actor, async (tx) => {
+          // The evaluator's rights are decided inside the transaction that submits, under locks held until it commits.
+          const rights = await lockedEvaluator(tx, applicationId, user, availableTraining);
+          await submitEvaluation(tx, rights.training, user.id, input, c.var.deps.now());
+          return detail(tx, await availableTraining(tx, rights.user, applicationId));
+        });
+        return json(result);
+      } catch (error) {
+        if (error instanceof EvaluatorRoleError) return statusProblem(403, c.var.traceId, true);
+        throw error;
+      }
     },
   },
   {

@@ -182,20 +182,24 @@ async function lockWaits(count: number) {
   throw new Error(`Expected ${count} session(s) waiting for a lock.`);
 }
 
-/** Resolves once a submission holds the criteria table's SHARE lock and waits for another lock (it is paused there). */
-async function submissionPausedHoldingCriteriaLock() {
+/**
+ * Resolves once a submission holds the criteria table's SHARE lock and waits for another lock in the statement that
+ * starts with `waitingIn` (it is paused there, past its rights check and its evaluation lock).
+ */
+async function submissionPausedHoldingCriteriaLock(waitingIn: string) {
   for (let i = 0; i < 1000; i++) {
     const n = await db((c) =>
       c.query<{ n: number }>(
         `SELECT count(*)::int AS n FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
           WHERE l.relation = 'evaluation_criteria'::regclass AND l.mode = 'ShareLock' AND l.granted
-            AND a.wait_event_type = 'Lock' AND a.datname = current_database()`,
+            AND a.wait_event_type = 'Lock' AND a.datname = current_database() AND starts_with(ltrim(a.query), $1)`,
+        [waitingIn],
       ),
     ).then((r) => r.rows[0]!.n);
     if (n === 1) return;
     await new Promise((r) => setTimeout(r, 20));
   }
-  throw new Error('Expected a submission holding the criteria lock and waiting.');
+  throw new Error(`Expected a submission holding the criteria lock and waiting in: ${waitingIn}`);
 }
 
 /** An owner transaction that holds whatever `sql` locks until `end` (COMMIT or ROLLBACK); always closed in `finally`. */
@@ -225,11 +229,23 @@ const lockEvaluation = (applicationId: string): [string, unknown[]] => [
   'SELECT id FROM evaluations WHERE application_id = $1 FOR UPDATE',
   [applicationId],
 ];
-/** The submitter's staff row: the submission's last statement checks it (foreign key), after the criteria lock. */
-const lockStaffRow = (employeeId: string): [string, unknown[]] => [
-  'SELECT id FROM employees WHERE id = $1 FOR UPDATE',
-  [employeeId],
+/**
+ * Pausing a submission after its criteria lock (owner decision of 2026-11-23, S2.2/S2.3 rights hardening). Its rights
+ * are now decided first, under a FOR SHARE lock on the submitter's staff row, so that row can no longer pause it at the
+ * end. Instead:
+ *  - with frozen scores: the training's score rows (FOR UPDATE): the submission waits at its snapshot UPDATE;
+ *  - with no active criterion (no score row): SHARE on the evaluations table, taken before the submission starts. Its
+ *    row lock (FOR UPDATE needs ROW SHARE) and the criteria lock pass; its final UPDATE (ROW EXCLUSIVE) waits. Only
+ *    writes to evaluations wait, in this file's own database, during that one test; the holder waits for nothing.
+ */
+const lockScores = (applicationId: string): [string, unknown[]] => [
+  `SELECT s.id FROM evaluation_scores s JOIN evaluations e ON e.id = s.evaluation_id
+    WHERE e.application_id = $1 FOR UPDATE OF s`,
+  [applicationId],
 ];
+const lockEvaluationWrites: [string, unknown[]] = ['LOCK TABLE evaluations IN SHARE MODE', []];
+const SNAPSHOT_UPDATE = 'UPDATE evaluation_scores s';
+const SUBMISSION_UPDATE = 'UPDATE evaluations';
 
 // ── The submission ────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -802,9 +818,9 @@ describe('final evaluation submission (S2.3): concurrency, on real PostgreSQL', 
       await setActive(cs[2]!, false);
       const t = await endedTraining();
       const seen = await completeDraft(t.mentor.client, t.applicationId, { [cs[0]!.id]: 5, [cs[1]!.id]: 4 });
-      const [submitted, written] = await holding([lockStaffRow(t.mentor.user.id)], async (end) => {
+      const [submitted, written] = await holding([lockScores(t.applicationId)], async (end) => {
         const s = submit(t.mentor.client, t.applicationId, seen);
-        await submissionPausedHoldingCriteriaLock();
+        await submissionPausedHoldingCriteriaLock(SNAPSHOT_UPDATE);
         const w = adminWrite(cs);
         await lockWaits(2); // the Admin write waits for the criteria table
         await end('COMMIT');
@@ -846,9 +862,9 @@ describe('final evaluation submission (S2.3): concurrency, on real PostgreSQL', 
     await freshCriteria(0);
     const b = await endedTraining();
     const seenB = await completeDraft(b.mentor.client, b.applicationId, {});
-    const [submitted, created] = await holding([lockStaffRow(b.mentor.user.id)], async (end) => {
+    const [submitted, created] = await holding([lockEvaluationWrites], async (end) => {
       const s = submit(b.mentor.client, b.applicationId, seenB);
-      await submissionPausedHoldingCriteriaLock();
+      await submissionPausedHoldingCriteriaLock(SUBMISSION_UPDATE);
       const w = admin.client.post('/api/admin/evaluation-criteria', { nameAr: 'لاحق', nameEn: 'Later' });
       await lockWaits(2);
       await end('COMMIT');
