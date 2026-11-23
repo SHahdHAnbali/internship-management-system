@@ -441,6 +441,71 @@ describe('pending mentor requests (to the current responsible HR only)', () => {
     }
   });
 
+  it('requests rejected because HR approved another employee are never reminded; nor is the approved one', async () => {
+    const p = await pendingRequest();
+    const other = await signInStaff(api, 'Employee');
+    const otherRequest = await mentorRequest(other.client, p.applicationId);
+    const approved = await p.hrA.client.post(`/api/hr/mentor-requests/${p.requestId}/approve`, {
+      startDate: '2031-01-10',
+      endDate: '2031-04-30',
+    });
+    expect(approved.status).toBe(200);
+    for (const id of [p.requestId, otherRequest]) await backdate('mentor_requests', id, ago(30 * DAY));
+
+    const { mail } = await run();
+    expect(aboutRequest(mail.accepted, p.field.name)).toEqual([]);
+    expect(await requestReminders(p.requestId)).toEqual([]);
+    expect(await requestReminders(otherRequest)).toEqual([]);
+  });
+
+  it('a historical Pending request of an application that has had an assignment: not selected, and refused at the claim', async () => {
+    const p = await pendingRequest();
+    const approved = await p.hrA.client.post(`/api/hr/mentor-requests/${p.requestId}/approve`, {
+      startDate: '2031-01-10',
+      endDate: '2031-04-30',
+    });
+    expect(approved.status).toBe(200);
+    // A request left Pending from before the owner decision of 2026-11-23 (written by the database owner).
+    const historical = crypto.randomUUID();
+    const other = await signInStaff(api, 'Employee');
+    await withDb(async (db) => {
+      await db.query('BEGIN');
+      await db.query("SELECT set_config('ims.actor_type', 'System', true)");
+      await db.query(
+        `INSERT INTO mentor_requests (id, employee_id, application_id, note, status, requested_at)
+         VALUES ($1, $2, $3, 'Historical request', 'Pending', $4)`,
+        [historical, other.user.id, p.applicationId, ago(30 * DAY)],
+      );
+      await db.query('COMMIT');
+    });
+
+    // Not a candidate at all.
+    const first = await run();
+    expect(aboutRequest(first.mail.accepted, p.field.name)).toEqual([]);
+    expect(await requestReminders(historical)).toEqual([]);
+    // In a stale candidate list (as if selected just before an approval committed), the claim refuses it under the lock.
+    const stale = await run({ extraCandidates: [{ kind: 'MentorRequest', id: historical }] });
+    expect(stale.summary!.skipped).toBeGreaterThanOrEqual(1);
+    expect(aboutRequest(stale.mail.accepted, p.field.name)).toEqual([]);
+    expect(await requestReminders(historical)).toEqual([]);
+  });
+
+  it('two eligible requests for one trainee: one separate e-mail each, once; never again on later runs', async () => {
+    const p = await pendingRequest();
+    const other = await signInStaff(api, 'Employee');
+    const otherRequest = await mentorRequest(other.client, p.applicationId);
+    for (const id of [p.requestId, otherRequest]) await backdate('mentor_requests', id, ago(30 * DAY));
+
+    const first = await run();
+    const emails = aboutRequest(first.mail.accepted, p.field.name);
+    expect(emails).toHaveLength(2);
+    expect(new Set(emails.map((m) => m.to)).size).toBe(1); // the responsible HR, one e-mail per request
+    expect((await requestReminders(p.requestId)).length).toBe(1);
+    expect((await requestReminders(otherRequest)).length).toBe(1);
+    const again = await run();
+    expect(aboutRequest(again.mail.accepted, p.field.name)).toEqual([]);
+  });
+
   it('a replaced responsible HR: only the new one is reminded, the former one never', async () => {
     const p = await pendingRequest();
     expect(
