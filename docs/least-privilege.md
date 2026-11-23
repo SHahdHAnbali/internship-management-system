@@ -29,7 +29,7 @@ SELECT on `evaluations`, `evaluation_scores` and `evaluation_corrections`, and, 
 (comment, hiring_recommendation, version, updated_at) on `evaluations`; INSERT (id, evaluation_id, criterion_id, score)
 and UPDATE (score) on `evaluation_scores`; and, for the submission (S2.3, local only), UPDATE (status, submitted_by_id,
 submitted_at) on `evaluations` and UPDATE (frozen_name_ar, frozen_name_en, frozen_sort_order) on `evaluation_scores`;
-and, for corrections (S2.4, local only, not committed), INSERT (id, evaluation_id, corrected_by_id, corrected_at,
+and, for corrections (S2.4, committed and pushed in `13e4119`, not applied), INSERT (id, evaluation_id, corrected_by_id, corrected_at,
 reason) on `evaluation_corrections`, never UPDATE: which records and changes are accepted is decided by the guards of
 migration `EvaluationCorrections` (D3+, H1, H2), for every role.
 Never the submission or snapshot columns on INSERT, an evaluation's identity, DELETE or TRUNCATE; the
