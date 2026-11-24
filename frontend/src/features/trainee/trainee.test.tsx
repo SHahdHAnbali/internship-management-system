@@ -269,3 +269,121 @@ describe('rejection reason on the status board (AD-61)', () => {
     expect(screen.queryByText('trainee.applications.rejectionReason')).not.toBeInTheDocument();
   });
 });
+
+describe('final evaluation on the status board (S2.5)', () => {
+  const card = (
+    id: string,
+    field: string,
+    finalEvaluation?: { submittedAt: string; grade: string | null } & Record<string, unknown>,
+  ) => ({
+    id,
+    field: { id: `f-${id}`, name: field },
+    status: 'Accepted',
+    availableFrom: '2027-02-01',
+    availableTo: '2027-04-30',
+    hours: 240,
+    mandatoryForUniversity: false,
+    submittedAt: '2026-10-29T10:00:00Z',
+    decidedAt: '2026-11-01T10:00:00Z',
+    rejectionReason: null,
+    attachments: [],
+    ...(finalEvaluation && { finalEvaluation }),
+  });
+  const GRADED_AT = '2026-11-20T12:00:00Z';
+  const UNGRADED_AT = '2026-11-21T12:00:00Z';
+  const POOR_AT = '2026-11-22T12:00:00Z';
+  const board = [
+    card('g', 'Graded field', { submittedAt: GRADED_AT, grade: 'VeryGood' }),
+    card('p', 'Second graded field', { submittedAt: POOR_AT, grade: 'Poor' }),
+    card('n', 'Ungraded field', { submittedAt: UNGRADED_AT, grade: null }),
+    card('w', 'Waiting field'),
+  ];
+
+  it.each([
+    [
+      'ar',
+      arMessages,
+      'التقدير النهائي',
+      'تاريخ تقديم التقييم النهائي',
+      'تم تقديم التقييم النهائي دون تقدير.',
+      'جيد جدًا',
+      'ضعيف',
+    ],
+    [
+      'en',
+      enMessages,
+      'Final grade',
+      'Final evaluation submitted on',
+      'The final evaluation was submitted without a grade.',
+      'Very Good',
+      'Poor',
+    ],
+  ] as const)(
+    'in %s: each card shows its own grade and original submission date; no grade label without a grade; nothing before submission',
+    async (language, raw, gradeLabel, dateLabel, noGrade, veryGood, poor) => {
+      mockFetch(() => [200, board]);
+      renderRoutes([{ path: '/trainee', element: <TraineeHome /> }], {
+        url: '/trainee',
+        i18n: testI18n(JSON.parse(raw), language),
+      });
+      const date = (value: string) => new Date(value).toLocaleDateString(language);
+      const pair = (scope: HTMLElement, label: string) => {
+        const term = within(scope).getByText(label);
+        expect(term.tagName).toBe('DT');
+        const value = term.nextElementSibling as HTMLElement;
+        expect(value.tagName).toBe('DD');
+        return value.textContent;
+      };
+
+      const graded = (await screen.findByText('Graded field')).closest('li')!;
+      expect(pair(graded, gradeLabel)).toBe(veryGood);
+      expect(pair(graded, dateLabel)).toBe(date(GRADED_AT));
+      expect(within(graded).queryByText(noGrade)).not.toBeInTheDocument();
+
+      const second = screen.getByText('Second graded field').closest('li')!;
+      expect(pair(second, gradeLabel)).toBe(poor);
+      expect(pair(second, dateLabel)).toBe(date(POOR_AT));
+
+      const ungraded = screen.getByText('Ungraded field').closest('li')!;
+      expect(within(ungraded).getByText(noGrade)).toBeInTheDocument();
+      expect(pair(ungraded, dateLabel)).toBe(date(UNGRADED_AT));
+      expect(within(ungraded).queryByText(gradeLabel)).not.toBeInTheDocument();
+      for (const name of [veryGood, poor])
+        expect(within(ungraded).queryByText(name)).not.toBeInTheDocument();
+
+      const waiting = screen.getByText('Waiting field').closest('li')!;
+      for (const text of [gradeLabel, dateLabel, noGrade])
+        expect(within(waiting).queryByText(text)).not.toBeInTheDocument();
+
+      expect(screen.getAllByText(gradeLabel)).toHaveLength(2);
+      expect(screen.getAllByText(dateLabel)).toHaveLength(3);
+      expect(screen.getAllByText(noGrade)).toHaveLength(1);
+    },
+  );
+
+  it('renders only the grade and date even if more were sent; no left/right layout classes', async () => {
+    mockFetch(() => [
+      200,
+      [
+        card('g', 'Graded field', {
+          submittedAt: GRADED_AT,
+          grade: 'Good',
+          comment: 'Secret evaluator comment',
+          hiringRecommendation: 'Maybe',
+          scores: { c1: 3 },
+          submittedBy: { name: 'Secret Mentor' },
+          average: 3.25,
+        }),
+      ],
+    ]);
+    const { container } = renderRoutes([{ path: '/trainee', element: <TraineeHome /> }], {
+      url: '/trainee',
+    });
+    const graded = (await screen.findByText('Graded field')).closest('li')!;
+    expect(within(graded).getByText('evaluation.grades.Good')).toBeInTheDocument();
+    for (const hidden of ['Secret evaluator comment', 'Maybe', 'Secret Mentor', '3.25'])
+      expect(within(graded).queryByText(hidden, { exact: false })).not.toBeInTheDocument();
+    for (const element of container.querySelectorAll('[class]'))
+      expect(element.getAttribute('class')).not.toMatch(/\b(ml|mr|pl|pr|left|right)-/);
+  });
+});

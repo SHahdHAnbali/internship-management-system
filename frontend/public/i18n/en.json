@@ -644,7 +644,10 @@
       "title": "My applications",
       "apply": "Apply for training",
       "empty": "You have not applied for training yet.",
-      "rejectionReason": "Rejection reason"
+      "rejectionReason": "Rejection reason",
+      "finalGrade": "Final grade",
+      "finalEvaluationDate": "Final evaluation submitted on",
+      "finalEvaluationNoGrade": "The final evaluation was submitted without a grade."
     },
     "apply": {
       "title": "Apply for training",

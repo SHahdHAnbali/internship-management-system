@@ -644,7 +644,10 @@
       "title": "طلباتي",
       "apply": "التقديم على تدريب",
       "empty": "لم تقدّم على أي تدريب بعد.",
-      "rejectionReason": "سبب الرفض"
+      "rejectionReason": "سبب الرفض",
+      "finalGrade": "التقدير النهائي",
+      "finalEvaluationDate": "تاريخ تقديم التقييم النهائي",
+      "finalEvaluationNoGrade": "تم تقديم التقييم النهائي دون تقدير."
     },
     "apply": {
       "title": "التقديم على تدريب",

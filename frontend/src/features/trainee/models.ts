@@ -36,4 +36,11 @@ export interface MyApplication {
   /** The reason HR recorded, only for a Rejected application (AD-61); otherwise null. */
   rejectionReason: string | null;
   attachments: Attachment[];
+  /**
+   * Only once the final evaluation is submitted (S2.5): its verbal grade (null for an evaluation without criteria) and
+   * the original submission time. Absent before the submission.
+   */
+  finalEvaluation?: { submittedAt: string; grade: VerbalGrade | null };
 }
+
+export type VerbalGrade = 'Excellent' | 'VeryGood' | 'Good' | 'Pass' | 'Poor';

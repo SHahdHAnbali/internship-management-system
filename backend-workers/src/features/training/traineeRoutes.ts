@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import type { AppEnv } from '../../context';
 import { DomainError } from '../../domain/errors';
+import { verbalGrade } from '../../domain/evaluation';
 import { required } from '../../domain/guard';
 import {
   applicationHours,
@@ -34,6 +35,10 @@ interface ApplicationRow {
   submitted_at: Date;
   decided_at: Date | null;
   rejection_reason: string | null;
+  /** The final evaluation, only once submitted (S2.5); the aggregates never leave this file. */
+  evaluation_submitted_at: Date | null;
+  evaluation_total: number | null;
+  evaluation_scored: number | null;
 }
 
 interface AttachmentListRow {
@@ -80,14 +85,27 @@ export const traineeRoutes: Route[] = [
   {
     // The status board: the trainee's own applications only, never anyone else's (PDF §4). The reason HR recorded is
     // shown for a rejected application (AD-61, Q36), including rejections recorded before that decision (NEW-25).
+    // The final evaluation (S2.5, owner decisions of 2026-11-24; AD-66): only once **submitted**, and then only its
+    // verbal grade (of the current frozen scores, so a correction shows at once) and the original submission time.
+    // A draft is read nowhere here, so the board is identical with or without one. The frozen-score condition is the
+    // one of the evaluators' detail (evaluation/routes.ts, readSubmission), repeated on purpose.
     method: 'GET',
     path: '/api/trainee/applications',
     policy: 'Trainee',
     async handle(c) {
       const { rows } = await c.var.db.query<ApplicationRow>(
         `SELECT a.id, a.field_id, f.name AS field_name, a.status, a.available_from::text, a.available_to::text, a.hours,
-                a.mandatory_for_university, a.submitted_at, a.decided_at, a.rejection_reason
+                a.mandatory_for_university, a.submitted_at, a.decided_at, a.rejection_reason,
+                ev.submitted_at AS evaluation_submitted_at, ev.total AS evaluation_total, ev.scored AS evaluation_scored
            FROM training_applications a JOIN fields f ON f.id = a.field_id
+           LEFT JOIN LATERAL (
+                  SELECT e.submitted_at,
+                         (SELECT sum(s.score)::int FROM evaluation_scores s
+                           WHERE s.evaluation_id = e.id AND s.frozen_sort_order IS NOT NULL) AS total,
+                         (SELECT count(*)::int FROM evaluation_scores s
+                           WHERE s.evaluation_id = e.id AND s.frozen_sort_order IS NOT NULL) AS scored
+                    FROM evaluations e
+                   WHERE e.application_id = a.id AND e.status = 'Submitted') ev ON true
           WHERE a.trainee_id = $1 ORDER BY a.submitted_at DESC`,
         [c.var.user!.id],
       );
@@ -108,6 +126,13 @@ export const traineeRoutes: Route[] = [
           decidedAt: a.decided_at,
           rejectionReason: a.status === 'Rejected' ? a.rejection_reason : null,
           attachments: files.get(a.id) ?? [],
+          // Absent (not null) before the submission: nothing tells whether an evaluation or a draft exists.
+          ...(a.evaluation_submitted_at && {
+            finalEvaluation: {
+              submittedAt: a.evaluation_submitted_at,
+              grade: verbalGrade(a.evaluation_total ?? 0, a.evaluation_scored ?? 0),
+            },
+          }),
         })),
       );
     },

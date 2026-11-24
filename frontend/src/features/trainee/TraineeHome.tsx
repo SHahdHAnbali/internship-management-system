@@ -69,6 +69,32 @@ export function TraineeHome() {
                     </dd>
                   </dl>
                 )}
+                {a.finalEvaluation && (
+                  // S2.5: only the verbal grade and the original submission date; nothing before the submission.
+                  <div className="flex flex-col gap-2 rounded-control border border-border bg-surface-subtle p-3 text-small">
+                    {!a.finalEvaluation.grade && (
+                      <p className="text-heading">
+                        {t('trainee.applications.finalEvaluationNoGrade')}
+                      </p>
+                    )}
+                    <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                      {a.finalEvaluation.grade && (
+                        <div>
+                          <dt className="text-muted">{t('trainee.applications.finalGrade')}</dt>
+                          <dd className="font-semibold text-heading">
+                            {t(`evaluation.grades.${a.finalEvaluation.grade}`)}
+                          </dd>
+                        </div>
+                      )}
+                      <div>
+                        <dt className="text-muted">
+                          {t('trainee.applications.finalEvaluationDate')}
+                        </dt>
+                        <dd>{date(a.finalEvaluation.submittedAt)}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                )}
                 {a.attachments.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {a.attachments.map((file) => (
