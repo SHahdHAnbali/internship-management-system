@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import type { Bindings } from '../src/config';
+import { OTHER_REQUEST_APPROVED_REJECTION_REASON } from '../src/features/training/hrRoutes';
 import { body, createTestApi, setRole, signInStaff, signInTrainee, type TestClient, unique, withDb } from './helpers';
 
 /**
@@ -658,7 +659,8 @@ describe('available trainees and mentor requests', () => {
     }
   });
 
-  it('HR approval needs a valid period and makes the trainee unavailable; a second approval is impossible', async () => {
+  it('HR approval needs a valid period and makes the trainee unavailable; the same request cannot be approved twice', async () => {
+    // Approving another employee's request is covered by test/mentor-request-approval.test.ts (owner decisions of 2026-11-23).
     const { hr, employee, field } = await cast();
     const { applicationId } = await acceptedTrainee(hr.client, field.id);
     const { id } = await body<{ id: string }>(
@@ -739,7 +741,16 @@ describe('CV access', () => {
     });
 
     expect(await cv(mentor.client)).toBe(200); // their assigned trainee
-    expect(await cv(stillWaiting.client)).toBe(200); // their request is still waiting for HR
+    // Approving one request rejects the others (owner decisions of 2026-11-23): this one is no longer pending, so the
+    // employee is no longer related to the trainee, like a requester HR rejected.
+    expect(await cv(stillWaiting.client)).toBe(404);
+    const waitingRequest = await withDb((db) =>
+      db.query<{ status: string; rejection_reason: string | null }>(
+        'SELECT status, rejection_reason FROM mentor_requests WHERE application_id = $1 AND employee_id = $2',
+        [applicationId, stillWaiting.user.id],
+      ),
+    ).then((r) => r.rows[0]!);
+    expect(waitingRequest).toEqual({ status: 'Rejected', rejection_reason: OTHER_REQUEST_APPROVED_REJECTION_REASON });
     expect(await cv(refused.client)).toBe(404); // no longer related: request rejected, trainee assigned elsewhere
     expect(await cv(unrelated.client)).toBe(404);
     expect((await unrelated.client.get(earlier.url)).status).toBe(404); // an earlier link is checked again

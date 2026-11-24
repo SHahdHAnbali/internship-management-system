@@ -32,13 +32,17 @@ export async function submitApplication(trainee: TestClient, fieldId: string, fu
   return (await body<{ id: string }>(submitted)).id;
 }
 
-/** An assignment as stored, with the given dates and status (the lifecycle actions that would set them are not built). */
+/**
+ * An assignment as stored, with the given dates and status (the lifecycle actions that would set them are not built), in
+ * the shared test database or the one `url` names (an isolated database's owner URL).
+ */
 export async function seedAssignment(
   applicationId: string,
   employeeId: string,
   start: string,
   end: string,
   status: string,
+  url?: string,
 ) {
   const id = crypto.randomUUID();
   await withDb(async (db) => {
@@ -51,6 +55,6 @@ export async function seedAssignment(
       [id, applicationId, employeeId, start, end, status],
     );
     await db.query('COMMIT');
-  });
+  }, url);
   return id;
 }

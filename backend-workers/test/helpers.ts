@@ -108,10 +108,19 @@ export interface TestApi {
   client(options?: { ip?: string }): TestClient;
   /** Calls the Worker with a raw request (no cookie handling). */
   fetch(request: Request, bindings?: Partial<Bindings>): Promise<Response>;
+  /**
+   * The schema owner's URL of the database this API uses, for the helpers that seed it (`signInStaff`'s role, …): the
+   * shared test database unless the API was created for an isolated one (test/isolated-database.ts).
+   */
+  ownerDatabaseUrl: string;
 }
 
 /** `bindings` override the test configuration for every request of this API (for example EVENT_EMAILS). */
-export function createTestApi(overrides: Partial<Dependencies> = {}, bindings: Partial<Bindings> = {}): TestApi {
+export function createTestApi(
+  overrides: Partial<Dependencies> = {},
+  bindings: Partial<Bindings> = {},
+  options: { ownerDatabaseUrl?: string } = {},
+): TestApi {
   const clock = new TestClock();
   const emails = new CapturingEmailSender();
   const google = new TestGoogle();
@@ -133,7 +142,14 @@ export function createTestApi(overrides: Partial<Dependencies> = {}, bindings: P
     return response;
   };
 
-  return { clock, emails, google, fetch, client: (options) => new TestClient(fetch, options?.ip ?? randomIp()) };
+  return {
+    clock,
+    emails,
+    google,
+    fetch,
+    client: (clientOptions) => new TestClient(fetch, clientOptions?.ip ?? randomIp()),
+    ownerDatabaseUrl: options.ownerDatabaseUrl ?? ownerDatabaseUrl(),
+  };
 }
 
 function randomIp(): string {
@@ -180,9 +196,12 @@ export class TestClient {
   put = (path: string, body?: unknown) => this.request('PUT', path, body);
 }
 
-/** Runs SQL directly against the test database as its owner (assertions and seeding, outside the API). */
-export async function withDb<T>(work: (db: pg.Client) => Promise<T>): Promise<T> {
-  const client = new pg.Client({ connectionString: ownerDatabaseUrl() });
+/**
+ * Runs SQL directly against the test database as its owner (assertions and seeding, outside the API): the shared test
+ * database, or the one `url` names (an isolated database's owner URL, test/isolated-database.ts).
+ */
+export async function withDb<T>(work: (db: pg.Client) => Promise<T>, url: string = ownerDatabaseUrl()): Promise<T> {
+  const client = new pg.Client({ connectionString: url });
   client.on('error', () => undefined); // pg-cloudflare reports its socket shutdown after end()
   await client.connect();
   try {
@@ -214,9 +233,9 @@ export async function seedEmployee(email = `${crypto.randomUUID().replace(/-/g, 
   return { id, email };
 }
 
-/** Stands in for the operator's one-time SQL step (first Admin, PDF Q17). */
-export async function setRole(email: string, role: string) {
-  await withDb((db) => db.query('UPDATE employees SET role = $1 WHERE email = $2', [role, email.toLowerCase()]));
+/** Stands in for the operator's one-time SQL step (first Admin, PDF Q17); in the shared or the given database. */
+export async function setRole(email: string, role: string, url: string = ownerDatabaseUrl()) {
+  await withDb((db) => db.query('UPDATE employees SET role = $1 WHERE email = $2', [role, email.toLowerCase()]), url);
 }
 
 /**
@@ -235,7 +254,7 @@ export async function signInStaff(
   if (response.status !== 200)
     throw new Error(`Staff sign-in failed with ${response.status}: ${await response.text()}`);
   const user = await body<{ id: string; role: string; email: string }>(response);
-  if (role !== 'Employee') await setRole(email, role);
+  if (role !== 'Employee') await setRole(email, role, api.ownerDatabaseUrl); // the database this API uses
   return { client, user: { ...user, role }, email };
 }
 

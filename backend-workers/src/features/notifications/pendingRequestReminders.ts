@@ -148,6 +148,8 @@ export async function remindPendingRequests(
        FROM mentor_requests r
       WHERE r.status = 'Pending' AND r.requested_at <= $1 AND r.requested_at >= $2
         AND NOT EXISTS (SELECT 1 FROM pending_reminders p WHERE p.mentor_request_id = r.id)
+        -- Only a request HR may still approve: none once the application has had any assignment (owner, 2026-11-23).
+        AND NOT EXISTS (SELECT 1 FROM assignments s WHERE s.application_id = r.application_id)
      ORDER BY started_at, id`,
     [cutoff, activatedAt],
   );
@@ -349,11 +351,13 @@ async function mentorRequestReminder(
     trainee_name: string | null;
     field: string;
     reminded: boolean;
+    assigned: boolean;
     hr_id: string | null;
     hr_email: string | null;
   }>(
     `SELECT r.status, r.requested_at, e.full_name AS employee_name, t.full_name AS trainee_name, f.name AS field,
             EXISTS (SELECT 1 FROM pending_reminders p WHERE p.mentor_request_id = r.id) AS reminded,
+            EXISTS (SELECT 1 FROM assignments s WHERE s.application_id = r.application_id) AS assigned,
             hr.id AS hr_id, hr.email AS hr_email
        FROM mentor_requests r
        JOIN employees e ON e.id = r.employee_id
@@ -366,7 +370,9 @@ async function mentorRequestReminder(
     [requestId],
   );
   const r = rows[0];
-  if (!r || r.reminded || r.status !== 'Pending') return null;
+  // Under the request's row lock: an approval holds the application's pending requests FOR UPDATE until it commits, so a
+  // claim either runs before it (the request still eligible) or after it (Approved, Rejected, or its application assigned).
+  if (!r || r.reminded || r.status !== 'Pending' || r.assigned) return null;
   const requestedAt = new Date(r.requested_at);
   if (requestedAt < activatedAt || !isOverdue(requestedAt, now, thresholdDays)) return null; // item 18, item 12
   if (!r.hr_id || !r.hr_email) return [];

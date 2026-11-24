@@ -119,6 +119,13 @@ export const DIRECT_ASSIGNMENT_REJECTION_REASON =
   'أسندت الموارد البشرية المتدرب مباشرةً إلى مدرّب. / HR assigned the trainee directly to a mentor.';
 
 /**
+ * The reason stored on every other pending request when HR approves one (owner decision of 2026-11-23), in the same
+ * bilingual form as the direct-assignment reason.
+ */
+export const OTHER_REQUEST_APPROVED_REJECTION_REASON =
+  "وافقت الموارد البشرية على طلب موظف آخر لتدريب هذا المتدرب. / HR approved another employee's request to train this trainee.";
+
+/**
  * AD-67: whether `hrId` may directly assign this application's trainee now: it is Accepted, has never had an assignment,
  * and `hrId` is its current responsible HR (AD-64). `a` is the training_applications alias.
  */
@@ -534,27 +541,74 @@ export const hrRoutes: Route[] = [
         'assignment.invalid_period',
       );
       const request = await mentorRequest(c, routeId(c));
-      assertPending(request.status);
+      assertPending(request.status); // a request decided before this call: 400 mentor_request.invalid_status, as before
 
+      // Owner decisions of 2026-11-23 (after the reproduced lifecycle defect): an application never gets a second initial
+      // assignment once it has had any assignment, whatever its status (transfers keep their own workflow); approving one
+      // request rejects every other pending request for the application, in the same transaction. Lock order, as in the
+      // direct assignment (AD-67): the application FOR SHARE, then its pending requests FOR UPDATE by id. FOR SHARE alone
+      // does not serialize two approvals; the request rows do: a second approval (or a direct assignment) waits for the
+      // first, then no longer finds its request Pending (409 conflict.concurrent_update) or finds the assignment.
+      const applicationId = request.application_id;
+      const hrId = c.var.user!.id;
       const now = c.var.deps.now();
       const assignmentId = uuidV7(now);
-      await c.var.db.transaction(c.var.actor, async (tx) => {
+      const othersRejected = await c.var.db.transaction(c.var.actor, async (tx) => {
+        await tx.query('SELECT id FROM training_applications WHERE id = $1 FOR SHARE', [applicationId]);
+        const { rows: pending } = await tx.query<{ id: string }>(
+          "SELECT id FROM mentor_requests WHERE application_id = $1 AND status = 'Pending' ORDER BY id FOR UPDATE",
+          [applicationId],
+        );
+        if (!pending.some((r) => r.id === request.id)) throw new ConcurrencyError(); // decided meanwhile
+        // Read after the locks, so an assignment committed meanwhile is seen.
+        const { rows: history } = await tx.query('SELECT 1 FROM assignments WHERE application_id = $1 LIMIT 1', [
+          applicationId,
+        ]);
+        if (history.length > 0) {
+          throw new StateConflictError(
+            'mentor_request.already_assigned',
+            'This trainee already has (or had) a training assignment.',
+          );
+        }
         const { rowCount } = await tx.query(
           `UPDATE mentor_requests SET status = 'Approved', decided_at = $2, decided_by_id = $3
             WHERE id = $1 AND status = 'Pending'`,
-          [request.id, now, c.var.user!.id],
+          [request.id, now, hrId],
         );
         if (rowCount === 0) throw new ConcurrencyError();
         await tx.query(
           `INSERT INTO assignments (id, application_id, employee_id, mentor_request_id, start_date, end_date, status, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, 'Active', $7)`,
-          [assignmentId, request.application_id, request.employee_id, request.id, dates.start, dates.end, now],
+          [assignmentId, applicationId, request.employee_id, request.id, dates.start, dates.end, now],
+        );
+        const { rows: rejected } = await tx.query<{ id: string; employee_id: string }>(
+          `UPDATE mentor_requests SET status = 'Rejected', decided_at = $2, decided_by_id = $3, rejection_reason = $4
+            WHERE application_id = $1 AND status = 'Pending' AND id <> $5
+            RETURNING id, employee_id`,
+          [applicationId, now, hrId, OTHER_REQUEST_APPROVED_REJECTION_REASON, request.id],
         );
         // PDF §7: "assignment approved or rejected" goes to the employee who asked.
         await notifyEmployee(tx, request.employee_id, 'MentorRequestApproved', request.id, now);
+        // The ordinary rejection notice (in-app here, e-mail after the commit) to every other requester, except the
+        // approved employee (a duplicate request of their own) and anyone who holds the Admin role now (read from their
+        // employee row here, locked so a concurrent role change waits), as for a direct assignment (AD-67).
+        const { rows: admins } = await tx.query<{ id: string }>(
+          "SELECT id FROM employees WHERE id = ANY($1::uuid[]) AND role = 'Admin' FOR SHARE",
+          [rejected.map((r) => r.employee_id)],
+        );
+        const currentAdmins = new Set(admins.map((a) => a.id));
+        const notified = rejected.filter(
+          (r) => r.employee_id !== request.employee_id && !currentAdmins.has(r.employee_id),
+        );
+        for (const r of notified) await notifyEmployee(tx, r.employee_id, 'MentorRequestRejected', r.id, now);
+        return notified.map((r) => r.id);
       });
-      // PDF §7: e-mails to the employee and, with the start details, to the trainee; after the commit (best effort).
-      await sendEventEmails(c, (q) => mentorRequestDecisionEmails(q, request.id));
+      // PDF §7, after the commit (best effort): the approval e-mails to the employee and, with the start details, to the
+      // trainee, and the ordinary rejection e-mail of each other notified requester (the same template as HR's rejection).
+      await sendEventEmails(c, async (q) => [
+        ...(await mentorRequestDecisionEmails(q, request.id)),
+        ...(await Promise.all(othersRejected.map((r) => mentorRequestDecisionEmails(q, r)))).flat(),
+      ]);
       return json({ ...toMentorRequest(await mentorRequest(c, request.id)), assignmentId });
     },
   },
