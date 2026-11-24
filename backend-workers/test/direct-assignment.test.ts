@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import type { Bindings } from '../src/config';
 import type { EmailMessage } from '../src/email';
 import { calendarDate } from '../src/domain/training';
-import { DIRECT_ASSIGNMENT_REJECTION_REASON } from '../src/features/training/hrRoutes';
+import {
+  DIRECT_ASSIGNMENT_REJECTION_REASON,
+  OTHER_REQUEST_APPROVED_REJECTION_REASON,
+} from '../src/features/training/hrRoutes';
 import {
   body,
   createTestApi,
@@ -312,34 +315,164 @@ describe('HR direct assignment (AD-67)', () => {
     }
   });
 
-  it('concurrency: with a racing request approval or direct assignments, exactly one assignment; a loser writes nothing', async () => {
+  /**
+   * Both outcomes of a request approval racing a direct assignment, each played deterministically (no timing): a second
+   * connection holds the winner's chosen mentor's employee row (FOR UPDATE), so the winner pauses at its assignment insert
+   * (its foreign-key check) after it has locked the application's pending requests; the loser is then started and seen
+   * waiting for those request locks (pg_blocking_pids) before the hold is released.
+   */
+  const blockedBy = async (pid: number) =>
+    (
+      await withDb((db) =>
+        db.query<{ pid: number; query: string }>(
+          'SELECT pid, query FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))',
+          [pid],
+        ),
+      )
+    ).rows;
+  const until = async (condition: () => Promise<{ pid: number; query: string }[]>, what: string) => {
+    for (let waited = 0; waited <= 10_000; waited += 25) {
+      const rows = await condition();
+      if (rows.length > 0) return rows;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`Timed out waiting: ${what}`);
+  };
+  /** Holds `employeeId`'s row until `release` (always released in `finally`). */
+  async function holdingEmployee<T>(
+    employeeId: string,
+    work: (holderPid: number, release: () => Promise<void>) => Promise<T>,
+  ) {
+    const holder = new pg.Client({ connectionString: ownerDatabaseUrl() });
+    holder.on('error', () => undefined); // pg-cloudflare reports its socket shutdown after end() (as withDb)
+    await holder.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT id FROM employees WHERE id = $1 FOR UPDATE', [employeeId]);
+      const pid = (await holder.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+      return await work(pid, async () => {
+        await holder.query('COMMIT');
+      });
+    } finally {
+      await holder.query('ROLLBACK').catch(() => undefined);
+      await holder.end();
+    }
+  }
+  const PENDING_LOCK =
+    "SELECT id FROM mentor_requests WHERE application_id = $1 AND status = 'Pending' ORDER BY id FOR UPDATE";
+  const auditOf = (entityId: string) =>
+    withDb((db) =>
+      db.query<{ operation: string; actor_type: string; actor_id: string | null }>(
+        `SELECT operation, actor_type, actor_id FROM audit_logs
+          WHERE table_name = 'mentor_requests' AND entity_id = $1 ORDER BY id`,
+        [entityId],
+      ),
+    ).then((r) => r.rows);
+
+  it('concurrency, approval first (AD-49): the approval wins and rejects the other pending request; the direct assignment answers 409 and writes nothing', async () => {
     const t = await accepted();
     const requestA = await request(t.mentorA.client, t.applicationId);
     const requestC = await request(t.mentorC.client, t.applicationId);
     const before = api.emails.sent.length;
-    const [direct, approval] = await Promise.all([
-      assign(t.hrA.client, t.applicationId, { employeeId: t.mentorB.user.id, ...period }),
-      t.hrB.client.post(`/api/hr/mentor-requests/${requestA}/approve`, period),
-    ]);
-    const rows = await assignments(t.applicationId);
-    expect(rows.filter((a) => a.status === 'Active')).toHaveLength(1);
-    const reqs = await requests(t.applicationId);
-    if (direct.status === 201) {
-      expect(approval.status).not.toBe(200);
-      expect(rows[0]).toMatchObject({ employee_id: t.mentorB.user.id, mentor_request_id: null });
-      expect(reqs.map((r) => r.status)).toEqual(['Rejected', 'Rejected']);
-    } else {
-      // The approval won: the direct assignment rolled back entirely (the other request is still Pending, no mentor mail).
-      expect(approval.status).toBe(200);
-      expect(direct.status).toBe(409);
-      expect(reqs.find((r) => r.id === requestA)?.status).toBe('Approved');
-      expect(reqs.find((r) => r.id === requestC)).toMatchObject({ status: 'Pending', rejection_reason: null });
-      expect(api.emails.sent.slice(before).filter((m) => m.subject === MENTOR_SUBJECT)).toEqual([]);
-      // The failed direct assignment notified nobody: no rejection notice for the request that stayed Pending.
-      expect(await notificationsOf(t.mentorC.user.id)).toEqual([]);
-      expect(api.emails.sent.slice(before).filter((m) => m.to === t.mentorC.email)).toEqual([]);
-    }
+    const [approval, direct] = await holdingEmployee(t.mentorA.user.id, async (holderPid, release) => {
+      const approval = t.hrB.client.post(`/api/hr/mentor-requests/${requestA}/approve`, period);
+      const [paused] = await until(() => blockedBy(holderPid), 'the approval pauses at its assignment insert');
+      const direct = assign(t.hrA.client, t.applicationId, { employeeId: t.mentorB.user.id, ...period });
+      const [waiting] = await until(() => blockedBy(paused!.pid), 'the direct assignment waits for the request locks');
+      expect(waiting!.query).toBe(PENDING_LOCK);
+      await release();
+      return Promise.all([approval, direct]);
+    });
+    expect(approval.status).toBe(200);
+    expect(direct.status).toBe(409);
+    expect((await body(direct)).code).toBe('direct_assignment.already_assigned');
 
+    // One initial assignment: the approved request's.
+    expect(await assignments(t.applicationId)).toEqual([
+      expect.objectContaining({ employee_id: t.mentorA.user.id, mentor_request_id: requestA, status: 'Active' }),
+    ]);
+    // AD-49: the other pending request is rejected in the approval's transaction, by the approving HR, with the reason.
+    expect(await requests(t.applicationId)).toEqual([
+      expect.objectContaining({
+        id: requestA,
+        status: 'Approved',
+        decided_by_id: t.hrB.user.id,
+        rejection_reason: null,
+      }),
+      {
+        id: requestC,
+        status: 'Rejected',
+        decided_by_id: t.hrB.user.id,
+        rejection_reason: OTHER_REQUEST_APPROVED_REJECTION_REASON,
+      },
+    ]);
+    expect((await auditOf(requestC)).filter((a) => a.operation === 'UPDATE')).toEqual([
+      { operation: 'UPDATE', actor_type: 'Staff', actor_id: t.hrB.user.id },
+    ]);
+    // Notices: the approved employee once, the rejected employee the ordinary rejection once; the direct assignment's
+    // chosen mentor nothing.
+    expect(await notificationsOf(t.mentorA.user.id)).toEqual([{ type: 'MentorRequestApproved', entity_id: requestA }]);
+    expect(await notificationsOf(t.mentorC.user.id)).toEqual([{ type: 'MentorRequestRejected', entity_id: requestC }]);
+    expect(await notificationsOf(t.mentorB.user.id)).toEqual([]);
+    const mails = api.emails.sent.slice(before);
+    expect(mails.filter((m) => m.to === t.mentorC.email).map((m) => m.subject)).toEqual([REJECTED_SUBJECT]);
+    expect(mails.filter((m) => m.to === t.mentorB.email)).toEqual([]);
+    expect(mails.filter((m) => m.subject === MENTOR_SUBJECT || m.subject === TRAINEE_SUBJECT)).toEqual([]);
+  });
+
+  it('concurrency, direct assignment first (AD-67): the direct assignment wins and rejects every pending request; the approval answers 409 and writes nothing', async () => {
+    const t = await accepted();
+    const requestA = await request(t.mentorA.client, t.applicationId);
+    const requestC = await request(t.mentorC.client, t.applicationId);
+    const before = api.emails.sent.length;
+    const [direct, approval] = await holdingEmployee(t.mentorB.user.id, async (holderPid, release) => {
+      const direct = assign(t.hrA.client, t.applicationId, { employeeId: t.mentorB.user.id, ...period });
+      const [paused] = await until(() => blockedBy(holderPid), 'the direct assignment pauses at its assignment insert');
+      const approval = t.hrB.client.post(`/api/hr/mentor-requests/${requestA}/approve`, period);
+      const [waiting] = await until(() => blockedBy(paused!.pid), 'the approval waits for the request locks');
+      expect(waiting!.query).toBe(PENDING_LOCK);
+      await release();
+      return Promise.all([direct, approval]);
+    });
+    expect(direct.status).toBe(201);
+    expect(approval.status).toBe(409);
+    expect((await body(approval)).code).toBe('conflict.concurrent_update');
+
+    expect(await assignments(t.applicationId)).toEqual([
+      expect.objectContaining({ employee_id: t.mentorB.user.id, mentor_request_id: null, status: 'Active' }),
+    ]);
+    expect(await requests(t.applicationId)).toEqual([
+      {
+        id: requestA,
+        status: 'Rejected',
+        decided_by_id: t.hrA.user.id,
+        rejection_reason: DIRECT_ASSIGNMENT_REJECTION_REASON,
+      },
+      {
+        id: requestC,
+        status: 'Rejected',
+        decided_by_id: t.hrA.user.id,
+        rejection_reason: DIRECT_ASSIGNMENT_REJECTION_REASON,
+      },
+    ]);
+    expect(await notificationsOf(t.mentorB.user.id)).toEqual([
+      { type: 'TraineeDirectlyAssigned', entity_id: t.applicationId },
+    ]);
+    expect(await notificationsOf(t.mentorA.user.id)).toEqual([{ type: 'MentorRequestRejected', entity_id: requestA }]);
+    expect(await notificationsOf(t.mentorC.user.id)).toEqual([{ type: 'MentorRequestRejected', entity_id: requestC }]);
+    const mails = api.emails.sent.slice(before);
+    expect(mails.map((m) => m.subject).sort()).toEqual(
+      [MENTOR_SUBJECT, TRAINEE_SUBJECT, REJECTED_SUBJECT, REJECTED_SUBJECT].sort(),
+    ); // once each, no approval mail
+    expect(
+      mails
+        .filter((m) => m.subject === REJECTED_SUBJECT)
+        .map((m) => m.to)
+        .sort(),
+    ).toEqual([t.mentorA.email, t.mentorC.email].sort());
+  });
+
+  it('concurrency: a double-clicked or repeated direct assignment gives one assignment and each notice once', async () => {
     // A double-clicked or repeated submission: one assignment, and each notice once (also the other requester's).
     const u = await accepted();
     const otherRequest = await request(u.mentorA.client, u.applicationId);
