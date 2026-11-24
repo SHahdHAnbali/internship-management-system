@@ -181,7 +181,80 @@ node node_modules/.cache/ims-ops/transfer-email-catch-up.mjs --transfer <transfe
 unset CATCH_UP_DATABASE
 ```
 
-### Current deployment (2026-11-24, Worker-only hotfix: mentor request lifecycle fix, AD-49)
+### Current deployment (2026-11-24, R27 final evaluation: stages S2.1–S2.5, AD-69 to AD-73)
+- **Status: DEPLOYED TO PRODUCTION — 2026-11-24.** Released together: the final evaluation (R27, stages S2.1–S2.5),
+  the Admin audit-log cursor (AD-69) and the Arabic header wrap fix (`b5f4446`). The AD-49 mentor request protections
+  were already in production and are unchanged (`hrRoutes.ts` and `pendingRequestReminders.ts` are byte-identical to the
+  previous release).
+- **Source:** annotated tag `ims-r27-final-evaluation-20261124` → commit
+  `58937b3f31dc671d52ce2dbe439addabf8d96bae` (`main`). The tag is a release reference, not an authorization.
+- **Neon `ims_db`:**
+  - Migrations 17 → **20**: `20261122124131_FinalEvaluations`, `20261122164739_EvaluationWriteGuards` and
+    `20261123155017_EvaluationCorrections`, applied at about 15:01 UTC as the schema owner.
+  - They were applied with the guarded single-transaction script `apply-R27.sql`, SHA-256
+    `39db4bb9591eddc3c51a5c533fc291965fd6c81533eaee4b1664237336bac76b`. The script is the EF script between
+    `20261118202455_EvaluationCriteriaAutomaticOrder` and `20261123155017_EvaluationCorrections`, without its own
+    transaction lines. Its guards check the database name and the exact 17-entry history, and refuse when evaluation
+    objects already exist. It runs with `lock_timeout` 5 s and `statement_timeout` 60 s, and a post-check requires 20
+    migrations before COMMIT.
+  - The script exited 0 with no errors.
+  - `evaluations`, `evaluation_scores` and `evaluation_corrections` were created empty, with constraints, indexes,
+    triggers and functions identical to the rehearsal.
+  - The data of the 23 existing tables was unchanged (per-table content fingerprints). No `Down` was ever run.
+  - Then `scripts/ims-app-grants.sql` (the tagged version) was applied at about 15:52 UTC. `ims_app` has exactly the
+    approved 32 privilege entries: no DELETE, TRUNCATE, CREATE or TEMP, owns nothing, belongs to no role.
+  - The old Worker never reads the new tables, so the gap between the migrations and the grants was safe.
+- **Worker** `ims-api` version **`27a0b79d-cd7c-4279-8351-d4dabefc2a3f`** at **100%**. Deployment
+  `be7bfe4c-b14e-4897-980e-843521aa25d7`, activated at 15:53:29 UTC.
+  - `index.js` is 997,126 bytes, SHA-256 `f674651025207b97dd4ef22434d6ba01964331f905c064f5ce15ee4416519266`: the
+    local build, the uploaded version and the active version are byte-identical.
+  - The version was uploaded with `wrangler versions upload`, verified through the version API, then activated with
+    `wrangler versions deploy …@100%`.
+  - Bindings, the four secrets, Cron Triggers (`0 6,7 * * *`, `5 3,21,22 * * *`) and the compatibility settings are
+    unchanged.
+  - It replaces `40911eaf` (below).
+- **Pages** production deployment **`cd5daf06-c3b7-4690-a71a-0c458afde2ee`** from commit `58937b3`, completed at
+  15:53:42 UTC. The served `index.html` equals the build.
+  - The Admin audit-log window between the Worker and Pages (R6, accepted) lasted about 13 seconds.
+  - It replaces `f572ac59`.
+- **Evidence:**
+  - **B1 PASS:** read-only production preflight and historical mentor-request audit. No duplicate initial assignments,
+    unambiguous final mentors.
+  - **B2 PASS:** `pg_dump -Fc` `ims_db-before-R27-20261124T133345Z.dump`, SHA-256
+    `a4acb9ae393e58b6dc4c6a06f64558d7e7d71971922f22f662ff3d63698ff274`. It is kept privately outside every Git
+    repository in `/Users/Shared/IMS-private-backups/neon-2026-11-24-r27-b2/` (mode 0700/0600). It was restored in an
+    isolated container, leaving out only the 39 Neon-only `pg_attver` column statements, and compared with production.
+  - **B3 PASS:** Worker 802/802, C# 176/176, frontend 464/464 in three runs, typechecks, lint, Prettier and builds.
+  - **B4 PASS:** migrations and grants rehearsed on the restored backup, with the `ims_app` operations, the guard
+    refusals and atomic rollback.
+  - **Final checks just before the migration:** the backup matched production (row counts and content fingerprints of
+    all 23 tables), with no long transactions and no waiting locks.
+  - **No rollback was performed.**
+- **Checks after the release:**
+  - **VERIFIED** (signed out):
+    - `/health` 200; `/api/auth/config` 200.
+    - The protected endpoints return 401: `/api/auth/me`, `/api/trainee/applications`, `/api/evaluations`,
+      `/api/admin/audit-logs`, `/api/hr/applications`.
+    - `no-store` and `nosniff` are present, with no CORS headers for a foreign origin.
+    - `/trainee` and `/hr/evaluations` return 200.
+    - A short `wrangler tail` window showed only `ok` outcomes, with no exceptions and no error logs.
+  - **BLOCKED:** the authenticated HR, Employee, Trainee and Admin UI checks, including the Admin audit-log cursor and
+    Load More. No authorized signed-in session was available.
+  - **NOT TESTED:** the first Cron run after the release (21:05 UTC). It had not happened at the time of the report.
+- **Rollback:** `npx wrangler rollback 40911eaf-83eb-4f7c-99cc-4a6aebb8d2bd` together with Pages `f572ac59` (both kept
+  available).
+  - The database is fixed forward: the migrations are additive and the previous Worker works with them. Never run their
+    `Down`.
+  - For data damage only, use the B2 backup or Neon point-in-time restore (6-hour window), by owner decision.
+- **Follow-ups:**
+  - The authenticated read-only production checks (HR, Employee, Trainee, Admin, including the audit-log cursor).
+  - Monitoring of the first post-release Cron run.
+  - The intermittent frontend `EnvironmentTeardownError` (R7, accepted).
+  - R28 (evaluation requests and reminders) and certificates remain unimplemented.
+  - Separate security follow-up: the revocation status of a GitHub token exposed in an unrelated home-directory
+    repository remains **UNVERIFIED** (owner action).
+
+### Previous deployment (2026-11-24, Worker-only hotfix: mentor request lifecycle fix, AD-49)
 - **Status: SUCCESS — DEPLOYED TO PRODUCTION.** Only Cloudflare Worker `ims-api` was deployed. The site, the
   database and the configuration were not changed.
 - **Worker** `ims-api` version **`40911eaf-83eb-4f7c-99cc-4a6aebb8d2bd`** at **100%** of traffic. Deployment
@@ -246,7 +319,7 @@ unset CATCH_UP_DATABASE
   - The authenticated UI checks remain outstanding.
   - The next deployment from `main` must account for the still-unreleased evaluation features and their migrations.
 
-### Previous deployment (2026-11-18, S1: R07 evaluation criteria, AD-66, AD-68 G1 and G7)
+### Earlier deployment (2026-11-18, S1: R07 evaluation criteria, AD-66, AD-68 G1 and G7)
 - `main` @ `09bab76` (S1 commits `7450c64` and `09bab76`, pushed before the release; no CI and no Pages Git integration,
   so the push deployed nothing). **Order: migration, then Worker, then Pages**, in one window (22:16–22:19 UTC, outside
   the Cron Trigger times), with an operational freeze on criteria writes confirmed by the owner for both Admin accounts;
