@@ -181,7 +181,72 @@ node node_modules/.cache/ims-ops/transfer-email-catch-up.mjs --transfer <transfe
 unset CATCH_UP_DATABASE
 ```
 
-### Current deployment (2026-11-18, S1: R07 evaluation criteria, AD-66, AD-68 G1 and G7)
+### Current deployment (2026-11-24, Worker-only hotfix: mentor request lifecycle fix, AD-49)
+- **Status: SUCCESS — DEPLOYED TO PRODUCTION.** Only Cloudflare Worker `ims-api` was deployed. The site, the
+  database and the configuration were not changed.
+- **Worker** `ims-api` version **`40911eaf-83eb-4f7c-99cc-4a6aebb8d2bd`** at **100%** of traffic. Deployment
+  `bcf3267a-db60-443f-bf45-dd9f4516e793`, 2026-11-24 at 11:43:52 UTC. It replaces `15915bde` (2026-11-18, below).
+- **Source:** the isolated release built from the production baseline, **not `main`**:
+  - Annotated tag `ims-api-mentor-request-fix-20261124` (on GitHub).
+  - Release commit `db51a657f4e0f44df676022e47f9a0ab4be3b802`, whose parent is the production baseline
+    `09bab7609eee3049083db3f6d272a58ec027ab77`.
+  - Its runtime changes are only the two mentor request files of the approved fix
+    `4948a62fab62873288ab8e2599ccf20ff5db3997` (already on `main`), byte-identical:
+    `backend-workers/src/features/training/hrRoutes.ts` and
+    `backend-workers/src/features/notifications/pendingRequestReminders.ts`.
+  - The commit also carries the fix's regression tests. One is adapted: it checks the assignment history instead of
+    the unreleased `/api/evaluations`.
+  - No configuration, dependency, frontend or migration change.
+- **Artifact:** the deployed `index.js` has SHA-256
+  `e7dea69e66545fc5322c0e4cd8a674e5751c6e47a2ce2ee2b5980df3061ebe46` (959,683 bytes). It is byte-for-byte identical
+  to the locally tested release artifact (Node 22.23.3, Wrangler 4.153.0, the baseline `package-lock.json`).
+  - Before release, on a disposable PostgreSQL with the 17 production migrations, the full Worker suite passed
+    565/565 on its final run. An earlier run had one known intermittent notification-test failure, unrelated to the
+    fix.
+- **Method:** all steps were run from the release worktree (`backend-workers/`), never from `main`:
+  1. `wrangler versions upload` created the new version without routing traffic to it (`preview_urls` and
+     `workers_dev` are off).
+  2. Its JavaScript was retrieved through the version-specific Cloudflare API and checked against the approved
+     SHA-256.
+  3. The previous version `15915bde` was confirmed still active at 100%.
+  4. `wrangler versions deploy 40911eaf…@100%` activated the new version.
+  5. After activation, the active version and its artifact were verified again through the API.
+- **Checks after the release** (signed out, read-only):
+  - `/health`: 200 `Healthy`.
+  - `/api/auth/config`: 200, with both staff domains and the 15-minute code.
+  - `/api/auth/me`: 401.
+  - `no-store` and `nosniff` are present.
+  - A foreign `Origin` gets no `Access-Control-*` headers.
+  - The active bundle contains `mentor_request.already_assigned` and no evaluation routes or S2 evaluation
+    modules. This is checked from the deployed code itself, not from a 401.
+  - **Not performed:** the authenticated HR and Employee page checks. No existing authenticated session was
+    available. These checks are still outstanding.
+- **Unchanged:**
+  - **Pages:** production deployment `f572ac59-cb8e-469e-a86b-fb69d9227c44` (commit `09bab76`), not redeployed.
+  - **Neon `ims_db`:** 17 migrations. No migration, no grant change, no direct database access, no data repair.
+  - **Worker:** the same four secrets, bindings, compatibility settings and Cron Triggers (`5 3,21,22 * * *`,
+    `0 6,7 * * *`), compared through the Cloudflare API before and after.
+  - **Evaluations:** features S2.1–S2.4 and their three migrations remain **NOT DEPLOYED**.
+- **Effects:**
+  - Approving a mentor request now rejects the application's other pending requests. Each gets the bilingual
+    reason, an in-app notice and an e-mail (AD-49).
+  - Approving any request of an application that has had an assignment answers 409
+    `mentor_request.already_assigned`. The unchanged site shows its generic conflict message for it.
+  - Historical Pending requests of assigned applications stay Pending. They are no longer approvable or reminded.
+- **Rollback (not executed):** `npx wrangler rollback 15915bde-8f89-4748-8b16-ea20468cefbb` (in `backend-workers/`).
+  - No site, secret or Cron change is needed.
+  - It restores the previous Worker code only.
+  - It does **not** reverse requests already rejected automatically, their audit records, in-app notifications or
+    e-mails already sent.
+  - It **restores the former duplicate-initial-assignment defect**.
+- **Outstanding:**
+  - The historical production data-integrity audit of mentor requests is deferred and needs separate owner
+    authorization.
+  - No historical data cleanup was performed.
+  - The authenticated UI checks remain outstanding.
+  - The next deployment from `main` must account for the still-unreleased evaluation features and their migrations.
+
+### Previous deployment (2026-11-18, S1: R07 evaluation criteria, AD-66, AD-68 G1 and G7)
 - `main` @ `09bab76` (S1 commits `7450c64` and `09bab76`, pushed before the release; no CI and no Pages Git integration,
   so the push deployed nothing). **Order: migration, then Worker, then Pages**, in one window (22:16–22:19 UTC, outside
   the Cron Trigger times), with an operational freeze on criteria writes confirmed by the owner for both Admin accounts;
@@ -208,7 +273,7 @@ unset CATCH_UP_DATABASE
   create one and cannot change an order (the database refuses it); never run the migrations' `Down` in production; the
   recovery point is for data damage only.
 
-### Previous deployment (2026-11-15, pending-request reminders NEW-05 and the AD-67 deadlock fix)
+### Earlier deployment (2026-11-15, pending-request reminders NEW-05 and the AD-67 deadlock fix)
 - Worker `ims-api` version `c007ee03-2316-4ae1-83d1-9ccdf69b4ca4` (`main` @ `c583140`), Cron Triggers `5 3,21,22 * * *` and
   `0 6,7 * * *`; Pages unchanged (`b516b290`, commit `6650090`); Neon `ims_db` with 14 migrations. Details in the NEW-05
   section above. Rollback: see *Rollback* below (Worker `950d83d5`, and remove `0 6,7 * * *`).
